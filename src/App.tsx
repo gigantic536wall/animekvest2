@@ -96,16 +96,16 @@ const roundsData: Round[] = [
     type: "video", 
     name: "Раунд 3: Угадай аниме по отрывку опенинга", 
     questions: [
-      { video: "anime3vid/bleach1.mp4", correctAnswer: "Блич" },
-      { video: "anime3vid/moidevushka2.mp4", correctAnswer: "Моя девушка не только милая" },
-      { video: "anime3vid/devushkitank3.mp4", correctAnswer: "Девушки и танки" },
-      { video: "anime3vid/voshoshdenievteni4.mp4", correctAnswer: "Восхождение в тени" },
-      { video: "anime3vid/feriteil5.mp4", correctAnswer: "Фейри Тейл" },
-      { video: "anime3vid/mbvstrichy6.mp4", correctAnswer: "Межвидовые рецензенты" },
-      { video: "anime3vid/angelofdeth7.mp4", correctAnswer: "Ангел кровопролития" },
-      { video: "anime3vid/stranachudes8.mp4", correctAnswer: "Страна чудес смертников" },
-      { video: "anime3vid/monolog9.mp4", correctAnswer: "Монолог фармацевта" },
-      { video: "anime3vid/patriotism10.mp4", correctAnswer: "Патриотизм Мориарти" }
+      { video: "video3/bleach1.mp4", correctAnswer: "Блич" },
+      { video: "video3/moidevushka2.mp4", correctAnswer: "Моя девушка не только милая" },
+      { video: "video3/devushkitank3.mp4", correctAnswer: "Девушки и танки" },
+      { video: "video3/voshoshdenievteni4.mp4", correctAnswer: "Восхождение в тени" },
+      { video: "video3/feriteil5.mp4", correctAnswer: "Фейри Тейл" },
+      { video: "video3/mbvstrichy6.mp4", correctAnswer: "Межвидовые рецензенты" },
+      { video: "video3/angelofdeth7.mp4", correctAnswer: "Ангел кровопролития" },
+      { video: "video3/stranachudes8.mp4", correctAnswer: "Страна чудес смертников" },
+      { video: "video3/monolog9.mp4", correctAnswer: "Монолог фармацевта" },
+      { video: "video3/patriotism10.mp4", correctAnswer: "Патриотизм Мориарти" }
     ],
     pauseDuration: 10
   },
