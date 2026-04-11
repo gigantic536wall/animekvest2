@@ -203,26 +203,65 @@ export default function App() {
   }, [user]);
 
   // ==================== TIMER LOGIC ====================
+  // 1. Sync local timeLeft with database for everyone
   useEffect(() => {
-    if (!gameState?.active || !user) return;
+    if (gameState?.timeLeft !== undefined) {
+      setTimeLeft(gameState.timeLeft);
+    }
+  }, [gameState?.timeLeft]);
+
+  // 2. Admin-only: run the countdown interval
+  const lastProcessedQ = useRef<string | null>(null);
+  useEffect(() => {
+    if (!gameState?.active || !user?.isAdmin || globalPause?.active || pauseState?.active || gameState.roundFinished) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      lastProcessedQ.current = null;
+      return;
+    }
+
+    const qKey = `${gameState.currentRound}_${gameState.currentQuestion}`;
+    if (lastProcessedQ.current === qKey) return; // Already running for this question
+    lastProcessedQ.current = qKey;
 
     const round = roundsData[gameState.currentRound];
     if (!round) return;
 
-    if (gameState.roundFinished) {
-      setTimeLeft(0);
-      return;
-    }
+    if (timerRef.current) clearInterval(timerRef.current);
+    
+    let currentTime = gameState.timeLeft ?? round.answerTime ?? 25;
+    
+    timerRef.current = setInterval(async () => {
+      currentTime--;
+      if (currentTime <= 0) {
+        clearInterval(timerRef.current);
+        await restPatch('gameState', { timeLeft: 0 });
+        startPauseBetweenQuestions();
+      } else {
+        setTimeLeft(currentTime);
+        await restPatch('gameState', { timeLeft: currentTime });
+      }
+    }, 1000);
 
-    // Handle Round 4 specifically
-    if (round.type === "character_guess") {
-      const qIdx = gameState.currentQuestion;
-      const q = round.questions[qIdx];
-      if (!q) return;
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [
+    gameState?.currentQuestion, 
+    gameState?.currentRound, 
+    gameState?.active, 
+    globalPause?.active, 
+    pauseState?.active,
+    user?.isAdmin,
+    gameState?.roundFinished
+  ]);
 
-      // Check if user already answered this question
-      const checkAnswered = async () => {
-        if (user.isAdmin) return;
+  // ==================== ANSWER CHECK LOGIC ====================
+  useEffect(() => {
+    if (!gameState?.active || !user || user.isAdmin) return;
+    
+    const qIdx = gameState.currentQuestion ?? 0;
+    const checkAnswered = async () => {
+      try {
         const ans = await restGet(`players/${user.id}/roundAnswers/${gameState.currentRound}/q${qIdx}`);
         if (ans?.answered) {
           setHasAnswered(true);
@@ -231,33 +270,22 @@ export default function App() {
           setHasAnswered(false);
           setAnswerText("");
         }
-      };
-      checkAnswered();
-
-      let time = gameState.timeLeft || round.answerTime || 25;
-      setTimeLeft(time);
-
-      if (user.isAdmin && !globalPause?.active && !pauseState?.active) {
-        if (timerRef.current) clearInterval(timerRef.current);
-        timerRef.current = setInterval(async () => {
-          time--;
-          if (time <= 0) {
-            clearInterval(timerRef.current);
-            startPauseBetweenQuestions();
-          } else {
-            setTimeLeft(time);
-            await restPatch('gameState', { timeLeft: time });
-          }
-        }, 1000);
+      } catch (e) {
+        console.error("Error checking answer:", e);
       }
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, globalPause?.active, pauseState?.active]);
-
+    checkAnswered();
+  }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin]);
   // ==================== HELPERS ====================
+  const getAssetPath = (path: string) => {
+    if (!path) return "";
+    if (path.startsWith("http")) return path;
+    const base = import.meta.env.BASE_URL || "/";
+    const cleanBase = base.endsWith("/") ? base : base + "/";
+    const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+    return cleanBase + cleanPath;
+  };
+
   const preloadAssets = () => {
     setPreloaderStatus("🚀 Загрузка ресурсов...");
     // Simple preloader logic
@@ -434,6 +462,13 @@ export default function App() {
           }
 
           if (gameState?.active && round) {
+            const currentQIdx = gameState.currentQuestion ?? 0;
+            const currentQuestion = round.questions[currentQIdx];
+
+            if (!currentQuestion) {
+              return <div className="text-center py-20">Вопрос не найден...</div>;
+            }
+
             return (
               <div className="bg-black/40 p-6 rounded-3xl">
                 <div className="flex justify-between items-center mb-6">
@@ -443,24 +478,168 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* Round 1: Image Sequence */}
+                {round.type === "image_sequence" && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      {currentQuestion.images?.map((img, idx) => (
+                        <motion.div 
+                          key={idx}
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: idx * 0.2 }}
+                          className="relative aspect-video overflow-hidden rounded-xl border-2 border-white/10"
+                        >
+                          <img 
+                            src={getAssetPath(img)} 
+                            alt={`Hint ${idx + 1}`} 
+                            className="w-full h-full object-cover"
+                            onError={(e) => { 
+                              console.warn(`Failed to load image: ${img}`);
+                              (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}_${idx}/400/300`; 
+                            }}
+                          />
+                        </motion.div>
+                      ))}
+                    </div>
+                    
+                    {!user.isAdmin && (
+                      <div className="flex gap-4">
+                        <input 
+                          type="text"
+                          className="answer-input flex-1"
+                          placeholder="Ваш ответ..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          disabled={hasAnswered}
+                        />
+                        <button 
+                          onClick={submitAnswer}
+                          disabled={hasAnswered}
+                          className={`px-8 py-4 rounded-full font-bold transition-all ${hasAnswered ? 'bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}
+                        >
+                          {hasAnswered ? 'ОТПРАВЛЕНО' : 'ОТПРАВИТЬ'}
+                        </button>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-green-500/20 p-4 rounded-2xl border border-green-500/50 text-center"
+                      >
+                        <p className="text-gray-400 text-sm uppercase mb-1">Правильный ответ:</p>
+                        <h3 className="text-2xl font-bold text-green-400">{currentQuestion.correctAnswer}</h3>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
+                {/* Round 2: Quiz */}
+                {round.type === "quiz" && (
+                  <div className="space-y-8 py-10">
+                    <h3 className="text-3xl font-bold text-center mb-10">{currentQuestion.text}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {currentQuestion.options?.map((opt, idx) => {
+                        const isCorrect = idx === currentQuestion.correct;
+                        return (
+                          <button
+                            key={idx}
+                            onClick={async () => {
+                              if (hasAnswered || user.isAdmin) return;
+                              setAnswerText(opt);
+                              const path = `players/${user.id}/roundAnswers/${gameState.currentRound}/q${currentQIdx}`;
+                              await restPut(path, { answered: true, answer: opt, isCorrect, timestamp: Date.now() });
+                              setHasAnswered(true);
+                            }}
+                            className={`p-6 rounded-2xl text-xl font-semibold transition-all border-2 ${
+                              hasAnswered && answerText === opt 
+                                ? 'bg-blue-600 border-blue-400' 
+                                : gameState.showAnswer && isCorrect
+                                  ? 'bg-green-600 border-green-400'
+                                  : 'bg-white/5 border-white/10 hover:bg-white/10'
+                            }`}
+                            disabled={hasAnswered || user.isAdmin}
+                          >
+                            {opt}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Round 3: Video */}
+                {round.type === "video" && (
+                  <div className="space-y-6">
+                    <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative">
+                      <video 
+                        ref={videoRef}
+                        src={getAssetPath(currentQuestion.video || "")}
+                        className="w-full h-full"
+                        controls={user.isAdmin}
+                        autoPlay
+                        onEnded={() => {
+                          if (user.isAdmin) startPauseBetweenQuestions();
+                        }}
+                      />
+                    </div>
+
+                    {!user.isAdmin && (
+                      <div className="flex gap-4">
+                        <input 
+                          type="text"
+                          className="answer-input flex-1"
+                          placeholder="Название аниме..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          disabled={hasAnswered}
+                        />
+                        <button 
+                          onClick={submitAnswer}
+                          disabled={hasAnswered}
+                          className={`px-8 py-4 rounded-full font-bold transition-all ${hasAnswered ? 'bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}
+                        >
+                          {hasAnswered ? 'ОТПРАВЛЕНО' : 'ОТПРАВИТЬ'}
+                        </button>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-green-500/20 p-4 rounded-2xl border border-green-500/50 text-center"
+                      >
+                        <p className="text-gray-400 text-sm uppercase mb-1">Правильный ответ:</p>
+                        <h3 className="text-2xl font-bold text-green-400">{currentQuestion.correctAnswer}</h3>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
                 {/* Round 4 Content */}
                 {round.type === "character_guess" && (
                   <div className="space-y-6">
                     <div className="grid md:grid-cols-2 gap-8 items-center">
                       <div className="relative group">
                         <img 
-                          src={round.questions[gameState.currentQuestion].image} 
+                          src={getAssetPath(currentQuestion.image || "")} 
                           alt="Character" 
                           className="w-full h-auto rounded-2xl shadow-2xl border-4 border-white/10"
-                          onError={(e) => { (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${gameState.currentQuestion}/800/600`; }}
+                          onError={(e) => { 
+                            console.warn(`Failed to load image: ${currentQuestion.image}`);
+                            (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}/800/600`; 
+                          }}
                         />
-                        <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded-full text-sm">Вопрос {gameState.currentQuestion + 1}</div>
+                        <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded-full text-sm">Вопрос {currentQIdx + 1}</div>
                       </div>
                       <div className="space-y-4">
                         <div className="char-description">
                           <p className="text-gray-400 text-sm mb-2 uppercase tracking-widest">Описание персонажа:</p>
                           <p className="text-lg leading-relaxed italic">
-                            "{round.questions[gameState.currentQuestion].description}"
+                            "{currentQuestion.description}"
                           </p>
                         </div>
                         
@@ -491,17 +670,15 @@ export default function App() {
                             className="answer-info"
                           >
                             <h3 className="text-2xl font-bold text-green-400 mb-2">
-                              {round.questions[gameState.currentQuestion].character}
+                              {currentQuestion.character}
                             </h3>
-                            <p className="text-gray-300">Аниме: <span className="text-white font-semibold">{round.questions[gameState.currentQuestion].anime}</span></p>
+                            <p className="text-gray-300">Аниме: <span className="text-white font-semibold">{currentQuestion.anime}</span></p>
                           </motion.div>
                         )}
                       </div>
                     </div>
                   </div>
                 )}
-                
-                {/* Other round types would go here */}
               </div>
             );
           }
@@ -579,7 +756,7 @@ export default function App() {
                 <button 
                   onClick={async () => {
                     if (confirm("Сбросить игру?")) {
-                      await restPut('gameState', { reset: true });
+                      await restPut('gameState', { reset: true, active: false });
                       localStorage.removeItem('quizUser');
                       window.location.reload();
                     }
