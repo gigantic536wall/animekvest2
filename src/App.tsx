@@ -85,14 +85,22 @@ const roundsData: Round[] = [
     ] 
   },
   { 
-    type: "quiz", 
-    name: "Раунд 2: Общие знания", 
-    questions: Array.from({length:10},(_,i)=>({ 
-      text:`Вопрос ${i+1}: Назовите аниме, где главного героя зовут Гоку?`, 
-      options:["Наруто","Драгон Болл","Ван Пис","Блич"], 
-      correct:1, 
-      points:2 
-    }))
+    type: "mixed_text", 
+    name: "Раунд 2: Общие знания (Сложный)", 
+    answerTime: 30,
+    pauseDuration: 10,
+    questions: [
+      { text: "Что можно ответить на фразу 月が綺麗ですね (луна сегодня красивая)?", correctAnswer: "Настолько красивая, что можно умереть / Как и ты / Ты мне тоже нравишься" },
+      { text: "На каком этаже подземелья в аниме «Поднятие уровня в одиночку» главный герой встретил Элис Радиру?", correctAnswer: "100 этаж", image: "foto2/2.png" },
+      { text: "Сколько всего серий в сумме в САО (96), Бличе (418) и Дорохедоро (23)? (Разброс +-20)", correctAnswer: "537 серий" },
+      { text: "Назовите имя данной девушки на фотографии (Имя и Фамилия):", correctAnswer: "Уточните у админа", image: "foto2/4.png" },
+      { text: "Назовите как минимум 2 персонажей из Редана (Геней Рёдан) из аниме «Хантер х Хантер»:", correctAnswer: "Куроро, Фейтан, Мачи, Хисока и др." },
+      { text: "Как звали первого хокаге в аниме «Наруто»?", correctAnswer: "Хаширама Сенджу" },
+      { text: "В каком аниме-сериале была культовая фраза, где персонажи по очереди говорят «Congratulations» и хлопают в ладоши?", correctAnswer: "Евангелион" },
+      { text: "Из-за чего на город новичков пришел сильный демон (Вердия) в аниме «Коносуба»?", correctAnswer: "Мегумин взрывала его замок каждый день" },
+      { text: "Какое аниме начинается с истории: существует «4 пустых» (Пробел), и они настолько хорошо играют, что их считают читерами?", correctAnswer: "Нет игры — нет жизни" },
+      { text: "Угадай аниме по описанию: главная героиня стала Богом и отправилась в прошлое, чтобы убить себя и пережить игру заново вместе с ГГ. В итоге она убивает себя и становится Богом в пустом мире.", correctAnswer: "Дневник будущего (Mirai Nikki)" }
+    ]
   },
   { 
     type: "video", 
@@ -250,12 +258,18 @@ export default function App() {
 
   const timerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const testAudioRef = useRef<HTMLAudioElement>(null);
+  const [isTestingSound, setIsTestingSound] = useState(false);
 
   // ==================== VOLUME LOGIC ====================
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.volume = volume;
       videoRef.current.muted = isMuted;
+    }
+    if (testAudioRef.current) {
+      testAudioRef.current.volume = volume;
+      testAudioRef.current.muted = isMuted;
     }
   }, [volume, isMuted, gameState?.currentQuestion, gameState?.revealMode]);
 
@@ -496,6 +510,10 @@ export default function App() {
     const round = roundsData[gameState.currentRound];
     let potentialPoints = 2; // Default
     
+    if (round.type === "mixed_text") {
+      potentialPoints = 2;
+    }
+
     if (round.type === "personal") {
       potentialPoints = 1;
     }
@@ -589,6 +607,23 @@ export default function App() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 bg-black/40 px-4 py-2 rounded-full">
+            <button 
+              onClick={() => {
+                if (testAudioRef.current) {
+                  if (isTestingSound) {
+                    testAudioRef.current.pause();
+                    testAudioRef.current.currentTime = 0;
+                    setIsTestingSound(false);
+                  } else {
+                    testAudioRef.current.play().catch(e => console.warn("Audio play failed:", e));
+                    setIsTestingSound(true);
+                  }
+                }
+              }}
+              className={`text-[10px] font-bold px-2 py-1 rounded border transition-all ${isTestingSound ? 'bg-green-500 border-green-400 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}
+            >
+              {isTestingSound ? 'СТОП' : 'ТЕСТ'}
+            </button>
             <button onClick={() => setIsMuted(!isMuted)}>
               {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
             </button>
@@ -602,6 +637,12 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      <audio 
+        ref={testAudioRef} 
+        src={getAssetPath("test_sound.mp3")} 
+        onEnded={() => setIsTestingSound(false)}
+      />
 
       {/* Leaderboard Overlay */}
       {gameState?.showLeaderboard && (
@@ -746,6 +787,24 @@ export default function App() {
                 <p className="text-3xl font-bold text-white leading-tight">
                   {roundsData[gameState.currentRound].questions[gameState.currentQuestion].text}
                 </p>
+              </div>
+            )}
+
+            {roundsData[gameState.currentRound]?.type === "mixed_text" && (
+              <div className="max-w-4xl mx-auto space-y-6">
+                <div className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-2xl">
+                  <p className="text-2xl font-bold text-white leading-tight">
+                    {roundsData[gameState.currentRound].questions[gameState.currentQuestion].text}
+                  </p>
+                </div>
+                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].image && (
+                  <div className="max-w-2xl mx-auto">
+                    <img 
+                      src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].image || "")} 
+                      className="rounded-2xl border-2 border-white/20 shadow-2xl max-h-[40vh] mx-auto" 
+                    />
+                  </div>
+                )}
               </div>
             )}
 
@@ -1309,6 +1368,71 @@ export default function App() {
                       >
                         <p className="text-gray-400 text-sm uppercase mb-1">Вердикт:</p>
                         <h3 className="text-2xl font-bold text-blue-400">Слушайте Назара!</h3>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
+                {/* Round 2: Mixed Text/Image */}
+                {round.type === "mixed_text" && (
+                  <div className="space-y-8 max-w-4xl mx-auto text-center">
+                    <motion.div 
+                      key={gameState.currentQuestion}
+                      initial={{ opacity: 0, y: -20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-2xl"
+                    >
+                      <p className="text-gray-400 text-sm mb-4 uppercase tracking-widest font-bold">Вопрос:</p>
+                      <h3 className="text-2xl md:text-3xl font-bold text-white leading-tight">
+                        {currentQuestion.text}
+                      </h3>
+                    </motion.div>
+
+                    {currentQuestion.image && (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="max-w-2xl mx-auto"
+                      >
+                        <img 
+                          src={getAssetPath(currentQuestion.image)} 
+                          alt="Question Hint" 
+                          className="w-full h-auto rounded-2xl shadow-2xl border-4 border-white/10"
+                          onError={(e) => { 
+                            (e.target as HTMLImageElement).src = `https://picsum.photos/seed/mixed${currentQIdx}/800/600`; 
+                          }}
+                        />
+                      </motion.div>
+                    )}
+                    
+                    {!user.isAdmin && (
+                      <div className="max-w-md mx-auto space-y-4">
+                        <input 
+                          type="text"
+                          className="answer-input w-full"
+                          placeholder="Ваш ответ..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          disabled={hasAnswered}
+                        />
+                        <button 
+                          onClick={submitAnswer}
+                          disabled={hasAnswered}
+                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${hasAnswered ? 'bg-green-600 cursor-default' : 'bg-red-500 hover:bg-red-600 active:scale-95'}`}
+                        >
+                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : 'ОТПРАВИТЬ ОТВЕТ'}
+                        </button>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-green-500/20 p-6 rounded-2xl border border-green-500/50 text-center max-w-md mx-auto"
+                      >
+                        <p className="text-gray-400 text-sm uppercase mb-1">Правильный ответ:</p>
+                        <h3 className="text-2xl font-bold text-green-400">{currentQuestion.correctAnswer}</h3>
                       </motion.div>
                     )}
                   </div>
