@@ -69,6 +69,7 @@ const roundsData: Round[] = [
   { 
     type: "image_sequence", 
     name: "Раунд 1: Угадай аниме по картинке", 
+    answerTime: 36, // 8+8+8+12
     questions: [
       { images: ["foto1/image1.png", "foto1/image2.png", "foto1/image3.png", "foto1/image4.png"], correctAnswer: "Реинкарнация безработного" },
       { images: ["foto1/image1маг.png", "foto1/image2маг.png", "foto1/image3маг.png", "foto1/image4маг.png"], correctAnswer: "Магическая битва " },
@@ -204,57 +205,37 @@ export default function App() {
   }, [user]);
 
   // ==================== TIMER LOGIC ====================
-  // 1. Sync local timeLeft with database for everyone
   useEffect(() => {
-    if (gameState?.timeLeft !== undefined) {
-      setTimeLeft(gameState.timeLeft);
-    }
-  }, [gameState?.timeLeft]);
-
-  // 2. Admin-only: run the countdown interval
-  const lastProcessedQ = useRef<string | null>(null);
-  useEffect(() => {
-    if (!gameState?.active || !user?.isAdmin || globalPause?.active || pauseState?.active || gameState.roundFinished) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      lastProcessedQ.current = null;
+    if (!gameState?.active || !user || gameState.roundFinished) {
+      setTimeLeft(0);
       return;
     }
 
-    const qKey = `${gameState.currentRound}_${gameState.currentQuestion}`;
-    if (lastProcessedQ.current === qKey) return; // Already running for this question
-    lastProcessedQ.current = qKey;
+    if (globalPause?.active || pauseState?.active) {
+      // If paused, we show the frozen timeLeft from the database
+      if (gameState.timeLeft !== undefined) setTimeLeft(gameState.timeLeft);
+      return;
+    }
 
-    const round = roundsData[gameState.currentRound];
-    if (!round) return;
-
-    if (timerRef.current) clearInterval(timerRef.current);
-    
-    let currentTime = gameState.timeLeft ?? round.answerTime ?? 25;
-    
-    timerRef.current = setInterval(async () => {
-      currentTime--;
-      if (currentTime <= 0) {
-        clearInterval(timerRef.current);
-        await restPatch('gameState', { timeLeft: 0 });
-        startPauseBetweenQuestions();
-      } else {
-        setTimeLeft(currentTime);
-        await restPatch('gameState', { timeLeft: currentTime });
+    // Calculate time based on endTime
+    const updateTimer = () => {
+      if (!gameState.endTime) {
+        if (gameState.timeLeft !== undefined) setTimeLeft(gameState.timeLeft);
+        return;
       }
-    }, 1000);
+      const diff = Math.max(0, Math.ceil((gameState.endTime - Date.now()) / 1000));
+      setTimeLeft(diff);
 
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      // Admin handles the transition when time runs out
+      if (user.isAdmin && diff <= 0) {
+        startPauseBetweenQuestions();
+      }
     };
-  }, [
-    gameState?.currentQuestion, 
-    gameState?.currentRound, 
-    gameState?.active, 
-    globalPause?.active, 
-    pauseState?.active,
-    user?.isAdmin,
-    gameState?.roundFinished
-  ]);
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 500); // More frequent update for smoothness
+    return () => clearInterval(interval);
+  }, [gameState?.active, gameState?.endTime, gameState?.timeLeft, globalPause?.active, pauseState?.active, gameState?.roundFinished, user?.isAdmin]);
 
   // ==================== ANSWER CHECK LOGIC ====================
   useEffect(() => {
@@ -315,23 +296,26 @@ export default function App() {
   };
 
   const startRound = async (idx: number) => {
+    const duration = roundsData[idx].answerTime || 25;
     await restPatch('gameState', {
       active: true,
       currentRound: idx,
       currentQuestion: 0,
       roundFinished: false,
-      timeLeft: roundsData[idx].answerTime || 25,
+      timeLeft: duration,
+      endTime: Date.now() + duration * 1000,
       showAnswer: false,
       reset: false
     });
   };
 
   const startPauseBetweenQuestions = async () => {
+    if (pauseState?.active) return; // Prevent double trigger
     const round = roundsData[gameState.currentRound];
     const duration = round.pauseDuration || 10;
     const endTime = Date.now() + duration * 1000;
     await restPut('gameState/pause', { active: true, endTime, skip: false });
-    await restPatch('gameState', { showAnswer: false }); // Reset showAnswer for next question
+    await restPatch('gameState', { showAnswer: false, endTime: null }); 
 
     const checkPause = setInterval(async () => {
       const p = await restGet('gameState/pause');
@@ -340,7 +324,12 @@ export default function App() {
         await restDelete('gameState/pause');
         const nextQ = gameState.currentQuestion + 1;
         if (nextQ < round.questions.length) {
-          await restPatch('gameState', { currentQuestion: nextQ, timeLeft: round.answerTime || 25 });
+          const qDuration = round.answerTime || 25;
+          await restPatch('gameState', { 
+            currentQuestion: nextQ, 
+            timeLeft: qDuration,
+            endTime: Date.now() + qDuration * 1000
+          });
         } else {
           await restPatch('gameState', { active: false, roundFinished: true });
         }
@@ -350,8 +339,24 @@ export default function App() {
 
   const submitAnswer = async () => {
     if (hasAnswered || !answerText.trim()) return;
+    const round = roundsData[gameState.currentRound];
+    let potentialPoints = 2; // Default
+    
+    if (round.type === "image_sequence") {
+      // 36s total: 36-29 (4), 28-21 (3), 20-13 (2), 12-0 (1)
+      if (timeLeft > 28) potentialPoints = 4;
+      else if (timeLeft > 20) potentialPoints = 3;
+      else if (timeLeft > 12) potentialPoints = 2;
+      else potentialPoints = 1;
+    }
+
     const path = `players/${user.id}/roundAnswers/${gameState.currentRound}/q${gameState.currentQuestion}`;
-    await restPut(path, { answered: true, answer: answerText, timestamp: Date.now() });
+    await restPut(path, { 
+      answered: true, 
+      answer: answerText, 
+      timestamp: Date.now(),
+      potentialPoints 
+    });
     setHasAnswered(true);
   };
 
@@ -484,25 +489,34 @@ export default function App() {
                 {round.type === "image_sequence" && (
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 gap-4">
-                      {currentQuestion.images?.map((img, idx) => (
-                        <motion.div 
-                          key={idx}
-                          initial={{ opacity: 0, scale: 0.9 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          transition={{ delay: idx * 0.2 }}
-                          className="relative aspect-video overflow-hidden rounded-xl border-2 border-white/10"
-                        >
-                          <img 
-                            src={getAssetPath(img)} 
-                            alt={`Hint ${idx + 1}`} 
-                            className="w-full h-full object-cover"
-                            onError={(e) => { 
-                              console.warn(`Failed to load image: ${img}`);
-                              (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}_${idx}/400/300`; 
-                            }}
-                          />
-                        </motion.div>
-                      ))}
+                      {currentQuestion.images?.map((img, idx) => {
+                        // Logic: 36-29 (img 1), 28-21 (img 2), 20-13 (img 3), 12-0 (img 4)
+                        const show = (idx === 0) || 
+                                     (idx === 1 && timeLeft <= 28) || 
+                                     (idx === 2 && timeLeft <= 20) || 
+                                     (idx === 3 && timeLeft <= 12);
+                        
+                        return (
+                          <motion.div 
+                            key={idx}
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: show ? 1 : 0, scale: show ? 1 : 0.9 }}
+                            className="relative aspect-video overflow-hidden rounded-xl border-2 border-white/10"
+                          >
+                            {show && (
+                              <img 
+                                src={getAssetPath(img)} 
+                                alt={`Hint ${idx + 1}`} 
+                                className="w-full h-full object-cover"
+                                onError={(e) => { 
+                                  console.warn(`Failed to load image: ${img}`);
+                                  (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}_${idx}/400/300`; 
+                                }}
+                              />
+                            )}
+                          </motion.div>
+                        );
+                      })}
                     </div>
                     
                     {!user.isAdmin && (
@@ -745,6 +759,14 @@ export default function App() {
                 <button 
                   onClick={async () => {
                     const active = !globalPause?.active;
+                    if (active) {
+                      // Resuming: set new endTime based on remaining timeLeft
+                      const newEndTime = Date.now() + (gameState.timeLeft || 0) * 1000;
+                      await restPatch('gameState', { endTime: newEndTime });
+                    } else {
+                      // Pausing: save current timeLeft to DB
+                      await restPatch('gameState', { timeLeft: timeLeft });
+                    }
                     await restPut('gameState/globalPause', { active });
                   }}
                   className="bg-yellow-600 hover:bg-yellow-700 px-6 py-3 rounded-full font-bold flex items-center gap-2"
@@ -757,11 +779,13 @@ export default function App() {
                     if (confirm("Сбросить игру?")) {
                       // 1. Trigger reset for everyone
                       await restPatch('gameState', { reset: true, active: false });
-                      // 2. Wait a bit so clients catch the poll
+                      // 2. Clear players from database
+                      await restDelete('players');
+                      // 3. Wait a bit so clients catch the poll
                       await new Promise(r => setTimeout(r, 1500));
-                      // 3. Clear the reset flag so it doesn't loop
+                      // 4. Clear the reset flag so it doesn't loop
                       await restPatch('gameState', { reset: false });
-                      // 4. Local cleanup
+                      // 5. Local cleanup
                       localStorage.removeItem('quizUser');
                       window.location.reload();
                     }
@@ -787,8 +811,20 @@ export default function App() {
                           <p className="text-sm text-blue-300">{ans.answer}</p>
                         </div>
                         <div className="flex gap-2">
-                          <button onClick={() => markAnswer(id, `q${gameState.currentQuestion}`, 2)} className="text-green-500 hover:scale-110"><CheckCircle2 /></button>
-                          <button onClick={() => markAnswer(id, `q${gameState.currentQuestion}`, -1)} className="text-red-500 hover:scale-110"><XCircle /></button>
+                          <button 
+                            onClick={() => markAnswer(id, `q${gameState.currentQuestion}`, ans.potentialPoints || 2)} 
+                            className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center"
+                          >
+                            <CheckCircle2 className="text-green-500" />
+                            <span className="text-[10px] font-bold">+{ans.potentialPoints || 2}</span>
+                          </button>
+                          <button 
+                            onClick={() => markAnswer(id, `q${gameState.currentQuestion}`, -1)} 
+                            className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center"
+                          >
+                            <XCircle className="text-red-500" />
+                            <span className="text-[10px] font-bold">-1</span>
+                          </button>
                         </div>
                       </div>
                     );
