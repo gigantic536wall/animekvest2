@@ -137,6 +137,19 @@ const roundsData: Round[] = [
       { character: "Рин Окумура", anime: "Синий экзорцист", description: "Сын Сатаны, который решил стать экзорцистом, чтобы победить своего отца.", image: "foto4/sinieecz.jpg" },
       { character: "Крул Цепеш", anime: "Последний серафим", description: "Королева вампиров Японии, третья среди Основателей.", image: "foto4/krull.jpg" }
     ]
+  },
+  {
+    type: "rebus",
+    name: "Раунд 5: Ребусы",
+    answerTime: 45,
+    pauseDuration: 10,
+    questions: [
+      { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
+      { text: "Назови имя персонажа", correctAnswer: "Томпа из Хантер х Хантер", image: "foto5/2.png" },
+      { text: "Назовите имя персонажа", correctAnswer: "Сейджуру Акаши", image: "foto5/3.png" },
+      { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
+      { text: "Угадай кличку персонажа", correctAnswer: "Деку", image: "foto5/5.png" }
+    ]
   }
 ];
 
@@ -418,6 +431,10 @@ export default function App() {
     const round = roundsData[gameState.currentRound];
     let potentialPoints = 2; // Default
     
+    if (round.type === "rebus") {
+      potentialPoints = 5;
+    }
+
     if (round.type === "image_sequence") {
       // 36s total: 36-29 (4), 28-21 (3), 20-13 (2), 12-0 (1)
       if (timeLeft > 28) potentialPoints = 4;
@@ -619,6 +636,16 @@ export default function App() {
                   key={gameState.currentQuestion}
                   src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].image || "")} 
                   className="rounded-2xl border-2 border-white/20 shadow-2xl max-h-[40vh] mx-auto" 
+                />
+              </div>
+            )}
+
+            {roundsData[gameState.currentRound]?.type === "rebus" && (
+              <div className="max-w-2xl mx-auto">
+                <img 
+                  key={gameState.currentQuestion}
+                  src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].image || "")} 
+                  className="rounded-2xl border-2 border-white/20 shadow-2xl max-h-[50vh] mx-auto" 
                 />
               </div>
             )}
@@ -990,6 +1017,57 @@ export default function App() {
                         )}
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {/* Round 5: Rebus */}
+                {round.type === "rebus" && (
+                  <div className="space-y-6">
+                    <div className="text-center mb-4">
+                      <h3 className="text-2xl font-bold text-white">{currentQuestion.text}</h3>
+                    </div>
+                    <div className="max-w-3xl mx-auto">
+                      <img 
+                        src={getAssetPath(currentQuestion.image || "")} 
+                        alt="Rebus" 
+                        className="w-full h-auto rounded-2xl shadow-2xl border-4 border-white/10"
+                        onError={(e) => { 
+                          console.warn(`Failed to load image: ${currentQuestion.image}`);
+                          (e.target as HTMLImageElement).src = `https://picsum.photos/seed/rebus${currentQIdx}/800/600`; 
+                        }}
+                      />
+                    </div>
+                    
+                    {!user.isAdmin && (
+                      <div className="max-w-md mx-auto space-y-4">
+                        <input 
+                          type="text"
+                          className="answer-input w-full"
+                          placeholder="Ваш ответ..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          disabled={hasAnswered}
+                        />
+                        <button 
+                          onClick={submitAnswer}
+                          disabled={hasAnswered}
+                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${hasAnswered ? 'bg-green-600 cursor-default' : 'bg-red-500 hover:bg-red-600 active:scale-95'}`}
+                        >
+                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : 'ОТПРАВИТЬ ОТВЕТ'}
+                        </button>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-green-500/20 p-6 rounded-2xl border border-green-500/50 text-center max-w-md mx-auto"
+                      >
+                        <p className="text-gray-400 text-sm uppercase mb-1">Правильный ответ:</p>
+                        <h3 className="text-3xl font-bold text-green-400">{currentQuestion.correctAnswer}</h3>
+                      </motion.div>
+                    )}
                   </div>
                 )}
               </div>
