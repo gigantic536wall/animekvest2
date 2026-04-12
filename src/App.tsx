@@ -191,8 +191,9 @@ export default function App() {
         setGlobalPauseState(gPause);
         setPlayers(allPlayers || {});
 
-        if (state?.reset && !user?.isAdmin) {
+        if (state?.reset && user && !user.isAdmin) {
           localStorage.removeItem('quizUser');
+          setUser(null);
           window.location.reload();
         }
       } catch (e) {
@@ -314,13 +315,14 @@ export default function App() {
   };
 
   const startRound = async (idx: number) => {
-    await restPut('gameState', {
+    await restPatch('gameState', {
       active: true,
       currentRound: idx,
       currentQuestion: 0,
       roundFinished: false,
       timeLeft: roundsData[idx].answerTime || 25,
-      showAnswer: false
+      showAnswer: false,
+      reset: false
     });
   };
 
@@ -580,9 +582,6 @@ export default function App() {
                         className="w-full h-full"
                         controls={user.isAdmin}
                         autoPlay
-                        onEnded={() => {
-                          if (user.isAdmin) startPauseBetweenQuestions();
-                        }}
                       />
                     </div>
 
@@ -756,7 +755,13 @@ export default function App() {
                 <button 
                   onClick={async () => {
                     if (confirm("Сбросить игру?")) {
-                      await restPut('gameState', { reset: true, active: false });
+                      // 1. Trigger reset for everyone
+                      await restPatch('gameState', { reset: true, active: false });
+                      // 2. Wait a bit so clients catch the poll
+                      await new Promise(r => setTimeout(r, 1500));
+                      // 3. Clear the reset flag so it doesn't loop
+                      await restPatch('gameState', { reset: false });
+                      // 4. Local cleanup
                       localStorage.removeItem('quizUser');
                       window.location.reload();
                     }
