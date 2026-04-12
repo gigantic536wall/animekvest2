@@ -54,6 +54,7 @@ interface Question {
   anime?: string;
   description?: string;
   image?: string;
+  emojis?: string;
 }
 
 interface Round {
@@ -185,6 +186,34 @@ const roundsData: Round[] = [
       { emojis: "🌟 💀 🧙♀️ 🛡️ 💧 🤪", correctAnswer: "Коносуба" },
       { emojis: "💑 🏫 📝 💕 😤 💢", correctAnswer: "Больше чем пара, меньше чем любовь" },
       { emojis: "💀 🧙♂️ 🔫 🃏 👁️ 🏙️", correctAnswer: "Смертельная игра мертвой горы" }
+    ]
+  },
+  {
+    type: "personal",
+    name: "Раунд 8: На знание Назара и его друзей",
+    answerTime: 30,
+    pauseDuration: 10,
+    questions: [
+      { text: "Сколько у меня всего было отношений в жизни?", correctAnswer: "Уточните у Назара" },
+      { text: "Из за чего я боюсь девушек?", correctAnswer: "Уточните у Назара" },
+      { text: "Как я познакомился с Лизой?", correctAnswer: "Уточните у Назара" },
+      { text: "Какого числа у меня день рождения?", correctAnswer: "Уточните у Назара" },
+      { text: "Сколько подписок/отслеживаемых человек на Твиче?", correctAnswer: "Уточните у Назара" },
+      { text: "Из-за какой игры мы начали общаться с Родионом?", correctAnswer: "Уточните у Назара" },
+      { text: "Какой проект мы делали вместе с Захаром (название)?", correctAnswer: "Уточните у Назара" },
+      { text: "Сколько у меня пп в осу и сколько у меня рейтинга в доте (два числа)?", correctAnswer: "Уточните у Назара" },
+      { text: "Игра, в которой я провел полжизни?", correctAnswer: "Уточните у Назара" },
+      { text: "Как зовут моего кота?", correctAnswer: "Уточните у Назара" },
+      { text: "Где я познакомился с Гризликом?", correctAnswer: "Уточните у Назара" },
+      { text: "Назовите 2 игры, которые я проходил хотя бы раз?", correctAnswer: "Уточните у Назара" },
+      { text: "Сколько раз я лежал в больнице за жизнь?", correctAnswer: "Уточните у Назара" },
+      { text: "Верите ли вы в то, что до 15 лет я занимался спортом не прекращая с 5 лет?", correctAnswer: "Уточните у Назара" },
+      { text: "Правда ли то, что я умею варить металлические швы?", correctAnswer: "Уточните у Назара" },
+      { text: "В каком классе я стал смотреть аниме?", correctAnswer: "Уточните у Назара" },
+      { text: "Назовите имя персонажа, которого я бы хотел закосплеить из аниме?", correctAnswer: "Уточните у Назара" },
+      { text: "Назовите имя персонажа женского пола, который мне нравится (не из Реинкарнации)?", correctAnswer: "Уточните у Назара" },
+      { text: "Как назывался Франкс, который пилотировал Хиро из аниме «Милый во Франксе»?", correctAnswer: "Уточните у Назара" },
+      { text: "Назовите 3 аниме, которые входят в мой топ-10?", correctAnswer: "Уточните у Назара" }
     ]
   }
 ];
@@ -467,6 +496,10 @@ export default function App() {
     const round = roundsData[gameState.currentRound];
     let potentialPoints = 2; // Default
     
+    if (round.type === "personal") {
+      potentialPoints = 1;
+    }
+
     if (round.type === "emoji_guess") {
       potentialPoints = 2;
     }
@@ -705,6 +738,14 @@ export default function App() {
             {roundsData[gameState.currentRound]?.type === "emoji_guess" && (
               <div className="text-6xl md:text-8xl tracking-widest py-8">
                 {roundsData[gameState.currentRound].questions[gameState.currentQuestion].emojis}
+              </div>
+            )}
+
+            {roundsData[gameState.currentRound]?.type === "personal" && (
+              <div className="max-w-3xl mx-auto bg-white/5 p-12 rounded-3xl border border-white/10 shadow-2xl">
+                <p className="text-3xl font-bold text-white leading-tight">
+                  {roundsData[gameState.currentRound].questions[gameState.currentQuestion].text}
+                </p>
               </div>
             )}
 
@@ -1220,6 +1261,54 @@ export default function App() {
                       >
                         <p className="text-gray-400 text-sm uppercase mb-1">Правильный ответ:</p>
                         <h3 className="text-3xl font-bold text-green-400">{currentQuestion.correctAnswer}</h3>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
+                {/* Round 8: Personal Questions */}
+                {round.type === "personal" && (
+                  <div className="space-y-8 max-w-4xl mx-auto text-center">
+                    <motion.div 
+                      key={gameState.currentQuestion}
+                      initial={{ opacity: 0, y: -20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white/5 p-12 rounded-3xl border border-white/10 shadow-2xl"
+                    >
+                      <p className="text-gray-400 text-sm mb-6 uppercase tracking-widest font-bold">Вопрос от Назара:</p>
+                      <h3 className="text-3xl md:text-4xl font-bold text-white leading-tight">
+                        {currentQuestion.text}
+                      </h3>
+                    </motion.div>
+                    
+                    {!user.isAdmin && (
+                      <div className="max-w-md mx-auto space-y-4">
+                        <input 
+                          type="text"
+                          className="answer-input w-full"
+                          placeholder="Ваш ответ..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          disabled={hasAnswered}
+                        />
+                        <button 
+                          onClick={submitAnswer}
+                          disabled={hasAnswered}
+                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${hasAnswered ? 'bg-green-600 cursor-default' : 'bg-red-500 hover:bg-red-600 active:scale-95'}`}
+                        >
+                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : 'ОТПРАВИТЬ ОТВЕТ'}
+                        </button>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-blue-500/20 p-6 rounded-2xl border border-blue-500/50 text-center max-w-md mx-auto"
+                      >
+                        <p className="text-gray-400 text-sm uppercase mb-1">Вердикт:</p>
+                        <h3 className="text-2xl font-bold text-blue-400">Слушайте Назара!</h3>
                       </motion.div>
                     )}
                   </div>
