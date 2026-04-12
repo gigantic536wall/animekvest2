@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, Play, Pause, SkipForward, Trash2, RotateCcw, CheckCircle2, XCircle } from 'lucide-react';
+import { Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, Play, Pause, SkipForward, Trash2, RotateCcw, CheckCircle2, XCircle, Users, Eye } from 'lucide-react';
 
 // ==================== КОНФИГ FIREBASE ====================
 const DB_URL = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
@@ -153,7 +153,19 @@ export default function App() {
   const [nickname, setNickname] = useState("");
   const [selectedTeam, setSelectedTeam] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
+  const [showRevealMode, setShowRevealMode] = useState(false);
+  const [revealIdx, setRevealIdx] = useState(0);
   const [answerText, setAnswerText] = useState("");
+
+  // ==================== REVEAL MODE LOGIC ====================
+  useEffect(() => {
+    if (!gameState?.revealMode || !gameState?.active) {
+      setShowRevealMode(false);
+      return;
+    }
+    setShowRevealMode(true);
+    setRevealIdx(gameState.currentQuestion || 0);
+  }, [gameState?.revealMode, gameState?.currentQuestion, gameState?.active]);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [preloaderStatus, setPreloaderStatus] = useState("");
 
@@ -295,6 +307,18 @@ export default function App() {
     }
   };
 
+  const startRevealMode = async () => {
+    const round = roundsData[gameState.currentRound];
+    await restPatch('gameState', { revealMode: true, currentQuestion: 0, active: true });
+    
+    for (let i = 0; i < round.questions.length; i++) {
+      await restPatch('gameState', { currentQuestion: i });
+      const duration = round.type === "video" ? 15000 : 10000;
+      await new Promise(r => setTimeout(r, duration));
+    }
+    await restPatch('gameState', { revealMode: false, active: false, roundFinished: true });
+  };
+
   const startRound = async (idx: number) => {
     const duration = roundsData[idx].answerTime || 25;
     await restPatch('gameState', {
@@ -432,6 +456,53 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Reveal Mode Overlay */}
+      {gameState?.revealMode && (
+        <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-8">
+          <div className="max-w-4xl w-full space-y-8 text-center">
+            <h2 className="text-3xl font-black text-purple-400 uppercase tracking-widest mb-8">Правильные ответы</h2>
+            
+            {roundsData[gameState.currentRound]?.type === "image_sequence" && (
+              <div className="grid grid-cols-2 gap-4">
+                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].images?.map((img, i) => (
+                  <img key={i} src={getAssetPath(img)} className="rounded-xl aspect-video object-cover border-2 border-white/20" />
+                ))}
+              </div>
+            )}
+
+            {roundsData[gameState.currentRound]?.type === "video" && (
+              <div className="aspect-video bg-black rounded-2xl overflow-hidden border-2 border-white/20">
+                <video 
+                  src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].video || "")} 
+                  autoPlay 
+                  className="w-full h-full"
+                />
+              </div>
+            )}
+
+            <motion.div 
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              className="bg-white/10 p-8 rounded-3xl border border-white/20"
+            >
+              <p className="text-gray-400 uppercase text-sm font-bold mb-2">Верный ответ:</p>
+              <p className="text-5xl font-black text-white drop-shadow-lg">
+                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].correctAnswer}
+              </p>
+            </motion.div>
+
+            <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+              <motion.div 
+                initial={{ width: "100%" }}
+                animate={{ width: "0%" }}
+                transition={{ duration: roundsData[gameState.currentRound]?.type === "video" ? 15 : 10, ease: "linear" }}
+                className="bg-purple-500 h-full"
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="min-h-[500px]">
@@ -801,7 +872,40 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Answers Table */}
+              {/* Leaderboard Table */}
+              <div className="mt-8 bg-black/40 rounded-xl p-4 border border-white/10">
+                <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase flex items-center gap-2">
+                  <Users className="w-4 h-4" /> Таблица лидеров:
+                </h4>
+                <div className="space-y-2">
+                  {Object.entries(players)
+                    .sort((a, b) => ((b[1] as any).score || 0) - ((a[1] as any).score || 0))
+                    .map(([id, p]: [string, any]) => (
+                      <div key={id} className="flex justify-between items-center p-2 hover:bg-white/5 rounded transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full bg-team-${p.team + 1}`} />
+                          <span className="font-medium">{p.nickname}</span>
+                          <span className="text-[10px] text-gray-500 uppercase">Команда {p.team + 1}</span>
+                        </div>
+                        <span className="font-mono font-bold text-blue-400">{p.score || 0}</span>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {/* Reveal Answers Control */}
+              <div className="mt-8">
+                <button 
+                  onClick={startRevealMode}
+                  disabled={!gameState?.roundFinished && gameState?.active}
+                  className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-900/20"
+                >
+                  <Eye className="w-5 h-5" /> ПОКАЗАТЬ ПРАВИЛЬНЫЕ ОТВЕТЫ РАУНДА
+                </button>
+                <p className="text-[10px] text-gray-500 mt-2 text-center italic">
+                  *Автоматический показ всех вопросов раунда с ответами (10-15 сек на каждый)
+                </p>
+              </div>
               <div className="mt-8">
                 <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">Очередь ответов (Раунд {gameState?.currentRound + 1}):</h4>
                 <div className="max-h-80 overflow-y-auto space-y-2">
@@ -812,34 +916,40 @@ export default function App() {
                       .map(([qKey, ans]: [string, any]) => ({ id, p, qKey, ans }));
                   })
                   .sort((a, b) => (a.ans.timestamp || 0) - (b.ans.timestamp || 0))
-                  .map(({ id, p, qKey, ans }) => (
-                    <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-lg flex justify-between items-center border-l-4 border-blue-500">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold">{p.nickname}</span>
-                          <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded">К{p.team + 1}</span>
-                          <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-mono">Вопрос {parseInt(qKey.replace('q','')) + 1}</span>
+                  .map(({ id, p, qKey, ans }) => {
+                    const qIdx = parseInt(qKey.replace('q',''));
+                    const correctAns = roundsData[gameState.currentRound]?.questions[qIdx]?.correctAnswer;
+                    
+                    return (
+                      <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-lg flex justify-between items-center border-l-4 border-blue-500">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold">{p.nickname}</span>
+                            <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded">К{p.team + 1}</span>
+                            <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-mono">Вопрос {qIdx + 1}</span>
+                          </div>
+                          <p className="text-sm text-blue-300 mt-1">Ответ игрока: <span className="font-bold">{ans.answer}</span></p>
+                          <p className="text-[10px] text-green-400 mt-1 uppercase tracking-wider">Правильный: {correctAns}</p>
                         </div>
-                        <p className="text-sm text-blue-300 mt-1">{ans.answer}</p>
+                        <div className="flex gap-2 ml-4">
+                          <button 
+                            onClick={() => markAnswer(id, qKey, ans.potentialPoints || 2)} 
+                            className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
+                          >
+                            <CheckCircle2 className="text-green-500 w-5 h-5" />
+                            <span className="text-[10px] font-bold">+{ans.potentialPoints || 2}</span>
+                          </button>
+                          <button 
+                            onClick={() => markAnswer(id, qKey, -1)} 
+                            className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
+                          >
+                            <XCircle className="text-red-500 w-5 h-5" />
+                            <span className="text-[10px] font-bold">-1</span>
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex gap-2 ml-4">
-                        <button 
-                          onClick={() => markAnswer(id, qKey, ans.potentialPoints || 2)} 
-                          className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
-                        >
-                          <CheckCircle2 className="text-green-500 w-5 h-5" />
-                          <span className="text-[10px] font-bold">+{ans.potentialPoints || 2}</span>
-                        </button>
-                        <button 
-                          onClick={() => markAnswer(id, qKey, -1)} 
-                          className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
-                        >
-                          <XCircle className="text-red-500 w-5 h-5" />
-                          <span className="text-[10px] font-bold">-1</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {Object.values(players).every((p: any) => !p.roundAnswers?.[gameState?.currentRound] || Object.values(p.roundAnswers[gameState.currentRound]).every((a: any) => a.checked)) && (
                     <p className="text-center text-gray-500 py-4 italic">Нет новых ответов</p>
                   )}
