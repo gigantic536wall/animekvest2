@@ -168,6 +168,24 @@ const roundsData: Round[] = [
       { description: "Жёлтый пришелец-осьминог уничтожил половину Луны и обещает сделать то же с Землёй ровно через год. Но вместо вторжения он становится учителем в школе для отстающих. Его ученики — группа проблемных подростков — получают задание: убить учителя до конца учебного года. За каждую успешную атаку — миллиард иен. Проблема: осьминог быстрее звука, любит шутки и зачем-то учит их математике.", correctAnswer: "Класс убийц" },
       { description: "В классе 3-3 есть проклятие: каждый год кто-то из учеников и их родственников умирает ужасной смертью. Новенький парень замечает странную девочку с повязкой на глазу — все остальные делают вид, что её не существует. Оказывается, она «та, кого нет» — живой труп, призванный остановить серию смертей. Но чем больше они расследуют, тем яснее: проклятый класс — это не просто случайность, а игра с правилами, которые лучше не нарушать.", correctAnswer: "Иная" }
     ]
+  },
+  {
+    type: "emoji_guess",
+    name: "Раунд 7: Угадай аниме по эмодзи",
+    answerTime: 25,
+    pauseDuration: 10,
+    questions: [
+      { emojis: "👩🎓 🔪 🃏 🎭 💀 🤥", correctAnswer: "Бездарная нана" },
+      { emojis: "🦲 👊 💥 😑 🐉 🏋️", correctAnswer: "Ван Панчмен" },
+      { emojis: "🤖 ⚔️ 🌿 👁️ 💔 🩸", correctAnswer: "Ниер Автомата" },
+      { emojis: "🧙♀️ 🐺 🔮 🌕 🩸 ⛓️", correctAnswer: "Ведьма и чудовище" },
+      { emojis: "🌙 💑 🎎 ✨ ❓ 🚀", correctAnswer: "Унеси меня на луну" },
+      { emojis: "🏐 🔥 🤾 💪 🎉 🍖", correctAnswer: "Волебол (Haikyuu!!)" },
+      { emojis: "☕ 🔫 👧 🌸 💥 🏙️", correctAnswer: "Ликорис Рикойл" },
+      { emojis: "🌟 💀 🧙♀️ 🛡️ 💧 🤪", correctAnswer: "Коносуба" },
+      { emojis: "💑 🏫 📝 💕 😤 💢", correctAnswer: "Больше чем пара, меньше чем любовь" },
+      { emojis: "💀 🧙♂️ 🔫 🃏 👁️ 🏙️", correctAnswer: "Смертельная игра мертвой горы" }
+    ]
   }
 ];
 
@@ -449,6 +467,10 @@ export default function App() {
     const round = roundsData[gameState.currentRound];
     let potentialPoints = 2; // Default
     
+    if (round.type === "emoji_guess") {
+      potentialPoints = 2;
+    }
+
     if (round.type === "description_guess") {
       potentialPoints = 1;
     }
@@ -677,6 +699,12 @@ export default function App() {
                 <p className="text-xl italic text-gray-300 leading-relaxed">
                   "{roundsData[gameState.currentRound].questions[gameState.currentQuestion].description}"
                 </p>
+              </div>
+            )}
+
+            {roundsData[gameState.currentRound]?.type === "emoji_guess" && (
+              <div className="text-6xl md:text-8xl tracking-widest py-8">
+                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].emojis}
               </div>
             )}
 
@@ -1114,6 +1142,54 @@ export default function App() {
                       <p className="text-2xl leading-relaxed italic text-white font-medium">
                         "{currentQuestion.description}"
                       </p>
+                    </motion.div>
+                    
+                    {!user.isAdmin && (
+                      <div className="max-w-md mx-auto space-y-4">
+                        <input 
+                          type="text"
+                          className="answer-input w-full"
+                          placeholder="Название аниме..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          disabled={hasAnswered}
+                        />
+                        <button 
+                          onClick={submitAnswer}
+                          disabled={hasAnswered}
+                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${hasAnswered ? 'bg-green-600 cursor-default' : 'bg-red-500 hover:bg-red-600 active:scale-95'}`}
+                        >
+                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : 'ОТПРАВИТЬ ОТВЕТ'}
+                        </button>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-green-500/20 p-6 rounded-2xl border border-green-500/50 text-center max-w-md mx-auto"
+                      >
+                        <p className="text-gray-400 text-sm uppercase mb-1">Правильный ответ:</p>
+                        <h3 className="text-3xl font-bold text-green-400">{currentQuestion.correctAnswer}</h3>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
+                {/* Round 7: Emoji Guess */}
+                {round.type === "emoji_guess" && (
+                  <div className="space-y-8 max-w-4xl mx-auto text-center">
+                    <motion.div 
+                      key={gameState.currentQuestion}
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="bg-white/5 p-12 rounded-3xl border border-white/10 shadow-2xl"
+                    >
+                      <p className="text-gray-400 text-sm mb-6 uppercase tracking-widest font-bold">Угадай аниме по эмодзи:</p>
+                      <div className="text-6xl md:text-8xl tracking-[0.2em] leading-relaxed drop-shadow-lg">
+                        {currentQuestion.emojis}
+                      </div>
                     </motion.div>
                     
                     {!user.isAdmin && (
