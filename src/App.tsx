@@ -116,26 +116,26 @@ const roundsData: Round[] = [
     answerTime: 25,
     pauseDuration: 10,
     questions: [
-      { character: "Тинацу Кан", anime: "Голубая шкатулка", description: "Талантливая баскетболистка, старшеклассница, в которую влюблен главный герой.", image: "public/foto4/шкатул.png" },
-      { character: "Кейна Кагами", anime: "Мир Лидейл", description: "Девушка, очнувшаяся в мире своей любимой VRMMO через 200 лет после того, как перестала играть.", image: "public/foto4/Магическаябашнявлесу.png" },
-      { character: "Pochita", anime: "Человек-бензопила", description: "Маленький оранжевый демон-собака с бензопилой на голове.", image: "public/foto4/Кроваваяпилавтемномпереулке.png" },
-      { character: "Принцесса рёвозавров (Код 001)", anime: "DARLING in the FRANXX", description: "Последняя из своего рода, управляет рёвозаврами и имеет синюю кожу.", image: "public/foto4/милыйвофранксе.jpg" },
-      { character: "Нао Томори", anime: "Шарлотта", description: "Президент школьного совета, способна становиться невидимой для одного человека.", image: "public/foto4/sharlotta.jpg" },
-      { character: "Виллибальд", anime: "Сага о Винланде", description: "Молодой священник, который ищет истинное значение любви в мире викингов.", image: "public/foto4/saga.jpg" },
-      { character: "Лорд Демонов Диабло", anime: "О моем перерождении в слизь", description: "Один из Первородных демонов, фанатично преданный Римуру Темпесту.", image: "public/foto4/pereroshdenie.jpg" },
-      { character: "Сатоко Ходжо", anime: "Когда плачут цикады", description: "Девочка, любящая ставить ловушки, чья судьба трагически переплетена с циклом смертей в деревне.", image: "public/foto4/kogdaplachut.jpg" },
-      { character: "Рика Кава", anime: "Приоритет чудо-яйца", description: "Бывшая модель, которая присоединяется к группе девочек, сражающихся в мире снов.", image: "public/foto4/prioritet.jpg" },
-      { character: "Анри Сонохара", anime: "Дюрарара", description: "Тихая девушка в очках, которая является носителем проклятого меча Сайка.", image: "public/foto4/дюрара.jpg" },
-      { character: "Naoyuki Andō", anime: "Инуяшики", description: "Лучший друг главного героя, который помогает ему освоиться с новым механическим телом.", image: "public/foto4/iunashiki.jpg" },
-      { character: "Нидзика Идзити", anime: "Одинокий рокер", description: "Энергичная барабанщица группы Kessoku Band, которая пригласила Хитори в группу.", image: "public/foto4/roker.jpg" },
-      { character: "Кохаку Итимура", anime: "Прекрасная вечерняя луна", description: "Девушка, которую часто принимают за парня из-за её внешности и манер.", image: "public/foto4/luna.jpg" },
-      { character: "Канамэ Судо", anime: "Игра Дарвина", description: "Игрок, втянутый в смертельную игру через мобильное приложение.", image: "public/foto4/darvina.jpg" },
-      { character: "Асакадзэ", anime: "Sonny Boy", description: "Парень, обладающий способностью управлять гравитацией в странном пустом мире.", image: "public/foto4/sonnyboy.jpg" },
-      { character: "Сион Караномори", anime: "Психопаспорт", description: "Аналитик Бюро Общественной Безопасности, 'латентный преступник'.", image: "public/foto4/pasport.jpg" },
-      { character: "Амамия", anime: "Рон Камонохаси: Невменяемый детектив", description: "Полицейский, который становится напарником гениального, но странного детектива.", image: "public/foto4/ronkamonohashi.jpg" },
-      { character: "Сюити Кагая", anime: "Глейпнир", description: "Парень, способный превращаться в огромный костюм собаки с молнией на спине.", image: "public/foto4/glepnir.jpg" },
-      { character: "Рин Окумура", anime: "Синий экзорцист", description: "Сын Сатаны, который решил стать экзорцистом, чтобы победить своего отца.", image: "public/foto4/sinieecz.jpg" },
-      { character: "Крул Цепеш", anime: "Последний серафим", description: "Королева вампиров Японии, третья среди Основателей.", image: "public/foto4/krull.jpg" }
+      { character: "Тинацу Кан", anime: "Голубая шкатулка", description: "Талантливая баскетболистка, старшеклассница, в которую влюблен главный герой.", image: "foto4/шкатул.png" },
+      { character: "Кейна Кагами", anime: "Мир Лидейл", description: "Девушка, очнувшаяся в мире своей любимой VRMMO через 200 лет после того, как перестала играть.", image: "foto4/Магическаябашнявлесу.png" },
+      { character: "Pochita", anime: "Человек-бензопила", description: "Маленький оранжевый демон-собака с бензопилой на голове.", image: "foto4/Кроваваяпилавтемномпереулке.png" },
+      { character: "Принцесса рёвозавров (Код 001)", anime: "DARLING in the FRANXX", description: "Последняя из своего рода, управляет рёвозаврами и имеет синюю кожу.", image: "foto4/милыйвофранксе.jpg" },
+      { character: "Нао Томори", anime: "Шарлотта", description: "Президент школьного совета, способна становиться невидимой для одного человека.", image: "foto4/sharlotta.jpg" },
+      { character: "Виллибальд", anime: "Сага о Винланде", description: "Молодой священник, который ищет истинное значение любви в мире викингов.", image: "foto4/saga.jpg" },
+      { character: "Лорд Демонов Диабло", anime: "О моем перерождении в слизь", description: "Один из Первородных демонов, фанатично преданный Римуру Темпесту.", image: "foto4/pereroshdenie.jpg" },
+      { character: "Сатоко Ходжо", anime: "Когда плачут цикады", description: "Девочка, любящая ставить ловушки, чья судьба трагически переплетена с циклом смертей в деревне.", image: "foto4/kogdaplachut.jpg" },
+      { character: "Рика Кава", anime: "Приоритет чудо-яйца", description: "Бывшая модель, которая присоединяется к группе девочек, сражающихся в мире снов.", image: "foto4/prioritet.jpg" },
+      { character: "Анри Сонохара", anime: "Дюрарара", description: "Тихая девушка в очках, которая является носителем проклятого меча Сайка.", image: "foto4/дюрара.jpg" },
+      { character: "Naoyuki Andō", anime: "Инуяшики", description: "Лучший друг главного героя, который помогает ему освоиться с новым механическим телом.", image: "foto4/iunashiki.jpg" },
+      { character: "Нидзика Идзити", anime: "Одинокий рокер", description: "Энергичная барабанщица группы Kessoku Band, которая пригласила Хитори в группу.", image: "foto4/roker.jpg" },
+      { character: "Кохаку Итимура", anime: "Прекрасная вечерняя луна", description: "Девушка, которую часто принимают за парня из-за её внешности и манер.", image: "foto4/luna.jpg" },
+      { character: "Канамэ Судо", anime: "Игра Дарвина", description: "Игрок, втянутый в смертельную игру через мобильное приложение.", image: "foto4/darvina.jpg" },
+      { character: "Асакадзэ", anime: "Sonny Boy", description: "Парень, обладающий способностью управлять гравитацией в странном пустом мире.", image: "foto4/sonnyboy.jpg" },
+      { character: "Сион Караномори", anime: "Психопаспорт", description: "Аналитик Бюро Общественной Безопасности, 'латентный преступник'.", image: "foto4/pasport.jpg" },
+      { character: "Амамия", anime: "Рон Камонохаси: Невменяемый детектив", description: "Полицейский, который становится напарником гениального, но странного детектива.", image: "foto4/ronkamonohashi.jpg" },
+      { character: "Сюити Кагая", anime: "Глейпнир", description: "Парень, способный превращаться в огромный костюм собаки с молнией на спине.", image: "foto4/glepnir.jpg" },
+      { character: "Рин Окумура", anime: "Синий экзорцист", description: "Сын Сатаны, который решил стать экзорцистом, чтобы победить своего отца.", image: "foto4/sinieecz.jpg" },
+      { character: "Крул Цепеш", anime: "Последний серафим", description: "Королева вампиров Японии, третья среди Основателей.", image: "foto4/krull.jpg" }
     ]
   }
 ];
@@ -603,6 +603,16 @@ export default function App() {
               </div>
             )}
 
+            {roundsData[gameState.currentRound]?.type === "character_guess" && (
+              <div className="max-w-md mx-auto">
+                <img 
+                  key={gameState.currentQuestion}
+                  src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].image || "")} 
+                  className="rounded-2xl border-2 border-white/20 shadow-2xl max-h-[40vh] mx-auto" 
+                />
+              </div>
+            )}
+
             <motion.div 
               key={`ans-${gameState.currentQuestion}`}
               initial={{ y: 20, opacity: 0 }}
@@ -611,7 +621,10 @@ export default function App() {
             >
               <p className="text-gray-400 uppercase text-sm font-bold mb-2">Верный ответ:</p>
               <p className="text-5xl font-black text-white drop-shadow-lg">
-                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].correctAnswer}
+                {roundsData[gameState.currentRound]?.type === "character_guess" 
+                  ? `${roundsData[gameState.currentRound].questions[gameState.currentQuestion].character} (${roundsData[gameState.currentRound].questions[gameState.currentQuestion].anime})`
+                  : roundsData[gameState.currentRound].questions[gameState.currentQuestion].correctAnswer
+                }
               </p>
             </motion.div>
 
@@ -663,7 +676,11 @@ export default function App() {
                           <div key={id} className="flex justify-between items-center bg-white/5 p-2 rounded-lg border border-white/5">
                             <span className="text-sm font-medium text-white">{p.nickname} (К#{p.team})</span>
                             <div className="flex items-center gap-3">
-                              <span className={`text-xs px-2 py-1 rounded ${ans.text.toLowerCase() === roundsData[gameState.currentRound].questions[gameState.currentQuestion].correctAnswer.toLowerCase() ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                              <span className={`text-xs px-2 py-1 rounded ${
+                                (roundsData[gameState.currentRound]?.type === "character_guess" 
+                                  ? (ans.text.toLowerCase() === (roundsData[gameState.currentRound].questions[gameState.currentQuestion].character || "").toLowerCase())
+                                  : (ans.text.toLowerCase() === (roundsData[gameState.currentRound].questions[gameState.currentQuestion].correctAnswer || "").toLowerCase())
+                                ) ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
                                 {ans.text}
                               </span>
                               <div className="flex gap-1">
