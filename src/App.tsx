@@ -364,12 +364,12 @@ export default function App() {
     await restPatch('gameState', { showAnswer: !gameState.showAnswer });
   };
 
-  const markAnswer = async (playerId: string, qIdx: string, points: number) => {
+  const markAnswer = async (playerId: string, qKey: string, points: number) => {
     const p = players[playerId];
     if (p) {
       await restPatch(`players/${playerId}`, { score: (p.score || 0) + points });
-      await restPut(`players/${playerId}/checkedAnswers/${gameState.currentRound}/${qIdx}`, { checked: true });
-      await restDelete(`players/${playerId}/roundAnswers/${gameState.currentRound}/${qIdx}`);
+      // Mark as checked instead of deleting to keep history
+      await restPatch(`players/${playerId}/roundAnswers/${gameState.currentRound}/${qKey}`, { checked: true });
     }
   };
 
@@ -777,15 +777,20 @@ export default function App() {
                 <button 
                   onClick={async () => {
                     if (confirm("Сбросить игру?")) {
-                      // 1. Trigger reset for everyone
-                      await restPatch('gameState', { reset: true, active: false });
-                      // 2. Clear players from database
-                      await restDelete('players');
-                      // 3. Wait a bit so clients catch the poll
+                      // 1. Wipe everything from database
+                      // Using restPut on 'gameState' clears all its sub-nodes (pause, globalPause, etc.)
+                      await Promise.all([
+                        restPut('gameState', { reset: true, active: false }),
+                        restDelete('players')
+                      ]);
+                      
+                      // 2. Wait to ensure all clients' pollers catch the 'reset: true' signal
                       await new Promise(r => setTimeout(r, 1500));
-                      // 4. Clear the reset flag so it doesn't loop
+                      
+                      // 3. Clear the reset flag so the next session can start fresh
                       await restPatch('gameState', { reset: false });
-                      // 5. Local cleanup
+                      
+                      // 4. Local cleanup and reload
                       localStorage.removeItem('quizUser');
                       window.location.reload();
                     }
@@ -798,37 +803,46 @@ export default function App() {
 
               {/* Answers Table */}
               <div className="mt-8">
-                <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">Ответы игроков (Раунд {gameState?.currentRound + 1}):</h4>
-                <div className="max-h-60 overflow-y-auto space-y-2">
-                  {Object.entries(players).map(([id, p]: [string, any]) => {
-                    const ans = p.roundAnswers?.[gameState?.currentRound]?.[`q${gameState?.currentQuestion}`];
-                    if (!ans) return null;
-                    return (
-                      <div key={id} className="bg-white/5 p-3 rounded-lg flex justify-between items-center">
-                        <div>
+                <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">Очередь ответов (Раунд {gameState?.currentRound + 1}):</h4>
+                <div className="max-h-80 overflow-y-auto space-y-2">
+                  {Object.entries(players).flatMap(([id, p]: [string, any]) => {
+                    const roundAnswers = p.roundAnswers?.[gameState?.currentRound] || {};
+                    return Object.entries(roundAnswers)
+                      .filter(([_, ans]: [any, any]) => !ans.checked)
+                      .map(([qKey, ans]: [string, any]) => ({ id, p, qKey, ans }));
+                  })
+                  .sort((a, b) => (a.ans.timestamp || 0) - (b.ans.timestamp || 0))
+                  .map(({ id, p, qKey, ans }) => (
+                    <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-lg flex justify-between items-center border-l-4 border-blue-500">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
                           <span className="font-bold">{p.nickname}</span>
-                          <span className="text-xs text-gray-500 ml-2">К{p.team + 1}</span>
-                          <p className="text-sm text-blue-300">{ans.answer}</p>
+                          <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded">К{p.team + 1}</span>
+                          <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-mono">Вопрос {parseInt(qKey.replace('q','')) + 1}</span>
                         </div>
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => markAnswer(id, `q${gameState.currentQuestion}`, ans.potentialPoints || 2)} 
-                            className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center"
-                          >
-                            <CheckCircle2 className="text-green-500" />
-                            <span className="text-[10px] font-bold">+{ans.potentialPoints || 2}</span>
-                          </button>
-                          <button 
-                            onClick={() => markAnswer(id, `q${gameState.currentQuestion}`, -1)} 
-                            className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center"
-                          >
-                            <XCircle className="text-red-500" />
-                            <span className="text-[10px] font-bold">-1</span>
-                          </button>
-                        </div>
+                        <p className="text-sm text-blue-300 mt-1">{ans.answer}</p>
                       </div>
-                    );
-                  })}
+                      <div className="flex gap-2 ml-4">
+                        <button 
+                          onClick={() => markAnswer(id, qKey, ans.potentialPoints || 2)} 
+                          className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
+                        >
+                          <CheckCircle2 className="text-green-500 w-5 h-5" />
+                          <span className="text-[10px] font-bold">+{ans.potentialPoints || 2}</span>
+                        </button>
+                        <button 
+                          onClick={() => markAnswer(id, qKey, -1)} 
+                          className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
+                        >
+                          <XCircle className="text-red-500 w-5 h-5" />
+                          <span className="text-[10px] font-bold">-1</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {Object.values(players).every((p: any) => !p.roundAnswers?.[gameState?.currentRound] || Object.values(p.roundAnswers[gameState.currentRound]).every((a: any) => a.checked)) && (
+                    <p className="text-center text-gray-500 py-4 italic">Нет новых ответов</p>
+                  )}
                 </div>
               </div>
             </div>
