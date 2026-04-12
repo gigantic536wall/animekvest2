@@ -150,6 +150,24 @@ const roundsData: Round[] = [
       { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
       { text: "Угадай кличку персонажа", correctAnswer: "Деку", image: "foto5/5.png" }
     ]
+  },
+  {
+    type: "description_guess",
+    name: "Раунд 6: Угадай аниме по описанию",
+    answerTime: 20,
+    pauseDuration: 10,
+    questions: [
+      { description: "Обычный офисник случайно активирует древний ритуал и попадает в фэнтези-мир. Его единственное «божественное» умение — открывать окно онлайн-магазина из родного супермаркета. Вместо меча он жонглирует сковородкой, а вместо драконов — приручает легендарного волка, которого кормит готовыми блюдами. Всё, что нужно для спасения мира, — правильный соус и немного тушёного мяса.", correctAnswer: "Кулинарные скитания в ином мире" },
+      { description: "Божество без святилища, без прихожан и даже без крыши над головой. Носит спортивный костюм, работает за пятирублёвую монету и готов выполнить любой каприз смертного — от поиска пропавшего кота до убийства демона. Его оружие — связанные шарфы, а лучший друг — мальчик, который видит духов. Проблема: забывчивый бог вечно в долгах и его собственная жизнь висит на волоске.", correctAnswer: "Бездомный бог" },
+      { description: "Повелитель магии и смерти перерождается… в капризного малыша королевской крови. Теперь он седьмой сын седьмого сына, без трона и власти. Но его душа помнит всё: запретные заклинания, катастрофы и вкус страха врагов. Пока окружающие видят лишь милого ребёнка, он втайне тренирует мышцы, создаёт взрывоопасные игрушки и с улыбкой уничтожает демонов. Единственная слабость — слишком много внимания от взрослых.", correctAnswer: "Перевоплотился в 7-го принца" },
+      { description: "В мире, где каждый крестьянин умеет колдовать, два сироты-соперника мечтают стать главным магистром. Один — гений с небесной силой и королевской кровью, второй — парень без капли магии, зато с огромными мышцами и взрывным характером. Их оруженосцы: четырёхлистный гримуар и… чёрный пятилистный, в котором живёт демон. Вместе они орут, бесятся и спасают королевство, игнорируя все правила.", correctAnswer: "Чёрный клевер" },
+      { description: "Будущее, где тела заменяют хромом, а души продают корпорации. Уличный парень с редким генетическим дефектом — он почти не может ставить импланты. Мечтает добраться до вершины города — на орбиту. Встречает девушку-анархистку с мощной пушкой в руке и команду отбросов. Цена мечты — его рассудок, его друзья и последняя пуля в затылок.", correctAnswer: "Киберпанк" },
+      { description: "Могущественный владыка демонов погибает в битве с героями, но через 500 лет его воскрешают… в мире киберпанка 2099 года. Магия почти забыта, небоскрёбы выше гор, а люди молятся на стримеров. Чтобы вернуть трон, король демонов вынужден вести летсплеи в интернете, сотрудничать с хитрой девицей-хакером и разбираться в виртуальной реальности. Его верный меч? Лазерная гитара.", correctAnswer: "Король демонов 2099" },
+      { description: "Каждые несколько десятилетий семь магов призывают семерых легендарных героев из прошлого и устраивают битву на смерть. Главный приз — Святой Грааль, исполняющий любое желание. Студент, случайно ставший мастером, получает в слуги воина в красном плаще, который презирает своего хозяина. Среди участников: король рыцарей, загадочная дева в латах и злодей, желающий стереть само человечество.", correctAnswer: "Судьба — ночь схватки" },
+      { description: "Наёмник с огромным мечом, чьё тело покрыто шрамами, а глаз вырван. Он живёт местью, преследуя бывшего друга, который принёс в жертву всю их банду. В его левую руку встроено маленькое взрывное устройство — чтобы не дать себе сойти с ума окончательно. Мир похож на средневековый ад: религиозные палачи, демоны из глубин и одно железное правило — если ты не в доспехах, ты сожран.", correctAnswer: "Ненасытный берсерк" },
+      { description: "Жёлтый пришелец-осьминог уничтожил половину Луны и обещает сделать то же с Землёй ровно через год. Но вместо вторжения он становится учителем в школе для отстающих. Его ученики — группа проблемных подростков — получают задание: убить учителя до конца учебного года. За каждую успешную атаку — миллиард иен. Проблема: осьминог быстрее звука, любит шутки и зачем-то учит их математике.", correctAnswer: "Класс убийц" },
+      { description: "В классе 3-3 есть проклятие: каждый год кто-то из учеников и их родственников умирает ужасной смертью. Новенький парень замечает странную девочку с повязкой на глазу — все остальные делают вид, что её не существует. Оказывается, она «та, кого нет» — живой труп, призванный остановить серию смертей. Но чем больше они расследуют, тем яснее: проклятый класс — это не просто случайность, а игра с правилами, которые лучше не нарушать.", correctAnswer: "Иная" }
+    ]
   }
 ];
 
@@ -431,6 +449,10 @@ export default function App() {
     const round = roundsData[gameState.currentRound];
     let potentialPoints = 2; // Default
     
+    if (round.type === "description_guess") {
+      potentialPoints = 1;
+    }
+
     if (round.type === "rebus") {
       potentialPoints = 5;
     }
@@ -647,6 +669,14 @@ export default function App() {
                   src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].image || "")} 
                   className="rounded-2xl border-2 border-white/20 shadow-2xl max-h-[50vh] mx-auto" 
                 />
+              </div>
+            )}
+
+            {roundsData[gameState.currentRound]?.type === "description_guess" && (
+              <div className="max-w-3xl mx-auto bg-white/5 p-8 rounded-3xl border border-white/10">
+                <p className="text-xl italic text-gray-300 leading-relaxed">
+                  "{roundsData[gameState.currentRound].questions[gameState.currentQuestion].description}"
+                </p>
               </div>
             )}
 
@@ -1044,6 +1074,54 @@ export default function App() {
                           type="text"
                           className="answer-input w-full"
                           placeholder="Ваш ответ..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          disabled={hasAnswered}
+                        />
+                        <button 
+                          onClick={submitAnswer}
+                          disabled={hasAnswered}
+                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${hasAnswered ? 'bg-green-600 cursor-default' : 'bg-red-500 hover:bg-red-600 active:scale-95'}`}
+                        >
+                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : 'ОТПРАВИТЬ ОТВЕТ'}
+                        </button>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-green-500/20 p-6 rounded-2xl border border-green-500/50 text-center max-w-md mx-auto"
+                      >
+                        <p className="text-gray-400 text-sm uppercase mb-1">Правильный ответ:</p>
+                        <h3 className="text-3xl font-bold text-green-400">{currentQuestion.correctAnswer}</h3>
+                      </motion.div>
+                    )}
+                  </div>
+                )}
+
+                {/* Round 6: Description Guess */}
+                {round.type === "description_guess" && (
+                  <div className="space-y-8 max-w-4xl mx-auto">
+                    <motion.div 
+                      key={gameState.currentQuestion}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-2xl"
+                    >
+                      <p className="text-gray-400 text-sm mb-4 uppercase tracking-widest font-bold">Описание аниме:</p>
+                      <p className="text-2xl leading-relaxed italic text-white font-medium">
+                        "{currentQuestion.description}"
+                      </p>
+                    </motion.div>
+                    
+                    {!user.isAdmin && (
+                      <div className="max-w-md mx-auto space-y-4">
+                        <input 
+                          type="text"
+                          className="answer-input w-full"
+                          placeholder="Название аниме..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value)}
                           disabled={hasAnswered}
