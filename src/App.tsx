@@ -156,6 +156,7 @@ export default function App() {
   const [showRevealMode, setShowRevealMode] = useState(false);
   const [revealIdx, setRevealIdx] = useState(0);
   const [answerText, setAnswerText] = useState("");
+  const isDrivingReveal = useRef(false);
 
   // ==================== REVEAL MODE LOGIC ====================
   useEffect(() => {
@@ -198,7 +199,17 @@ export default function App() {
           restGet('players')
         ]);
 
-        setGameState(state);
+        if (user?.isAdmin && isDrivingReveal.current) {
+          // Don't overwrite currentQuestion/currentRound while we are in the middle of a reveal loop
+          setGameState((prev: any) => ({
+            ...state,
+            currentQuestion: prev?.currentQuestion,
+            currentRound: prev?.currentRound,
+            revealMode: true
+          }));
+        } else {
+          setGameState(state);
+        }
         setPauseState(pause);
         setReviewState(review);
         setGlobalPauseState(gPause);
@@ -239,7 +250,7 @@ export default function App() {
       setTimeLeft(diff);
 
       // Admin handles the transition when time runs out
-      if (user.isAdmin && diff <= 0) {
+      if (user.isAdmin && diff <= 0 && !gameState.revealMode) {
         startPauseBetweenQuestions();
       }
     };
@@ -307,16 +318,49 @@ export default function App() {
     }
   };
 
+  const resetGame = async () => {
+    if (!confirm("Вы уверены, что хотите полностью сбросить игру? Все баллы будут удалены!")) return;
+    
+    // Reset scores for all players
+    const resetPlayers = { ...players };
+    Object.keys(resetPlayers).forEach(id => {
+      resetPlayers[id].score = 0;
+    });
+    await restPut('players', resetPlayers);
+    
+    // Reset game state
+    await restPut('gameState', {
+      active: false,
+      currentRound: 0,
+      currentQuestion: 0,
+      roundFinished: false,
+      revealMode: false,
+      showLeaderboard: false
+    });
+    
+    // Clear queue
+    await restDelete('review');
+    await restDelete('pause');
+  };
+
+  const toggleLeaderboard = async () => {
+    await restPatch('gameState', { showLeaderboard: !gameState?.showLeaderboard });
+  };
+
   const startRevealMode = async (idx: number) => {
     const round = roundsData[idx];
-    await restPatch('gameState', { revealMode: true, currentQuestion: 0, active: true, currentRound: idx });
+    isDrivingReveal.current = true;
+    await restPatch('gameState', { revealMode: true, currentQuestion: 0, active: true, currentRound: idx, showLeaderboard: false, endTime: null });
     
     for (let i = 0; i < round.questions.length; i++) {
+      // Update local state immediately to prevent flicker
+      setGameState((prev: any) => ({ ...prev, currentQuestion: i }));
       await restPatch('gameState', { currentQuestion: i });
       const duration = round.type === "video" ? 15000 : 10000;
       await new Promise(r => setTimeout(r, duration));
     }
     await restPatch('gameState', { revealMode: false, active: false, roundFinished: true });
+    isDrivingReveal.current = false;
   };
 
   const startRound = async (idx: number) => {
@@ -457,9 +501,86 @@ export default function App() {
         </div>
       </div>
 
+      {/* Leaderboard Overlay */}
+      {gameState?.showLeaderboard && (
+        <div className="fixed inset-0 z-[110] bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 overflow-hidden">
+          <div className="absolute inset-0 opacity-20">
+            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,#3b0764_0%,transparent_70%)]" />
+          </div>
+          
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="relative z-10 max-w-4xl w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-8 md:p-12 shadow-2xl"
+          >
+            <div className="text-center mb-12">
+              <motion.div
+                initial={{ y: -20 }}
+                animate={{ y: 0 }}
+                className="inline-block bg-purple-500/20 px-6 py-2 rounded-full border border-purple-500/30 mb-4"
+              >
+                <span className="text-purple-400 font-black uppercase tracking-widest text-sm">Финальные результаты</span>
+              </motion.div>
+              <h2 className="text-5xl md:text-7xl font-black text-white uppercase tracking-tighter italic">Таблица Лидеров</h2>
+            </div>
+
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-4 custom-scrollbar">
+              {Object.entries(players)
+                .sort((a, b) => ((a[1] as any).score || 0) - ((b[1] as any).score || 0)) // Lowest to Highest
+                .map(([id, p]: [string, any], idx, arr) => {
+                  const isWinner = idx === arr.length - 1;
+                  return (
+                    <motion.div 
+                      key={id}
+                      initial={{ x: -50, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: idx * 0.1 }}
+                      className={`flex items-center justify-between p-6 rounded-2xl border transition-all ${
+                        isWinner 
+                        ? 'bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-500/50 shadow-lg shadow-yellow-500/10' 
+                        : 'bg-white/5 border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      <div className="flex items-center gap-6">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-xl ${
+                          isWinner ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white/50'
+                        }`}>
+                          {arr.length - idx}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-2xl font-bold text-white">{p.nickname}</h3>
+                            {isWinner && <Crown className="w-6 h-6 text-yellow-500 fill-yellow-500" />}
+                          </div>
+                          <p className="text-sm text-gray-400 font-medium uppercase tracking-wider">Команда #{p.team}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-4xl font-black ${isWinner ? 'text-yellow-500' : 'text-blue-400'}`}>
+                          {p.score || 0}
+                        </div>
+                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">баллов</p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+            </div>
+
+            {user?.isAdmin && (
+              <button 
+                onClick={toggleLeaderboard}
+                className="mt-12 w-full bg-white/10 hover:bg-white/20 py-4 rounded-2xl font-bold text-white transition-all uppercase tracking-widest border border-white/10"
+              >
+                Закрыть таблицу
+              </button>
+            )}
+          </motion.div>
+        </div>
+      )}
+
       {/* Reveal Mode Overlay */}
       {gameState?.revealMode && (
-        <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-8">
+        <div className={`fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-8 ${user?.isAdmin ? 'pb-80' : ''}`}>
           <div className="max-w-4xl w-full space-y-8 text-center" key={gameState.currentQuestion}>
             <h2 className="text-3xl font-black text-purple-400 uppercase tracking-widest mb-8">Правильные ответы</h2>
             
@@ -504,6 +625,78 @@ export default function App() {
               />
             </div>
           </div>
+
+          {/* Admin Controls during Reveal */}
+          {user?.isAdmin && (
+            <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md border-t border-white/10 p-6 z-[101]">
+              <div className="max-w-6xl mx-auto flex flex-col gap-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-purple-400" /> Панель управления показом
+                  </h3>
+                  <div className="flex gap-4">
+                    <button 
+                      onClick={resetGame}
+                      className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl transition-all font-bold text-sm uppercase tracking-widest flex items-center gap-2"
+                    >
+                      <RotateCcw className="w-4 h-4" /> Сбросить игру
+                    </button>
+                    <button 
+                      onClick={() => restPatch('gameState', { revealMode: false, active: false })}
+                      className="bg-white/10 hover:bg-white/20 text-white px-6 py-2 rounded-xl border border-white/10 transition-all font-bold text-sm uppercase tracking-widest"
+                    >
+                      Остановить показ
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Current Question Status */}
+                  <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
+                    <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">Проверка ответов игроков:</h4>
+                    <div className="space-y-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
+                      {Object.entries(players).map(([id, p]: [string, any]) => {
+                        const qKey = `r${gameState.currentRound}_q${gameState.currentQuestion}`;
+                        const ans = p.answers?.[qKey];
+                        if (!ans) return null;
+                        return (
+                          <div key={id} className="flex justify-between items-center bg-white/5 p-2 rounded-lg border border-white/5">
+                            <span className="text-sm font-medium text-white">{p.nickname} (К#{p.team})</span>
+                            <div className="flex items-center gap-3">
+                              <span className={`text-xs px-2 py-1 rounded ${ans.text.toLowerCase() === roundsData[gameState.currentRound].questions[gameState.currentQuestion].correctAnswer.toLowerCase() ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                {ans.text}
+                              </span>
+                              <div className="flex gap-1">
+                                <button onClick={() => markAnswer(id, qKey, ans.potentialPoints || 2)} className="p-1 hover:bg-green-500 rounded text-green-400 hover:text-white transition-colors"><CheckCircle2 className="w-4 h-4" /></button>
+                                <button onClick={() => markAnswer(id, qKey, 0)} className="p-1 hover:bg-red-500 rounded text-red-400 hover:text-white transition-colors"><XCircle className="w-4 h-4" /></button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {Object.values(players).every((p: any) => !p.answers?.[`r${gameState.currentRound}_q${gameState.currentQuestion}`]) && (
+                        <p className="text-xs text-gray-500 italic text-center py-4">Нет ответов на этот вопрос</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Quick Stats */}
+                  <div className="bg-white/5 rounded-2xl p-4 border border-white/10 flex flex-col justify-center">
+                    <div className="flex justify-around text-center">
+                      <div>
+                        <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Вопрос</p>
+                        <p className="text-2xl font-black text-white">{gameState.currentQuestion + 1} / {roundsData[gameState.currentRound].questions.length}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Раунд</p>
+                        <p className="text-2xl font-black text-purple-400">{gameState.currentRound + 1}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -920,6 +1113,22 @@ export default function App() {
                 <p className="text-[10px] text-gray-500 mt-2 text-center italic">
                   *Автоматический показ всех вопросов раунда с ответами
                 </p>
+              </div>
+
+              {/* Leaderboard & Reset Controls */}
+              <div className="mt-8 grid grid-cols-2 gap-4">
+                <button 
+                  onClick={toggleLeaderboard}
+                  className="bg-blue-600 hover:bg-blue-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20"
+                >
+                  <Crown className="w-5 h-5" /> ТАБЛИЦА ЛИДЕРОВ
+                </button>
+                <button 
+                  onClick={resetGame}
+                  className="bg-red-600 hover:bg-red-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-900/20"
+                >
+                  <RotateCcw className="w-5 h-5" /> СБРОСИТЬ ИГРУ
+                </button>
               </div>
               <div className="mt-8">
                 <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">Очередь ответов (Раунд {gameState?.currentRound + 1}):</h4>
