@@ -173,6 +173,14 @@ export default function App() {
   const timerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // ==================== VOLUME LOGIC ====================
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume;
+      videoRef.current.muted = isMuted;
+    }
+  }, [volume, isMuted, gameState?.currentQuestion, gameState?.revealMode]);
+
   // ==================== SESSION RESTORE ====================
   useEffect(() => {
     const saved = localStorage.getItem('quizUser');
@@ -356,7 +364,7 @@ export default function App() {
       // Update local state immediately to prevent flicker
       setGameState((prev: any) => ({ ...prev, currentQuestion: i }));
       await restPatch('gameState', { currentQuestion: i });
-      const duration = round.type === "video" ? 15000 : 10000;
+      const duration = round.type === "video" ? 19000 : 14000;
       await new Promise(r => setTimeout(r, duration));
     }
     await restPatch('gameState', { revealMode: false, active: false, roundFinished: true });
@@ -595,9 +603,11 @@ export default function App() {
             {roundsData[gameState.currentRound]?.type === "video" && (
               <div className="aspect-video bg-black rounded-2xl overflow-hidden border-2 border-white/20">
                 <video 
+                  ref={videoRef}
                   key={gameState.currentQuestion}
                   src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].video || "")} 
                   autoPlay 
+                  muted={isMuted}
                   className="w-full h-full"
                 />
               </div>
@@ -620,12 +630,17 @@ export default function App() {
               className="bg-white/10 p-8 rounded-3xl border border-white/20"
             >
               <p className="text-gray-400 uppercase text-sm font-bold mb-2">Верный ответ:</p>
-              <p className="text-5xl font-black text-white drop-shadow-lg">
+              <p className="text-5xl font-black text-white drop-shadow-lg mb-4">
                 {roundsData[gameState.currentRound]?.type === "character_guess" 
                   ? `${roundsData[gameState.currentRound].questions[gameState.currentQuestion].character} (${roundsData[gameState.currentRound].questions[gameState.currentQuestion].anime})`
                   : roundsData[gameState.currentRound].questions[gameState.currentQuestion].correctAnswer
                 }
               </p>
+              {roundsData[gameState.currentRound]?.type === "character_guess" && (
+                <p className="text-xl text-purple-200 italic max-w-2xl mx-auto">
+                  "{roundsData[gameState.currentRound].questions[gameState.currentQuestion].description}"
+                </p>
+              )}
             </motion.div>
 
             <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
@@ -633,7 +648,7 @@ export default function App() {
                 key={`timer-${gameState.currentQuestion}`}
                 initial={{ width: "100%" }}
                 animate={{ width: "0%" }}
-                transition={{ duration: roundsData[gameState.currentRound]?.type === "video" ? 15 : 10, ease: "linear" }}
+                transition={{ duration: roundsData[gameState.currentRound]?.type === "video" ? 19 : 14, ease: "linear" }}
                 className="bg-purple-500 h-full"
               />
             </div>
@@ -880,6 +895,7 @@ export default function App() {
                         className="w-full h-full"
                         controls={user.isAdmin}
                         autoPlay
+                        muted={isMuted}
                       />
                     </div>
 
