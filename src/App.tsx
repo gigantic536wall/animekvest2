@@ -307,9 +307,9 @@ export default function App() {
     }
   };
 
-  const startRevealMode = async () => {
-    const round = roundsData[gameState.currentRound];
-    await restPatch('gameState', { revealMode: true, currentQuestion: 0, active: true });
+  const startRevealMode = async (idx: number) => {
+    const round = roundsData[idx];
+    await restPatch('gameState', { revealMode: true, currentQuestion: 0, active: true, currentRound: idx });
     
     for (let i = 0; i < round.questions.length; i++) {
       await restPatch('gameState', { currentQuestion: i });
@@ -460,13 +460,13 @@ export default function App() {
       {/* Reveal Mode Overlay */}
       {gameState?.revealMode && (
         <div className="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-8">
-          <div className="max-w-4xl w-full space-y-8 text-center">
+          <div className="max-w-4xl w-full space-y-8 text-center" key={gameState.currentQuestion}>
             <h2 className="text-3xl font-black text-purple-400 uppercase tracking-widest mb-8">Правильные ответы</h2>
             
             {roundsData[gameState.currentRound]?.type === "image_sequence" && (
               <div className="grid grid-cols-2 gap-4">
                 {roundsData[gameState.currentRound].questions[gameState.currentQuestion].images?.map((img, i) => (
-                  <img key={i} src={getAssetPath(img)} className="rounded-xl aspect-video object-cover border-2 border-white/20" />
+                  <img key={`${gameState.currentQuestion}-${i}`} src={getAssetPath(img)} className="rounded-xl aspect-video object-cover border-2 border-white/20" />
                 ))}
               </div>
             )}
@@ -474,6 +474,7 @@ export default function App() {
             {roundsData[gameState.currentRound]?.type === "video" && (
               <div className="aspect-video bg-black rounded-2xl overflow-hidden border-2 border-white/20">
                 <video 
+                  key={gameState.currentQuestion}
                   src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].video || "")} 
                   autoPlay 
                   className="w-full h-full"
@@ -482,6 +483,7 @@ export default function App() {
             )}
 
             <motion.div 
+              key={`ans-${gameState.currentQuestion}`}
               initial={{ y: 20, opacity: 0 }}
               animate={{ y: 0, opacity: 1 }}
               className="bg-white/10 p-8 rounded-3xl border border-white/20"
@@ -494,6 +496,7 @@ export default function App() {
 
             <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
               <motion.div 
+                key={`timer-${gameState.currentQuestion}`}
                 initial={{ width: "100%" }}
                 animate={{ width: "0%" }}
                 transition={{ duration: roundsData[gameState.currentRound]?.type === "video" ? 15 : 10, ease: "linear" }}
@@ -895,15 +898,27 @@ export default function App() {
 
               {/* Reveal Answers Control */}
               <div className="mt-8">
-                <button 
-                  onClick={startRevealMode}
-                  disabled={!gameState?.roundFinished && gameState?.active}
-                  className="w-full bg-purple-600 hover:bg-purple-700 disabled:opacity-50 py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-purple-900/20"
-                >
-                  <Eye className="w-5 h-5" /> ПОКАЗАТЬ ПРАВИЛЬНЫЕ ОТВЕТЫ РАУНДА
-                </button>
+                <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase flex items-center gap-2">
+                  <Eye className="w-4 h-4" /> Показ ответов:
+                </h4>
+                <div className="grid grid-cols-1 gap-2">
+                  {roundsData.map((round, idx) => (
+                    <button 
+                      key={idx}
+                      onClick={() => startRevealMode(idx)}
+                      disabled={gameState?.active}
+                      className="bg-purple-600/20 hover:bg-purple-600/40 disabled:opacity-50 py-3 px-4 rounded-xl font-bold flex items-center justify-between gap-2 border border-purple-500/30 transition-all"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="bg-purple-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">{idx + 1}</span>
+                        <span className="text-sm">{round.name}</span>
+                      </div>
+                      <Eye className="w-4 h-4 opacity-50" />
+                    </button>
+                  ))}
+                </div>
                 <p className="text-[10px] text-gray-500 mt-2 text-center italic">
-                  *Автоматический показ всех вопросов раунда с ответами (10-15 сек на каждый)
+                  *Автоматический показ всех вопросов раунда с ответами
                 </p>
               </div>
               <div className="mt-8">
