@@ -55,6 +55,7 @@ interface Question {
   description?: string;
   image?: string;
   emojis?: string;
+  answerTime?: number;
 }
 
 interface Round {
@@ -67,6 +68,27 @@ interface Round {
 
 // ==================== ДАННЫЕ ИГРЫ ====================
 const roundsData: Round[] = [
+  {
+    type: "test_round",
+    name: "Тестовый раунд",
+    answerTime: 15,
+    pauseDuration: 5,
+    questions: [
+      ...Array.from({ length: 8 }, (_, i) => ({
+        text: `Тестовый вопрос ${i + 1} (Проверка звука и картинок)`,
+        images: ["test/1.png", "test/2.png", "test/3.png", "test/4.png"],
+        video: "test/video.mp4",
+        correctAnswer: "Тест пройден"
+      })),
+      {
+        text: "Финальный тестовый вопрос (45 секунд)",
+        images: ["test/1.png", "test/2.png", "test/3.png", "test/4.png"],
+        video: "test/video.mp4",
+        correctAnswer: "Тест завершен",
+        answerTime: 45
+      }
+    ]
+  },
   { 
     type: "image_sequence", 
     name: "Раунд 1: Угадай аниме по картинке", 
@@ -91,9 +113,9 @@ const roundsData: Round[] = [
     pauseDuration: 10,
     questions: [
       { text: "Что можно ответить на фразу 月が綺麗ですね (луна сегодня красивая)?", correctAnswer: "Настолько красивая, что можно умереть / Как и ты / Ты мне тоже нравишься" },
-      { text: "На каком этаже подземелья в аниме «Поднятие уровня в одиночку» главный герой встретил Элис Радиру?", correctAnswer: "80 этаж", image: "foto2/2.png" },
-      { text: "Сколько всего серий в сумме в САО , Бличе  и Дорохедоро  (Разброс +-20)", correctAnswer: "537 серий" },
-      { text: "Назовите имя данной девушки на фотографии (Имя и Фамилия):", correctAnswer: "Шиина Маюри", image: "foto2/4.png" },
+      { text: "На каком этаже подземелья в аниме «Поднятие уровня в одиночку» главный герой встретил Элис Радиру?", correctAnswer: "100 этаж", image: "foto2/2.png" },
+      { text: "Сколько всего серий в сумме в САО (96), Бличе (418) и Дорохедоро (23)? (Разброс +-20)", correctAnswer: "537 серий" },
+      { text: "Назовите имя данной девушки на фотографии (Имя и Фамилия):", correctAnswer: "Уточните у админа", image: "foto2/4.png" },
       { text: "Назовите как минимум 2 персонажей из Редана (Геней Рёдан) из аниме «Хантер х Хантер»:", correctAnswer: "Куроро, Фейтан, Мачи, Хисока и др." },
       { text: "Как звали первого хокаге в аниме «Наруто»?", correctAnswer: "Хаширама Сенджу" },
       { text: "В каком аниме-сериале была культовая фраза, где персонажи по очереди говорят «Congratulations» и хлопают в ладоши?", correctAnswer: "Евангелион" },
@@ -464,7 +486,7 @@ export default function App() {
   };
 
   const startRound = async (idx: number) => {
-    const duration = roundsData[idx].answerTime || 25;
+    const duration = roundsData[idx].questions[0]?.answerTime || roundsData[idx].answerTime || 25;
     await restPatch('gameState', {
       active: true,
       currentRound: idx,
@@ -492,7 +514,7 @@ export default function App() {
         await restDelete('gameState/pause');
         const nextQ = gameState.currentQuestion + 1;
         if (nextQ < round.questions.length) {
-          const qDuration = round.answerTime || 25;
+          const qDuration = round.questions[nextQ].answerTime || round.answerTime || 25;
           await restPatch('gameState', { 
             currentQuestion: nextQ, 
             timeLeft: qDuration,
@@ -510,6 +532,10 @@ export default function App() {
     const round = roundsData[gameState.currentRound];
     let potentialPoints = 2; // Default
     
+    if (round.type === "test_round") {
+      potentialPoints = 2;
+    }
+
     if (round.type === "mixed_text") {
       potentialPoints = 2;
     }
@@ -727,6 +753,25 @@ export default function App() {
           <div className="max-w-4xl w-full space-y-8 text-center" key={gameState.currentQuestion}>
             <h2 className="text-3xl font-black text-purple-400 uppercase tracking-widest mb-8">Правильные ответы</h2>
             
+            {roundsData[gameState.currentRound]?.type === "test_round" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+                <div className="aspect-video bg-black rounded-2xl overflow-hidden border-2 border-white/20">
+                  <video 
+                    ref={videoRef}
+                    src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].video || "")} 
+                    autoPlay 
+                    muted={isMuted}
+                    className="w-full h-full"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {roundsData[gameState.currentRound].questions[gameState.currentQuestion].images?.map((img, i) => (
+                    <img key={i} src={getAssetPath(img)} className="rounded-xl aspect-video object-cover border border-white/20" />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {roundsData[gameState.currentRound]?.type === "image_sequence" && (
               <div className="grid grid-cols-2 gap-4">
                 {roundsData[gameState.currentRound].questions[gameState.currentQuestion].images?.map((img, i) => (
@@ -885,7 +930,7 @@ export default function App() {
                               </span>
                               <div className="flex gap-1">
                                 <button onClick={() => markAnswer(id, qKey, ans.potentialPoints || 2)} className="p-1 hover:bg-green-500 rounded text-green-400 hover:text-white transition-colors"><CheckCircle2 className="w-4 h-4" /></button>
-                                <button onClick={() => markAnswer(id, qKey, 0)} className="p-1 hover:bg-red-500 rounded text-red-400 hover:text-white transition-colors"><XCircle className="w-4 h-4" /></button>
+                                <button onClick={() => markAnswer(id, qKey, roundsData[gameState.currentRound]?.type === "test_round" ? -1 : 0)} className="p-1 hover:bg-red-500 rounded text-red-400 hover:text-white transition-colors"><XCircle className="w-4 h-4" /></button>
                               </div>
                             </div>
                           </div>
@@ -968,6 +1013,71 @@ export default function App() {
                     {timeLeft}s
                   </div>
                 </div>
+
+                {/* Test Round */}
+                {round.type === "test_round" && (
+                  <div className="space-y-6 max-w-6xl mx-auto">
+                    <div className="bg-white/5 p-6 rounded-2xl border border-white/10 text-center">
+                      <h3 className="text-xl font-bold text-white">{currentQuestion.text}</h3>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Video Section */}
+                      <div className="bg-black/40 rounded-2xl overflow-hidden border-2 border-white/10 aspect-video flex items-center justify-center relative">
+                        {currentQuestion.video ? (
+                          <video 
+                            ref={videoRef}
+                            src={getAssetPath(currentQuestion.video)} 
+                            autoPlay 
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              console.warn("Test video failed to load");
+                            }}
+                          />
+                        ) : (
+                          <div className="text-gray-500">Видео не задано</div>
+                        )}
+                        <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-wider">Тест видео</div>
+                      </div>
+
+                      {/* Images Grid Section */}
+                      <div className="grid grid-cols-2 gap-3">
+                        {currentQuestion.images?.map((img, idx) => (
+                          <div key={idx} className="aspect-video rounded-xl overflow-hidden border border-white/10 bg-white/5 relative">
+                            <img 
+                              src={getAssetPath(img)} 
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = `https://picsum.photos/seed/test${idx}/400/300`;
+                              }}
+                            />
+                            <div className="absolute bottom-1 right-1 bg-black/60 px-1.5 py-0.5 rounded text-[8px] font-bold text-white uppercase">Фото {idx + 1}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {!user.isAdmin && (
+                      <div className="max-w-md mx-auto flex gap-3">
+                        <input 
+                          type="text"
+                          className="answer-input flex-1"
+                          placeholder="Проверка ввода..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value)}
+                          disabled={hasAnswered}
+                        />
+                        <button 
+                          onClick={submitAnswer}
+                          disabled={hasAnswered}
+                          className={`px-6 py-3 rounded-xl font-bold transition-all ${hasAnswered ? 'bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}
+                        >
+                          {hasAnswered ? 'OK' : 'ТЕСТ'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Round 1: Image Sequence */}
                 {round.type === "image_sequence" && (
