@@ -76,14 +76,14 @@ const roundsData: Round[] = [
     questions: [
       ...Array.from({ length: 8 }, (_, i) => ({
         text: `Тестовый вопрос ${i + 1} (Проверка звука и картинок)`,
-        images: ["test/1.png", "test/2.png", "test/3.png", "test/4.png"],
-        video: "test/video.mp4",
+        images: [`test/q${i + 1}_img1.png`, `test/q${i + 1}_img2.png`, `test/q${i + 1}_img3.png`, `test/q${i + 1}_img4.png`],
+        video: `test/q${i + 1}_vid.mp4`,
         correctAnswer: "Тест пройден"
       })),
       {
         text: "Финальный тестовый вопрос (45 секунд)",
-        images: ["test/1.png", "test/2.png", "test/3.png", "test/4.png"],
-        video: "test/video.mp4",
+        images: ["test/q9_img1.png", "test/q9_img2.png", "test/q9_img3.png", "test/q9_img4.png"],
+        video: "test/q9_vid.mp4",
         correctAnswer: "Тест завершен",
         answerTime: 45
       }
