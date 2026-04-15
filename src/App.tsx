@@ -178,7 +178,7 @@ const roundsData: Round[] = [
     answerTime: 45,
     pauseDuration: 10,
     questions: [
-        { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
+       { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
       { text: "Назови имя персонажа", correctAnswer: "Томпа из Хантер х Хантер", image: "foto5/2.png" },
       { text: "Назовите имя персонажа", correctAnswer: "Сейджуру Акаши", image: "foto5/3.png" },
       { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
@@ -618,79 +618,117 @@ export default function App() {
   // ==================== RENDER ====================
   if (!user) {
     return (
-      <div className="container">
-        <h1 className="text-3xl font-bold mb-6">🎌 Аниме Викторина</h1>
-        <div className="bg-black/40 p-8 rounded-3xl backdrop-blur-md">
-          <h2 className="text-xl mb-4">Вход в игру</h2>
-          <input 
-            type="text" 
-            className="nickname-input mb-4" 
-            placeholder="Твой никнейм" 
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
-          />
-          <div className="team-buttons mb-6">
-            {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => (
-              <button 
-                key={t}
-                className={`team-btn ${selectedTeam === t ? 'selected' : ''}`}
-                onClick={() => setSelectedTeam(t)}
-              >
-                Команда {t + 1}
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="w-full max-w-2xl glass p-12 rounded-[3rem] neon-border text-center">
+          <motion.h1 
+            initial={{ y: -20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            className="text-5xl font-black mb-8 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500 uppercase tracking-tighter"
+          >
+            🎌 Аниме Викторина
+          </motion.h1>
+          <div className="space-y-8">
+            <div className="space-y-2">
+              <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Твой никнейм</label>
+              <input 
+                type="text" 
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xl text-center focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all" 
+                placeholder="Введи имя..." 
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+              />
+            </div>
+            
+            <div className="space-y-4">
+              <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Выбери команду</label>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => (
+                  <button 
+                    key={t}
+                    className={`py-3 rounded-xl font-bold transition-all border-2 ${
+                      selectedTeam === t 
+                        ? 'bg-purple-600 border-purple-400 shadow-lg shadow-purple-500/20 scale-105' 
+                        : 'bg-white/5 border-white/10 hover:bg-white/10'
+                    }`}
+                    onClick={() => setSelectedTeam(t)}
+                  >
+                    #{t + 1}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-4 pt-4">
+              <button onClick={handleJoin} className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95">
+                Присоединиться
               </button>
-            ))}
+              <button onClick={handleAdminLogin} className="sm:w-1/3 bg-white/10 hover:bg-white/20 text-white py-4 rounded-2xl font-black uppercase tracking-widest border border-white/10 transition-all active:scale-95">
+                Админ
+              </button>
+            </div>
+            {error && <p className="text-red-400 font-medium animate-pulse">{error}</p>}
           </div>
-          <div className="flex flex-wrap justify-center gap-4">
-            <button onClick={handleJoin} className="bg-red-500 hover:bg-red-600 px-8 py-3 rounded-full font-bold">Присоединиться</button>
-            <button onClick={handleAdminLogin} className="bg-blue-500 hover:bg-blue-600 px-8 py-3 rounded-full font-bold">Админ</button>
-          </div>
-          {error && <p className="text-red-400 mt-4">{error}</p>}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="container">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-6 bg-black/30 p-4 rounded-2xl">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-lg">{user.nickname}</span>
-          {user.isAdmin && <Crown className="text-yellow-400 w-5 h-5" />}
-          {!user.isAdmin && <span className="bg-blue-500 px-2 py-0.5 rounded-full text-xs">Команда {user.team + 1}</span>}
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-black/40 px-4 py-2 rounded-full">
-            <button 
-              onClick={() => {
-                if (testAudioRef.current) {
-                  if (isTestingSound) {
-                    testAudioRef.current.pause();
-                    testAudioRef.current.currentTime = 0;
-                    setIsTestingSound(false);
-                  } else {
-                    testAudioRef.current.play().catch(e => console.warn("Audio play failed:", e));
-                    setIsTestingSound(true);
-                  }
-                }
-              }}
-              className={`text-[10px] font-bold px-2 py-1 rounded border transition-all ${isTestingSound ? 'bg-green-500 border-green-400 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}
-            >
-              {isTestingSound ? 'СТОП' : 'ТЕСТ'}
-            </button>
-            <button onClick={() => setIsMuted(!isMuted)}>
-              {isMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-            </button>
-            <input 
-              type="range" 
-              min="0" max="1" step="0.01" 
-              value={volume} 
-              onChange={(e) => setVolume(parseFloat(e.target.value))}
-              className="w-24 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
-            />
+    <div className="min-h-screen p-4 md:p-8">
+      <div className="max-w-[1600px] mx-auto">
+        {/* Header */}
+        <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12 glass p-8 rounded-[2.5rem] neon-border">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
+              <Users className="w-8 h-8 text-white" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-black uppercase tracking-tighter">Аниме Викторина</h1>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-400">{user.nickname}</span>
+                {user.isAdmin ? (
+                  <span className="bg-yellow-500/20 text-yellow-500 text-[10px] font-black px-2 py-0.5 rounded-full border border-yellow-500/30 uppercase tracking-widest">Админ</span>
+                ) : (
+                  <span className="bg-purple-500/20 text-purple-400 text-[10px] font-black px-2 py-0.5 rounded-full border border-purple-500/30 uppercase tracking-widest">Команда #{user.team + 1}</span>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 glass px-4 py-2 rounded-full">
+              <button 
+                onClick={() => {
+                  if (testAudioRef.current) {
+                    if (isTestingSound) {
+                      testAudioRef.current.pause();
+                      testAudioRef.current.currentTime = 0;
+                      setIsTestingSound(false);
+                    } else {
+                      testAudioRef.current.play().catch(e => console.warn("Audio play failed:", e));
+                      setIsTestingSound(true);
+                    }
+                  }
+                }}
+                className={`text-[10px] font-bold px-3 py-1.5 rounded-full border transition-all ${isTestingSound ? 'bg-green-500 border-green-400 text-white' : 'bg-white/5 border-white/10 text-gray-400 hover:bg-white/10'}`}
+              >
+                {isTestingSound ? 'СТОП ТЕСТ' : 'ТЕСТ ЗВУКА'}
+              </button>
+              <div className="flex items-center gap-3 ml-2">
+                <div onClick={() => setIsMuted(!isMuted)} className="cursor-pointer hover:scale-110 transition-transform">
+                  {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-purple-400" />}
+                </div>
+                <input 
+                  type="range" 
+                  min="0" max="1" step="0.01" 
+                  value={volume} 
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  className="w-24 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500"
+                />
+              </div>
+            </div>
+          </div>
+        </header>
 
       <audio 
         ref={testAudioRef} 
@@ -753,10 +791,14 @@ export default function App() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className={`text-4xl font-black ${isWinner ? 'text-yellow-500' : 'text-blue-400'}`}>
-                          {getPlayerScore(p)}
-                        </div>
-                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">баллов</p>
+                        {user.isAdmin && (
+                          <>
+                            <div className={`text-4xl font-black ${isWinner ? 'text-yellow-500' : 'text-blue-400'}`}>
+                              {getPlayerScore(p)}
+                            </div>
+                            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">баллов</p>
+                          </>
+                        )}
                       </div>
                     </motion.div>
                   );
@@ -1044,14 +1086,14 @@ export default function App() {
 
                 {/* Test Round */}
                 {round.type === "test_round" && (
-                  <div className="space-y-6 max-w-6xl mx-auto">
-                    <div className="bg-white/5 p-6 rounded-2xl border border-white/10 text-center">
-                      <h3 className="text-xl font-bold text-white">{currentQuestion.text}</h3>
+                  <div className="space-y-8 w-full">
+                    <div className="glass p-8 rounded-3xl neon-border text-center">
+                      <h3 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500 uppercase tracking-tighter">{currentQuestion.text}</h3>
                     </div>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                       {/* Video Section */}
-                      <div className="bg-black/40 rounded-2xl overflow-hidden border-2 border-white/10 aspect-video flex items-center justify-center relative">
+                      <div className="lg:col-span-8 glass-dark rounded-[2.5rem] overflow-hidden border-2 border-white/10 aspect-video flex items-center justify-center relative shadow-2xl">
                         {currentQuestion.video ? (
                           <video 
                             ref={videoRef}
@@ -1063,23 +1105,23 @@ export default function App() {
                             }}
                           />
                         ) : (
-                          <div className="text-gray-500">Видео не задано</div>
+                          <div className="text-gray-500 text-xl font-medium italic">Видео не задано</div>
                         )}
-                        <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold text-white uppercase tracking-wider">Тест видео</div>
+                        <div className="absolute top-6 left-6 glass px-4 py-2 rounded-full text-xs font-black text-white uppercase tracking-widest">Тест видео</div>
                       </div>
 
                       {/* Images Grid Section */}
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="lg:col-span-4 grid grid-cols-2 gap-4">
                         {currentQuestion.images?.map((img, idx) => (
-                          <div key={idx} className="aspect-video rounded-xl overflow-hidden border border-white/10 bg-white/5 relative">
+                          <div key={idx} className="aspect-video rounded-3xl overflow-hidden border border-white/10 glass-dark relative group">
                             <img 
                               src={getAssetPath(img)} 
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                               onError={(e) => {
                                 (e.target as HTMLImageElement).src = `https://picsum.photos/seed/test${idx}/400/300`;
                               }}
                             />
-                            <div className="absolute bottom-1 right-1 bg-black/60 px-1.5 py-0.5 rounded text-[8px] font-bold text-white uppercase">Фото {idx + 1}</div>
+                            <div className="absolute bottom-3 right-3 glass px-3 py-1 rounded-full text-[10px] font-black text-white uppercase tracking-tighter">Фото {idx + 1}</div>
                           </div>
                         ))}
                       </div>
@@ -1587,15 +1629,15 @@ export default function App() {
                 <p className="text-gray-400 mt-2">{preloaderStatus}</p>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 w-full max-w-4xl">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-6 w-full">
                 {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => {
                   const teamPlayers = Object.values(players).filter((p: any) => p.team === t).map((p: any) => p.nickname);
                   const score = Object.values(players).filter((p: any) => p.team === t).reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
                   return (
-                    <div key={t} className="bg-black/40 p-4 rounded-2xl border-t-4 border-blue-500">
-                      <div className="text-sm text-gray-400 mb-1">Команда {t + 1}</div>
-                      <div className="text-xl font-bold text-green-400">{score}</div>
-                      <div className="mt-2 text-[10px] text-gray-500 truncate">{teamPlayers.join(', ') || 'пусто'}</div>
+                    <div key={t} className="glass p-6 rounded-3xl border-t-4 border-purple-500 shadow-xl transition-all hover:translate-y-[-4px]">
+                      <div className="text-xs text-gray-400 mb-2 font-black uppercase tracking-widest">Команда {t + 1}</div>
+                      {user.isAdmin && <div className="text-3xl font-black text-purple-400 mb-2">{score}</div>}
+                      <div className="mt-2 text-[10px] text-gray-500 font-medium leading-relaxed">{teamPlayers.join(', ') || <span className="italic opacity-30">пусто</span>}</div>
                     </div>
                   );
                 })}
@@ -1685,48 +1727,50 @@ export default function App() {
               </div>
 
               {/* Leaderboard Table */}
-              <div className="mt-8 bg-black/40 rounded-xl p-4 border border-white/10">
-                <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase flex items-center gap-2">
-                  <Users className="w-4 h-4" /> Таблица лидеров:
+              <div className="mt-8 glass-dark rounded-[2rem] p-8 border border-white/10">
+                <h4 className="text-sm font-black text-gray-400 mb-6 uppercase tracking-widest flex items-center gap-3">
+                  <Users className="w-5 h-5 text-purple-400" /> Таблица лидеров:
                 </h4>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {Object.entries(players)
                     .sort((a, b) => getPlayerScore(b[1]) - getPlayerScore(a[1]))
                     .map(([id, p]: [string, any]) => (
-                      <div key={id} className="flex justify-between items-center p-2 hover:bg-white/5 rounded transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-2 h-2 rounded-full bg-team-${p.team + 1}`} />
-                          <span className="font-medium">{p.nickname}</span>
-                          <span className="text-[10px] text-gray-500 uppercase">Команда {p.team + 1}</span>
+                      <div key={id} className="flex justify-between items-center p-4 hover:bg-white/5 rounded-2xl transition-all border border-transparent hover:border-white/10">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-3 h-3 rounded-full bg-team-${p.team + 1} shadow-[0_0_8px_rgba(255,255,255,0.2)]`} />
+                          <div className="flex flex-col">
+                            <span className="font-bold text-white">{p.nickname}</span>
+                            <span className="text-[10px] text-gray-500 uppercase font-black tracking-tighter">Команда {p.team + 1}</span>
+                          </div>
                         </div>
-                        <span className="font-mono font-bold text-blue-400">{getPlayerScore(p)}</span>
+                        <span className="font-mono font-black text-xl text-purple-400">{getPlayerScore(p)}</span>
                       </div>
                     ))}
                 </div>
               </div>
 
               {/* Reveal Answers Control */}
-              <div className="mt-8">
-                <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase flex items-center gap-2">
-                  <Eye className="w-4 h-4" /> Показ ответов:
+              <div className="mt-12">
+                <h4 className="text-sm font-black text-gray-400 mb-6 uppercase tracking-widest flex items-center gap-3">
+                  <Eye className="w-5 h-5 text-pink-400" /> Показ ответов:
                 </h4>
-                <div className="grid grid-cols-1 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {roundsData.map((round, idx) => (
                     <button 
                       key={idx}
                       onClick={() => startRevealMode(idx)}
                       disabled={gameState?.active}
-                      className="bg-purple-600/20 hover:bg-purple-600/40 disabled:opacity-50 py-3 px-4 rounded-xl font-bold flex items-center justify-between gap-2 border border-purple-500/30 transition-all"
+                      className="glass hover:bg-white/10 disabled:opacity-30 py-4 px-6 rounded-2xl font-black flex items-center justify-between gap-4 border border-white/10 transition-all active:scale-95 group"
                     >
-                      <div className="flex items-center gap-3">
-                        <span className="bg-purple-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">{idx + 1}</span>
-                        <span className="text-sm">{round.name}</span>
+                      <div className="flex items-center gap-4">
+                        <span className="bg-gradient-to-br from-purple-500 to-pink-500 text-white w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shadow-lg shadow-purple-500/20">{idx + 1}</span>
+                        <span className="text-sm uppercase tracking-tight">{round.name}</span>
                       </div>
-                      <Eye className="w-4 h-4 opacity-50" />
+                      <Eye className="w-5 h-5 opacity-30 group-hover:opacity-100 transition-opacity" />
                     </button>
                   ))}
                 </div>
-                <p className="text-[10px] text-gray-500 mt-2 text-center italic">
+                <p className="text-[10px] text-gray-500 mt-4 text-center italic font-medium uppercase tracking-widest">
                   *Автоматический показ всех вопросов раунда с ответами
                 </p>
               </div>
@@ -1799,6 +1843,7 @@ export default function App() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
