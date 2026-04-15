@@ -14,7 +14,9 @@ const TOTAL_TEAMS = 10;
 const restGet = async (p: string) => { 
   const r = await fetch(`${DB_URL}/${p}.json`); 
   if (!r.ok) throw new Error(`GET ${p} ${r.status}`); 
-  return r.json(); 
+  const data = await r.json();
+  const serverDate = r.headers.get('Date');
+  return { data, serverTime: serverDate ? new Date(serverDate).getTime() : null };
 };
 
 const restPut = async (p: string, d: any) => { 
@@ -176,11 +178,6 @@ const roundsData: Round[] = [
     answerTime: 45,
     pauseDuration: 10,
     questions: [
-      { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
-      { text: "Назови имя персонажа", correctAnswer: "Томпа из Хантер х Хантер", image: "foto5/2.png" },
-      { text: "Назовите имя персонажа", correctAnswer: "Сейджуру Акаши", image: "foto5/3.png" },
-      { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
-      { text: "Угадай кличку персонажа", correctAnswer: "Деку", image: "foto5/5.png" },
       { text: "Назовите ", correctAnswer: "gigantic563wall", image: "foto5/6.png" }
     ]
   },
@@ -266,7 +263,17 @@ export default function App() {
   const [showRevealMode, setShowRevealMode] = useState(false);
   const [revealIdx, setRevealIdx] = useState(0);
   const [answerText, setAnswerText] = useState("");
+  const [serverOffset, setServerOffset] = useState(0);
   const isDrivingReveal = useRef(false);
+
+  const getPlayerScore = (p: any) => {
+    if (!p) return 0;
+    let total = p.score || 0;
+    if (p.scores) {
+      total = Object.values(p.scores).reduce((acc: number, val: any) => acc + (val || 0), 0);
+    }
+    return total;
+  };
 
   // ==================== REVEAL MODE LOGIC ====================
   useEffect(() => {
@@ -315,13 +322,24 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const [state, pause, review, gPause, allPlayers] = await Promise.all([
+        const [resState, resPause, resReview, resGPause, resPlayers] = await Promise.all([
           restGet('gameState'),
           restGet('gameState/pause'),
           restGet('gameState/answersReview'),
           restGet('gameState/globalPause'),
           restGet('players')
         ]);
+
+        const state = resState.data;
+        const pause = resPause.data;
+        const review = resReview.data;
+        const gPause = resGPause.data;
+        const allPlayers = resPlayers.data;
+        const serverTime = resState.serverTime;
+
+        if (serverTime) {
+          setServerOffset(serverTime - Date.now());
+        }
 
         if (user?.isAdmin && isDrivingReveal.current) {
           // Don't overwrite currentQuestion/currentRound while we are in the middle of a reveal loop
@@ -370,7 +388,8 @@ export default function App() {
         if (gameState.timeLeft !== undefined) setTimeLeft(gameState.timeLeft);
         return;
       }
-      const diff = Math.max(0, Math.ceil((gameState.endTime - Date.now()) / 1000));
+      const now = Date.now() + serverOffset;
+      const diff = Math.max(0, Math.ceil((gameState.endTime - now) / 1000));
       setTimeLeft(diff);
 
       // Admin handles the transition when time runs out
@@ -391,7 +410,7 @@ export default function App() {
     const qIdx = gameState.currentQuestion ?? 0;
     const checkAnswered = async () => {
       try {
-        const ans = await restGet(`players/${user.id}/roundAnswers/${gameState.currentRound}/q${qIdx}`);
+        const { data: ans } = await restGet(`players/${user.id}/roundAnswers/${gameState.currentRound}/q${qIdx}`);
         if (ans?.answered) {
           setHasAnswered(true);
           setAnswerText(ans.answer || "");
@@ -449,6 +468,7 @@ export default function App() {
     const resetPlayers = { ...players };
     Object.keys(resetPlayers).forEach(id => {
       resetPlayers[id].score = 0;
+      resetPlayers[id].scores = {};
     });
     await restPut('players', resetPlayers);
     
@@ -510,8 +530,8 @@ export default function App() {
     await restPatch('gameState', { showAnswer: false, endTime: null }); 
 
     const checkPause = setInterval(async () => {
-      const p = await restGet('gameState/pause');
-      if (!p || p.skip || Date.now() >= p.endTime) {
+      const { data: p } = await restGet('gameState/pause');
+      if (!p || p.skip || (Date.now() + serverOffset) >= p.endTime) {
         clearInterval(checkPause);
         await restDelete('gameState/pause');
         const nextQ = gameState.currentQuestion + 1;
@@ -583,7 +603,9 @@ export default function App() {
   const markAnswer = async (playerId: string, qKey: string, points: number) => {
     const p = players[playerId];
     if (p) {
-      await restPatch(`players/${playerId}`, { score: (p.score || 0) + points });
+      // Use a sub-path for each question to avoid race conditions on the total score
+      const scoreKey = `${gameState.currentRound}_${qKey}`;
+      await restPut(`players/${playerId}/scores/${scoreKey}`, points);
       // Mark as checked instead of deleting to keep history
       await restPatch(`players/${playerId}/roundAnswers/${gameState.currentRound}/${qKey}`, { checked: true });
     }
@@ -697,7 +719,7 @@ export default function App() {
 
             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-4 custom-scrollbar">
               {Object.entries(players)
-                .sort((a, b) => ((a[1] as any).score || 0) - ((b[1] as any).score || 0)) // Lowest to Highest
+                .sort((a, b) => getPlayerScore(a[1]) - getPlayerScore(b[1])) // Lowest to Highest
                 .map(([id, p]: [string, any], idx, arr) => {
                   const isWinner = idx === arr.length - 1;
                   return (
@@ -728,7 +750,7 @@ export default function App() {
                       </div>
                       <div className="text-right">
                         <div className={`text-4xl font-black ${isWinner ? 'text-yellow-500' : 'text-blue-400'}`}>
-                          {p.score || 0}
+                          {getPlayerScore(p)}
                         </div>
                         <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">баллов</p>
                       </div>
@@ -1564,7 +1586,7 @@ export default function App() {
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4 w-full max-w-4xl">
                 {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => {
                   const teamPlayers = Object.values(players).filter((p: any) => p.team === t).map((p: any) => p.nickname);
-                  const score = Object.values(players).filter((p: any) => p.team === t).reduce((acc: number, p: any) => acc + (p.score || 0), 0);
+                  const score = Object.values(players).filter((p: any) => p.team === t).reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
                   return (
                     <div key={t} className="bg-black/40 p-4 rounded-2xl border-t-4 border-blue-500">
                       <div className="text-sm text-gray-400 mb-1">Команда {t + 1}</div>
@@ -1665,7 +1687,7 @@ export default function App() {
                 </h4>
                 <div className="space-y-2">
                   {Object.entries(players)
-                    .sort((a, b) => ((b[1] as any).score || 0) - ((a[1] as any).score || 0))
+                    .sort((a, b) => getPlayerScore(b[1]) - getPlayerScore(a[1]))
                     .map(([id, p]: [string, any]) => (
                       <div key={id} className="flex justify-between items-center p-2 hover:bg-white/5 rounded transition-colors">
                         <div className="flex items-center gap-3">
@@ -1673,7 +1695,7 @@ export default function App() {
                           <span className="font-medium">{p.nickname}</span>
                           <span className="text-[10px] text-gray-500 uppercase">Команда {p.team + 1}</span>
                         </div>
-                        <span className="font-mono font-bold text-blue-400">{p.score || 0}</span>
+                        <span className="font-mono font-bold text-blue-400">{getPlayerScore(p)}</span>
                       </div>
                     ))}
                 </div>
