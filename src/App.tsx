@@ -77,7 +77,7 @@ const roundsData: Round[] = [
     answerTime: 15,
     pauseDuration: 5,
     questions: [
-      ...Array.from({ length: 8 }, (_, i) => ({
+      ...Array.from({ length: 9 }, (_, i) => ({
         text: `Тестовый вопрос ${i + 1} (Проверка звука и картинок)`,
         images: [`test/q${i + 1}_img1.jpg`, `test/q${i + 1}_img2.jpg`, `test/q${i + 1}_img3.jpg`, `test/q${i + 1}_img4.jpg`],
         video: `test/q${i + 1}_vid.mp4`,
@@ -85,8 +85,8 @@ const roundsData: Round[] = [
       })),
       {
         text: "Финальный тестовый вопрос (45 секунд)",
-        images: ["test/q9_img1.jpg", "test/q9_img2.jpg", "test/q9_img3.jpg", "test/q9_img4.jpg"],
-        video: "test/q9_vid.mp4",
+        images: ["test/q10_img1.jpg", "test/q10_img2.jpg", "test/q10_img3.jpg", "test/q10_img4.jpg"],
+        video: "test/q10_vid.mp4",
         correctAnswer: "Тест завершен",
         answerTime: 45
       }
@@ -178,7 +178,7 @@ const roundsData: Round[] = [
     answerTime: 45,
     pauseDuration: 10,
     questions: [
-       { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
+         { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
       { text: "Назови имя персонажа", correctAnswer: "Томпа из Хантер х Хантер", image: "foto5/2.png" },
       { text: "Назовите имя персонажа", correctAnswer: "Сейджуру Акаши", image: "foto5/3.png" },
       { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
