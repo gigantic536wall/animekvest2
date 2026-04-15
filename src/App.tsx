@@ -9,6 +9,7 @@ import { Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, Play, Pause, 
 
 // ==================== КОНФИГ FIREBASE ====================
 const DB_URL = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
+const TOTAL_TEAMS = 10;
 
 const restGet = async (p: string) => { 
   const r = await fetch(`${DB_URL}/${p}.json`); 
@@ -602,7 +603,7 @@ export default function App() {
             onChange={(e) => setNickname(e.target.value)}
           />
           <div className="team-buttons mb-6">
-            {[0, 1, 2, 3].map(t => (
+            {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => (
               <button 
                 key={t}
                 className={`team-btn ${selectedTeam === t ? 'selected' : ''}`}
@@ -1559,15 +1560,15 @@ export default function App() {
                 <p className="text-gray-400 mt-2">{preloaderStatus}</p>
               </div>
               
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-2xl">
-                {[0, 1, 2, 3].map(t => {
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 w-full max-w-4xl">
+                {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => {
                   const teamPlayers = Object.values(players).filter((p: any) => p.team === t).map((p: any) => p.nickname);
                   const score = Object.values(players).filter((p: any) => p.team === t).reduce((acc: number, p: any) => acc + (p.score || 0), 0);
                   return (
                     <div key={t} className="bg-black/40 p-4 rounded-2xl border-t-4 border-blue-500">
                       <div className="text-sm text-gray-400 mb-1">Команда {t + 1}</div>
                       <div className="text-xl font-bold text-green-400">{score}</div>
-                      <div className="mt-2 text-xs text-gray-500 truncate">{teamPlayers.join(', ') || 'пусто'}</div>
+                      <div className="mt-2 text-[10px] text-gray-500 truncate">{teamPlayers.join(', ') || 'пусто'}</div>
                     </div>
                   );
                 })}
