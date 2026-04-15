@@ -178,8 +178,7 @@ const roundsData: Round[] = [
     answerTime: 45,
     pauseDuration: 10,
     questions: [
-    
-      { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
+    { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
       { text: "Назови имя персонажа", correctAnswer: "Томпа из Хантер х Хантер", image: "foto5/2.png" },
       { text: "Назовите имя персонажа", correctAnswer: "Сейджуру Акаши", image: "foto5/3.png" },
       { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
@@ -822,6 +821,20 @@ export default function App() {
       {/* Reveal Mode Overlay */}
       {gameState?.revealMode && (
         <div className={`fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-8 ${user?.isAdmin ? 'pb-80' : ''}`}>
+          {/* Volume Control for Reveal Mode */}
+          <div className="absolute top-8 right-8 z-[110] flex items-center gap-4 glass px-6 py-3 rounded-full border border-white/10">
+            <div onClick={() => setIsMuted(!isMuted)} className="cursor-pointer hover:scale-110 transition-transform">
+              {isMuted || volume === 0 ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5 text-purple-400" />}
+            </div>
+            <input 
+              type="range" 
+              min="0" max="1" step="0.01" 
+              value={volume} 
+              onChange={(e) => setVolume(parseFloat(e.target.value))}
+              className="w-32 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500"
+            />
+          </div>
+
           <div className="max-w-4xl w-full space-y-8 text-center" key={gameState.currentQuestion}>
             <h2 className="text-3xl font-black text-purple-400 uppercase tracking-widest mb-8">Правильные ответы</h2>
             
@@ -981,35 +994,52 @@ export default function App() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Current Question Status */}
-                  <div className="bg-white/5 rounded-2xl p-4 border border-white/10">
-                    <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">Проверка ответов игроков:</h4>
-                    <div className="space-y-2 max-h-32 overflow-y-auto pr-2 custom-scrollbar">
-                      {Object.entries(players).map(([id, p]: [string, any]) => {
-                        const qKey = `r${gameState.currentRound}_q${gameState.currentQuestion}`;
-                        const ans = p.answers?.[qKey];
-                        if (!ans) return null;
+                  {/* Answer Queue during Reveal */}
+                  <div className="bg-white/5 rounded-2xl p-4 border border-white/10 flex flex-col h-48">
+                    <h4 className="text-xs font-black text-gray-400 uppercase mb-3 tracking-widest flex items-center gap-2">
+                      <Users className="w-3 h-3 text-purple-400" /> Очередь ответов (Раунд {gameState?.currentRound + 1}):
+                    </h4>
+                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+                      {Object.entries(players).flatMap(([id, p]: [string, any]) => {
+                        const roundAnswers = p.roundAnswers?.[gameState?.currentRound] || {};
+                        return Object.entries(roundAnswers)
+                          .filter(([_, ans]: [any, any]) => !ans.checked)
+                          .map(([qKey, ans]: [string, any]) => ({ id, p, qKey, ans }));
+                      })
+                      .sort((a, b) => (a.ans.timestamp || 0) - (b.ans.timestamp || 0))
+                      .map(({ id, p, qKey, ans }) => {
+                        const qIdx = parseInt(qKey.replace('q',''));
+                        const correctAns = roundsData[gameState.currentRound]?.questions[qIdx]?.correctAnswer;
+                        
                         return (
-                          <div key={id} className="flex justify-between items-center bg-white/5 p-2 rounded-lg border border-white/5">
-                            <span className="text-sm font-medium text-white">{p.nickname} (К#{p.team})</span>
-                            <div className="flex items-center gap-3">
-                              <span className={`text-xs px-2 py-1 rounded ${
-                                (roundsData[gameState.currentRound]?.type === "character_guess" 
-                                  ? (ans.text.toLowerCase() === (roundsData[gameState.currentRound].questions[gameState.currentQuestion].character || "").toLowerCase())
-                                  : (ans.text.toLowerCase() === (roundsData[gameState.currentRound].questions[gameState.currentQuestion].correctAnswer || "").toLowerCase())
-                                ) ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-                                {ans.text}
-                              </span>
-                              <div className="flex gap-1">
-                                <button onClick={() => markAnswer(id, qKey, ans.potentialPoints || 2)} className="p-1 hover:bg-green-500 rounded text-green-400 hover:text-white transition-colors"><CheckCircle2 className="w-4 h-4" /></button>
-                                <button onClick={() => markAnswer(id, qKey, roundsData[gameState.currentRound]?.type === "test_round" ? -1 : 0)} className="p-1 hover:bg-red-500 rounded text-red-400 hover:text-white transition-colors"><XCircle className="w-4 h-4" /></button>
+                          <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-xl flex justify-between items-center border-l-4 border-purple-500">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-xs">{p.nickname}</span>
+                                <span className="text-[8px] bg-white/10 px-1.5 py-0.5 rounded uppercase">К{p.team + 1}</span>
+                                <span className="text-[8px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-black">В{qIdx + 1}</span>
                               </div>
+                              <p className="text-xs text-purple-200 mt-1">Ответ: <span className="font-bold">{ans.answer}</span></p>
+                            </div>
+                            <div className="flex gap-1 ml-2">
+                              <button 
+                                onClick={() => markAnswer(id, qKey, ans.potentialPoints || 2)} 
+                                className="p-1.5 hover:bg-green-500 rounded-lg text-green-400 hover:text-white transition-all"
+                              >
+                                <CheckCircle2 className="w-4 h-4" />
+                              </button>
+                              <button 
+                                onClick={() => markAnswer(id, qKey, 0)} 
+                                className="p-1.5 hover:bg-red-500 rounded-lg text-red-400 hover:text-white transition-all"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
                         );
                       })}
-                      {Object.values(players).every((p: any) => !p.answers?.[`r${gameState.currentRound}_q${gameState.currentQuestion}`]) && (
-                        <p className="text-xs text-gray-500 italic text-center py-4">Нет ответов на этот вопрос</p>
+                      {Object.values(players).every((p: any) => !p.roundAnswers?.[gameState?.currentRound] || Object.values(p.roundAnswers[gameState.currentRound]).every((a: any) => a.checked)) && (
+                        <p className="text-center text-gray-500 py-4 text-[10px] italic uppercase tracking-widest">Нет новых ответов</p>
                       )}
                     </div>
                   </div>
