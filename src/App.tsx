@@ -114,8 +114,8 @@ const roundsData: Round[] = [
     pauseDuration: 10,
     questions: [
       { text: "Что можно ответить на фразу 月が綺麗ですね (луна сегодня красивая)?", correctAnswer: "Настолько красивая, что можно умереть / Как и ты / Ты мне тоже нравишься" },
-      { text: "На каком этаже подземелья в аниме «Поднятие уровня в одиночку» главный герой встретил Элис Радиру?", correctAnswer: "100 этаж", image: "foto2/2.png" },
-      { text: "Сколько всего серий в сумме в САО (96), Бличе (418) и Дорохедоро (23)? (Разброс +-20)", correctAnswer: "537 серий" },
+      { text: "На каком этаже подземелья в аниме «Поднятие уровня в одиночку» главный герой встретил Элис Радиру?", correctAnswer: "80 этаж", image: "foto2/2.png" },
+      { text: "Сколько всего серий в сумме в САО , Бличе  и Дорохедоро  (Разброс +-20)", correctAnswer: "537 серий" },
       { text: "Назовите имя данной девушки на фотографии (Имя и Фамилия):", correctAnswer: "Уточните у админа", image: "foto2/4.png" },
       { text: "Назовите как минимум 2 персонажей из Редана (Геней Рёдан) из аниме «Хантер х Хантер»:", correctAnswer: "Куроро, Фейтан, Мачи, Хисока и др." },
       { text: "Как звали первого хокаге в аниме «Наруто»?", correctAnswer: "Хаширама Сенджу" },
@@ -134,7 +134,7 @@ const roundsData: Round[] = [
       { video: "video3/devushkitank3.mp4", correctAnswer: "Девушки и танки" },
       { video: "video3/voshoshdenievteni4.mp4", correctAnswer: "Восхождение в тени" },
       { video: "video3/feriteil5.mp4", correctAnswer: "Фейри Тейл" },
-      { video: "video3/mbvstrichy6.mp4", correctAnswer: "Межвидовые рецензенты" },
+      { video: "video3/mbvstrichy6.mp4", correctAnswer: "Может я встречу тебя в подземелье" },
       { video: "video3/angelofdeth7.mp4", correctAnswer: "Ангел кровопролития" },
       { video: "video3/stranachudes8.mp4", correctAnswer: "Страна чудес смертников" },
       { video: "video3/monolog9.mp4", correctAnswer: "Монолог фармацевта" },
@@ -181,6 +181,7 @@ const roundsData: Round[] = [
       { text: "Назовите имя персонажа", correctAnswer: "Сейджуру Акаши", image: "foto5/3.png" },
       { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
       { text: "Угадай кличку персонажа", correctAnswer: "Деку", image: "foto5/5.png" }
+ 
     ]
   },
   {
