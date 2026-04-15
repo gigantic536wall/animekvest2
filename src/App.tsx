@@ -77,7 +77,7 @@ const roundsData: Round[] = [
     answerTime: 15,
     pauseDuration: 5,
     questions: [
-      ...Array.from({ length: 9 }, (_, i) => ({
+      ...Array.from({ length: 8 }, (_, i) => ({
         text: `Тестовый вопрос ${i + 1} (Проверка звука и картинок)`,
         images: [`test/q${i + 1}_img1.jpg`, `test/q${i + 1}_img2.jpg`, `test/q${i + 1}_img3.jpg`, `test/q${i + 1}_img4.jpg`],
         video: `test/q${i + 1}_vid.mp4`,
@@ -85,8 +85,8 @@ const roundsData: Round[] = [
       })),
       {
         text: "Финальный тестовый вопрос (45 секунд)",
-        images: ["test/q10_img1.jpg", "test/q10_img2.jpg", "test/q10_img3.jpg", "test/q10_img4.jpg"],
-        video: "test/q10_vid.mp4",
+        images: ["test/q9_img1.jpg", "test/q9_img2.jpg", "test/q9_img3.jpg", "test/q9_img4.jpg"],
+        video: "test/q9_vid.mp4",
         correctAnswer: "Тест завершен",
         answerTime: 45
       }
@@ -178,12 +178,11 @@ const roundsData: Round[] = [
     answerTime: 45,
     pauseDuration: 10,
     questions: [
-      { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
+        { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
       { text: "Назови имя персонажа", correctAnswer: "Томпа из Хантер х Хантер", image: "foto5/2.png" },
       { text: "Назовите имя персонажа", correctAnswer: "Сейджуру Акаши", image: "foto5/3.png" },
       { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
       { text: "Угадай кличку персонажа", correctAnswer: "Деку", image: "foto5/5.png" },
-      { text: "Назовите ", correctAnswer: "gigantic563wall", image: "foto5/6.png" }
     ]
   },
   {
@@ -297,24 +296,17 @@ export default function App() {
   const testAudioRef = useRef<HTMLAudioElement>(null);
   const [isTestingSound, setIsTestingSound] = useState(false);
 
-  // ==================== VOLUME & PLAY LOGIC ====================
+  // ==================== VOLUME LOGIC ====================
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.volume = volume;
       videoRef.current.muted = isMuted;
-      
-      // Force play when source changes or state becomes active
-      if (gameState?.active || gameState?.revealMode) {
-        videoRef.current.load();
-        const playPromise = videoRef.current.play();
-        if (playPromise !== undefined) {
-          playPromise.catch(error => {
-            console.warn("Auto-play was prevented:", error);
-          });
-        }
-      }
     }
-  }, [volume, isMuted, gameState?.currentQuestion, gameState?.currentRound, gameState?.active, gameState?.revealMode]);
+    if (testAudioRef.current) {
+      testAudioRef.current.volume = volume;
+      testAudioRef.current.muted = isMuted;
+    }
+  }, [volume, isMuted, gameState?.currentQuestion, gameState?.revealMode]);
 
   // ==================== SESSION RESTORE ====================
   useEffect(() => {
@@ -794,12 +786,9 @@ export default function App() {
                 <div className="aspect-video bg-black rounded-2xl overflow-hidden border-2 border-white/20">
                   <video 
                     ref={videoRef}
-                    key={roundsData[gameState.currentRound].questions[gameState.currentQuestion].video}
                     src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].video || "")} 
                     autoPlay 
                     muted={isMuted}
-                    playsInline
-                    preload="auto"
                     className="w-full h-full"
                   />
                 </div>
@@ -823,12 +812,10 @@ export default function App() {
               <div className="aspect-video bg-black rounded-2xl overflow-hidden border-2 border-white/20">
                 <video 
                   ref={videoRef}
-                  key={roundsData[gameState.currentRound].questions[gameState.currentQuestion].video}
+                  key={gameState.currentQuestion}
                   src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].video || "")} 
                   autoPlay 
                   muted={isMuted}
-                  playsInline
-                  preload="auto"
                   className="w-full h-full"
                 />
               </div>
@@ -1068,15 +1055,11 @@ export default function App() {
                         {currentQuestion.video ? (
                           <video 
                             ref={videoRef}
-                            key={currentQuestion.video}
                             src={getAssetPath(currentQuestion.video)} 
                             autoPlay 
-                            muted={isMuted}
-                            playsInline
-                            preload="auto"
                             className="w-full h-full object-cover"
                             onError={(e) => {
-                              console.warn("Test video failed to load:", currentQuestion.video);
+                              console.warn("Test video failed to load");
                             }}
                           />
                         ) : (
@@ -1231,14 +1214,11 @@ export default function App() {
                     <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl relative">
                       <video 
                         ref={videoRef}
-                        key={currentQuestion.video}
                         src={getAssetPath(currentQuestion.video || "")}
                         className="w-full h-full"
                         controls={user.isAdmin}
                         autoPlay
                         muted={isMuted}
-                        playsInline
-                        preload="auto"
                       />
                     </div>
 
