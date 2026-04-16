@@ -175,7 +175,7 @@ const roundsData: Round[] = [
   {
     type: "rebus",
     name: "Раунд 5: Ребусы",
-    answerTime: 10,
+    answerTime: 45,
     pauseDuration: 10,
     questions: [
       { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
