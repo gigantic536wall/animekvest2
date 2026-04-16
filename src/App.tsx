@@ -178,11 +178,6 @@ const roundsData: Round[] = [
     answerTime: 45,
     pauseDuration: 10,
     questions: [
-    { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
-      { text: "Назови имя персонажа", correctAnswer: "Томпа из Хантер х Хантер", image: "foto5/2.png" },
-      { text: "Назовите имя персонажа", correctAnswer: "Сейджуру Акаши", image: "foto5/3.png" },
-      { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
-      { text: "Угадай кличку персонажа", correctAnswer: "Деку", image: "foto5/5.png" },
       { text: "Назовите ", correctAnswer: "gigantic563wall", image: "foto5/6.png" }
     ]
   },
@@ -273,9 +268,12 @@ export default function App() {
 
   const getPlayerScore = (p: any) => {
     if (!p) return 0;
-    let total = p.score || 0;
-    if (p.scores) {
-      total = Object.values(p.scores).reduce((acc: number, val: any) => acc + (val || 0), 0);
+    let total = 0;
+    if (typeof p.score === 'number') total += p.score;
+    if (p.scores && typeof p.scores === 'object') {
+      Object.values(p.scores).forEach((val: any) => {
+        total += (Number(val) || 0);
+      });
     }
     return total;
   };
@@ -425,6 +423,9 @@ export default function App() {
         }
       } catch (e) {
         console.error("Error checking answer:", e);
+        // On error, assume not answered to avoid getting stuck
+        setHasAnswered(false);
+        setAnswerText("");
       }
     };
     checkAnswered();
@@ -467,29 +468,38 @@ export default function App() {
   };
 
   const resetGame = async () => {
-    if (!confirm("Вы уверены, что хотите полностью сбросить игру? Все баллы будут удалены!")) return;
+    if (!confirm("Вы уверены, что хотите полностью сбросить игру? Все баллы и ответы будут удалены!")) return;
     
-    // Reset scores for all players
+    // Reset scores and answers for all players
     const resetPlayers = { ...players };
     Object.keys(resetPlayers).forEach(id => {
       resetPlayers[id].score = 0;
       resetPlayers[id].scores = {};
+      resetPlayers[id].roundAnswers = {};
     });
+    
     await restPut('players', resetPlayers);
     
-    // Reset game state
+    // Reset game state and trigger a global reset for clients
     await restPut('gameState', {
       active: false,
       currentRound: 0,
       currentQuestion: 0,
       roundFinished: false,
       revealMode: false,
-      showLeaderboard: false
+      showLeaderboard: false,
+      reset: true // Trigger client-side reload
     });
     
-    // Clear queue
-    await restDelete('review');
-    await restDelete('pause');
+    // Clear queue and other states
+    await restDelete('gameState/pause');
+    await restDelete('gameState/answersReview');
+    await restDelete('gameState/globalPause');
+
+    // Turn off reset flag after a short delay
+    setTimeout(async () => {
+      await restPatch('gameState', { reset: false });
+    }, 2000);
   };
 
   const toggleLeaderboard = async () => {
@@ -605,14 +615,14 @@ export default function App() {
     await restPatch('gameState', { showAnswer: !gameState.showAnswer });
   };
 
-  const markAnswer = async (playerId: string, qKey: string, points: number) => {
+  const markAnswer = async (playerId: string, roundIdx: number, qKey: string, points: number) => {
     const p = players[playerId];
     if (p) {
       // Use a sub-path for each question to avoid race conditions on the total score
-      const scoreKey = `${gameState.currentRound}_${qKey}`;
+      const scoreKey = `${roundIdx}_${qKey}`;
       await restPut(`players/${playerId}/scores/${scoreKey}`, points);
       // Mark as checked instead of deleting to keep history
-      await restPatch(`players/${playerId}/roundAnswers/${gameState.currentRound}/${qKey}`, { checked: true });
+      await restPatch(`players/${playerId}/roundAnswers/${roundIdx}/${qKey}`, { checked: true });
     }
   };
 
@@ -1023,13 +1033,13 @@ export default function App() {
                             </div>
                             <div className="flex gap-1 ml-2">
                               <button 
-                                onClick={() => markAnswer(id, qKey, ans.potentialPoints || 2)} 
+                                onClick={() => markAnswer(id, gameState.currentRound, qKey, ans.potentialPoints || 2)} 
                                 className="p-1.5 hover:bg-green-500 rounded-lg text-green-400 hover:text-white transition-all"
                               >
                                 <CheckCircle2 className="w-4 h-4" />
                               </button>
                               <button 
-                                onClick={() => markAnswer(id, qKey, 0)} 
+                                onClick={() => markAnswer(id, gameState.currentRound, qKey, 0)} 
                                 className="p-1.5 hover:bg-red-500 rounded-lg text-red-400 hover:text-white transition-all"
                               >
                                 <XCircle className="w-4 h-4" />
@@ -1822,6 +1832,32 @@ export default function App() {
                   <RotateCcw className="w-5 h-5" /> СБРОСИТЬ ИГРУ
                 </button>
               </div>
+
+              <div className="mt-4">
+                <button 
+                  onClick={async () => {
+                    setPreloaderStatus("🔄 Пересчет баллов...");
+                    try {
+                      const res = await restGet('players');
+                      const allPlayers = res.data || {};
+                      for (const [id, p] of Object.entries(allPlayers) as [string, any][]) {
+                        const total = getPlayerScore(p);
+                        // We don't necessarily need to write back, but we can ensure 
+                        // that the local state is fully updated.
+                        console.log(`Player ${p.nickname}: ${total} points`);
+                      }
+                      setPlayers(allPlayers);
+                      setPreloaderStatus("✅ Баллы синхронизированы");
+                      setTimeout(() => setPreloaderStatus(""), 2000);
+                    } catch (e) {
+                      setPreloaderStatus("❌ Ошибка синхронизации");
+                    }
+                  }}
+                  className="w-full bg-white/5 hover:bg-white/10 py-3 rounded-xl font-bold text-xs uppercase tracking-widest border border-white/10 transition-all flex items-center justify-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-green-400" /> Проверить и синхронизировать баллы
+                </button>
+              </div>
               <div className="mt-8">
                 <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">Очередь ответов (Раунд {gameState?.currentRound + 1}):</h4>
                 <div className="max-h-80 overflow-y-auto space-y-2">
@@ -1849,14 +1885,14 @@ export default function App() {
                         </div>
                         <div className="flex gap-2 ml-4">
                           <button 
-                            onClick={() => markAnswer(id, qKey, ans.potentialPoints || 2)} 
+                            onClick={() => markAnswer(id, gameState.currentRound, qKey, ans.potentialPoints || 2)} 
                             className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
                           >
                             <CheckCircle2 className="text-green-500 w-5 h-5" />
                             <span className="text-[10px] font-bold">+{ans.potentialPoints || 2}</span>
                           </button>
                           <button 
-                            onClick={() => markAnswer(id, qKey, -1)} 
+                            onClick={() => markAnswer(id, gameState.currentRound, qKey, -1)} 
                             className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
                           >
                             <XCircle className="text-red-500 w-5 h-5" />
