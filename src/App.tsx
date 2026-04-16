@@ -175,9 +175,14 @@ const roundsData: Round[] = [
   {
     type: "rebus",
     name: "Раунд 5: Ребусы",
-    answerTime: 45,
+    answerTime: 10,
     pauseDuration: 10,
     questions: [
+      { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
+      { text: "Назови имя персонажа", correctAnswer: "Томпа из Хантер х Хантер", image: "foto5/2.png" },
+      { text: "Назовите имя персонажа", correctAnswer: "Сейджуру Акаши", image: "foto5/3.png" },
+      { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
+      { text: "Угадай кличку персонажа", correctAnswer: "Деку", image: "foto5/5.png" },
       { text: "Назовите ", correctAnswer: "gigantic563wall", image: "foto5/6.png" }
     ]
   },
