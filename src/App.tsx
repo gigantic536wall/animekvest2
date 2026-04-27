@@ -79,39 +79,39 @@ const roundsData: Round[] = [
     questions: [
       ...Array.from({ length: 8 }, (_, i) => ({
         text: `Проверочный вопрос №${i + 1} (Настройка оборудования)`,
-        images: [`test/v${i + 1}_1.jpg`, `test/v${i + 1}_2.jpg`, `test/v${i + 1}_3.jpg`, `test/v${i + 1}_4.jpg`],
-        video: `test/v${i + 1}_vid.mp4`,
+        images: [`/test/v${i + 1}_1.jpg`, `/test/v${i + 1}_2.jpg`, `/test/v${i + 1}_3.jpg`, `/test/v${i + 1}_4.jpg`],
+        video: `/test/v${i + 1}_vid.mp4`,
         correctAnswer: "Проверка"
       })),
       {
         text: "Финальная проверка связи (60 секунд)",
-        images: ["test/final_1.jpg", "test/final_2.jpg", "test/final_3.jpg", "test/final_4.jpg"],
-        video: "test/final_vid.mp4",
+        images: ["/test/final_1.jpg", "/test/final_2.jpg", "/test/final_3.jpg", "/test/final_4.jpg"],
+        video: "/test/final_vid.mp4",
         correctAnswer: "Готовы к игре",
         answerTime: 60
       }
     ]
   },
-  { 
-    type: "image_sequence", 
-    name: "Раунд 1: Облик истории", 
+  {
+    type: "image_sequence",
+    name: "Раунд 1: Облик истории",
     answerTime: 36,
     questions: [
-      { images: ["public/foto1/image1-1.png", "public/foto1/image1-2.png", "public/foto1/image1-3.png", "public/foto1/image1-4.png"], correctAnswer: "Атака титанов" },
-      { images: ["public/foto1/image2-1.png", "public/foto1/image2-2.png", "public/foto1/image2-3.png", "public/foto1/image2-4.png"], correctAnswer: "Крутой учитель Онидзука" },
-      { images: ["public/foto1/image3-1.png", "public/foto1/image3-2.png", "public/foto1/image3-3.png", "public/foto1/image3-4.png"], correctAnswer: "Код Гиас" },
-      { images: ["public/foto1/image4-1.png", "public/foto1/image4-2.png", "public/foto1/image4-3.png", "public/foto1/image4-4.png"], correctAnswer: "Берсерк" },
-      { images: ["public/foto1/image5-1.png", "public/foto1/image5-2.png", "public/foto1/image5-3.png", "public/foto1/image5-4.png"], correctAnswer: "Блич" },
-      { images: ["public/foto1/image6-1.png", "public/foto1/image6-2.png", "public/foto1/image6-3.png", "public/foto1/image6-4.png"], correctAnswer: "Звёздное Дитя" },
-      { images: ["public/foto1/image7-1.png", "public/foto1/image7-2.png", "public/foto1/image7-3.png", "public/foto1/image7-4.png"], correctAnswer: "Сага О Винланде" },
-      { images: ["public/foto1/image8-1.png", "public/foto1/image8-2.png", "public/foto1/image8-3.png", "public/foto1/image8-4.png"], correctAnswer: "Твоя Апрельская Ложь" },
-      { images: ["public/foto1/image9-1.png", "public/foto1/image9-2.png", "public/foto1/image9-3.png", "public/foto1/image9-4.png"], correctAnswer: "Рубеж Шангри-Ла" },
-      { images: ["public/foto1/image10-1.png", "public/foto1/image10-2.png", "public/foto1/image10-3.png", "public/foto1/image10-4.png"], correctAnswer: "Шаман Кинг" }
+      { images: ["/foto1/image1-1.png", "/foto1/image1-2.png", "/foto1/image1-3.png", "/foto1/image1-4.png"], correctAnswer: "Атака титанов" },
+      { images: ["/foto1/image2-1.png", "/foto1/image2-2.png", "/foto1/image2-3.png", "/foto1/image2-4.png"], correctAnswer: "Крутой учитель Онидзука" },
+      { images: ["/foto1/image3-1.png", "/foto1/image3-2.png", "/foto1/image3-3.png", "/foto1/image3-4.png"], correctAnswer: "Код Гиас" },
+      { images: ["/foto1/image4-1.png", "/foto1/image4-2.png", "/foto1/image4-3.png", "/foto1/image4-4.png"], correctAnswer: "Берсерк" },
+      { images: ["/foto1/image5-1.png", "/foto1/image5-2.png", "/foto1/image5-3.png", "/foto1/image5-4.png"], correctAnswer: "Блич" },
+      { images: ["/foto1/image6-1.png", "/foto1/image6-2.png", "/foto1/image6-3.png", "/foto1/image6-4.png"], correctAnswer: "Звёздное Дитя" },
+      { images: ["/foto1/image7-1.png", "/foto1/image7-2.png", "/foto1/image7-3.png", "/foto1/image7-4.png"], correctAnswer: "Сага О Винланде" },
+      { images: ["/foto1/image8-1.png", "/foto1/image8-2.png", "/foto1/image8-3.png", "/foto1/image8-4.png"], correctAnswer: "Твоя Апрельская Ложь" },
+      { images: ["/foto1/image9-1.png", "/foto1/image9-2.png", "/foto1/image9-3.png", "/foto1/image9-4.png"], correctAnswer: "Рубеж Шангри-Ла" },
+      { images: ["/foto1/image10-1.png", "/foto1/image10-2.png", "/foto1/image10-3.png", "/foto1/image10-4.png"], correctAnswer: "Шаман Кинг" }
     ]
   },
-  { 
-    type: "mixed_text", 
-    name: "Раунд 2: Общие знания", 
+  {
+    type: "mixed_text",
+    name: "Раунд 2: Общие знания",
     answerTime: 30,
     pauseDuration: 10,
     questions: [
@@ -119,12 +119,12 @@ const roundsData: Round[] = [
       { text: "История рассказывает о двух людях, которые случайно оказались в эпицентре инопланетного инцидента в парке. Их тела были уничтожены и воссозданы пришельцами в виде мощных боевых киборгов.", correctAnswer: "Инуясики" },
       { text: "Действие разворачивается в 1998 году в городе Ёмияма. Пятнадцатилетний Коити Сакакибара переводится в класс средней школы, над которым тяготеет проклятие, начавшееся 26 лет назад после загадочной смерти популярной ученицы.", correctAnswer: "Иная" },
       { text: "Главный герой, обычный парень, заводит дружбу с Уми — девушкой в классе. В то время как «первая красавица» всегда находится в центре внимания, Уми предпочитает быть собой только наедине с героем. Их отношения строятся на общих интересах (например, видеоиграх) и уютных посиделках после школы.", correctAnswer: "Я подружился со второй самой симпатичной девушкой в классе" },
-      { text: "Из какого аниме персонаж?", image: "public/foto2/image2-2-5.png", correctAnswer: "Мир Лидейл" },
+      { text: "Из какого аниме персонаж?", image: "/foto2/image2-2-5.png", correctAnswer: "Мир Лидейл" },
       { text: "Аниме по биографии: 13-летняя девочка, которая приходит в сознание в подвале загадочного здания, не помня, как там оказалась. Постепенно выясняется, что она является Хозяином нижнего этажа B1. Позже раскрывается её истинное прошлое: она дочь культистов, чья настоящая личность скрывается за именем убитой во время ритуала девочки.", correctAnswer: "Ангел кровопролития" },
-      { text: "Из какого аниме персонажи?", image: "public/foto2/image2-2-7.png", correctAnswer: "Хочу съесть твою поджелудочную" },
+      { text: "Из какого аниме персонажи?", image: "/foto2/image2-2-7.png", correctAnswer: "Хочу съесть твою поджелудочную" },
       { text: "По описанию места где проиходят главные события. Империя: Некогда процветающее государство, которое к началу событий погрязло в коррупции и беззаконии. Власть сосредоточена в руках юного императора, однако на деле страной управляет алчный Премьер-министр Онест, манипулирующий правителем в своих интересах.", correctAnswer: "Убийца Акаме" },
       { text: "Назовите аниме по описанию сестры главного героя: Сестра очень нежная, веселая, добрая и по-детски наивная. Она обожает панд и сильно привязана к своему брату.", correctAnswer: "Этот глупый свинья не понимает мечту девочки-зайки" },
-      { text: "Назовите аниме по персонажу?", image: "public/foto2/image2-2-7.png", correctAnswer: "Невеста Герцога По Контракту" }
+      { text: "Назовите аниме по персонажу?", image: "/foto2/image2-2-7.png", correctAnswer: "Невеста Герцога По Контракту" }
     ]
   },
   {
@@ -133,20 +133,20 @@ const roundsData: Round[] = [
     answerTime: 60,
     pauseDuration: 10,
     questions: [
-      { text: "Вопрос по видео ", video: "public/video3/3r1.mp4", correctAnswer: "Первородный грех Такопи" },
-      { text: "Вопрос по видео ", video: "public/video3/3r2.mp4", correctAnswer: "Блич" },
-      { text: "Вопрос по видео ", video: "public/video3/3r3.mp4", correctAnswer: "Стальной Алхимик" },
-      { text: "Вопрос по видео ", video: "public/video3/3r4.mp4", correctAnswer: "Тетрадь Смерти" },
-      { text: "Вопрос по видео ", video: "public/video3/3r5.mp4", correctAnswer: "Герой Щита" },
-      { text: "Вопрос по видео ", video: "public/video3/3r6.mp4", correctAnswer: "Баскетбол Куроко" },
-      { text: "Вопрос по видео ", video: "public/video3/3r7.mp4", correctAnswer: "Хеллсинг" },
-      { text: "Вопрос по видео ", video: "public/video3/3r8.mp4", correctAnswer: "Создано В Бездне" },
-      { text: "Вопрос по видео ", video: "public/video3/3r9.mp4", correctAnswer: "RE:Zero" },
-      { text: "Вопрос по видео ", video: "public/video3/3r10.mp4", correctAnswer: "ДХД" }
+      { text: "Вопрос по видео ", video: "/video3/3r1.mp4", correctAnswer: "Первородный грех Такопи" },
+      { text: "Вопрос по видео ", video: "/video3/3r2.mp4", correctAnswer: "Блич" },
+      { text: "Вопрос по видео ", video: "/video3/3r3.mp4", correctAnswer: "Стальной Алхимик" },
+      { text: "Вопрос по видео ", video: "/video3/3r4.mp4", correctAnswer: "Тетрадь Смерти" },
+      { text: "Вопрос по видео ", video: "/video3/3r5.mp4", correctAnswer: "Герой Щита" },
+      { text: "Вопрос по видео ", video: "/video3/3r6.mp4", correctAnswer: "Баскетбол Куроко" },
+      { text: "Вопрос по видео ", video: "/video3/3r7.mp4", correctAnswer: "Хеллсинг" },
+      { text: "Вопрос по видео ", video: "/video3/3r8.mp4", correctAnswer: "Создано В Бездне" },
+      { text: "Вопрос по видео ", video: "/video3/3r9.mp4", correctAnswer: "RE:Zero" },
+      { text: "Вопрос по видео ", video: "/video3/3r10.mp4", correctAnswer: "ДХД" }
     ]
   },
   {
-    type: "test_round",
+    type: "mixed_text",
     name: "Раунд 4: Цифровой раунд",
     answerTime: 20,
     pauseDuration: 5,
@@ -154,7 +154,7 @@ const roundsData: Round[] = [
       { text: "Сколько теней управляет «Садом теней»? (Восхождение в тени)", correctAnswer: "7" },
       { text: "Сколько лет главному герою в «Необъятном океане»? (В начале сериала)", correctAnswer: "20" },
       { text: "Сколько высших драконов было под началом Алтиматии на начало аниме «Рагна Багровый»?", correctAnswer: "13" },
-      { text: "Какое число содержит это аниме:", image: "public/foto4/image2-4-2.png", correctAnswer: "91" },
+      { text: "Какое число содержит это аниме:", image: "/foto4/image2-4-2.png", correctAnswer: "91" },
       { text: "Сколько лет Рокси Мигурдии из «Реинкарнация безработного» на момент первого появления в аниме?", correctAnswer: "37" },
       { text: "Сколько золотых зодиакальных ключей в аниме «Фейри Тейл»?", correctAnswer: "12" },
       { text: "За сколько дней Ичиго освоил банкай в аниме «Блич»?", correctAnswer: "3" },
@@ -179,11 +179,11 @@ const roundsData: Round[] = [
     answerTime: 30,
     pauseDuration: 10,
     questions: [
-      { text: "Ребус 1", image: "public/foto5/5-1.png", correctAnswer: "Паразит" },
-      { text: "Ребус 2", image: "public/foto5/5-2.png", correctAnswer: "Черный Клевер" },
-      { text: "Ребус 3", image: "public/foto5/2-3.png", correctAnswer: "Рейтинг Короля" },
-      { text: "Ребус 4", image: "public/foto5/5-1-1.png", correctAnswer: "Кланнад" },
-      { text: "Ребус 5", image: "public/foto5/5-5.png", correctAnswer: "Розовая Пора Моей Школьной Жизни Сплошной Обман" }
+      { text: "Ребус 1", image: "/foto5/5-1.png", correctAnswer: "Паразит" },
+      { text: "Ребус 2", image: "/foto5/5-2.png", correctAnswer: "Черный Клевер" },
+      { text: "Ребус 3", image: "/foto5/2-3.png", correctAnswer: "Рейтинг Короля" },
+      { text: "Ребус 4", image: "/foto5/5-1-1.png", correctAnswer: "Кланнад" },
+      { text: "Ребус 5", image: "/foto5/5-5.png", correctAnswer: "Розовая Пора Моей Школьной Жизни Сплошной Обман" }
     ]
   },
   {
@@ -198,7 +198,7 @@ const roundsData: Round[] = [
       { description: "История о четырех молодых девушках, чьи судьбы переплетаются через любовь к музыке и таинственное радиовещание. Обычный парень становится их проводником в мир шоу-бизнеса, помогая раскрыть таланты каждой под аккорды полуночных мелодий.", correctAnswer: "Полуночный мотив сердца" },
       { description: "Кэйити переезжает в деревню Хинамидзава, где всё кажется мирным. Однако во время фестиваля Ватанагаси начинают происходить загадочные смерти. Герой понимает, что его новые подруги скрывают нечто жуткое, а реальность начинает искажаться в кровавом цикле.", correctAnswer: "Когда плачут цикады" },
       { description: "Парень, мечтающий стать мастером кукол хина, встречает популярную красавицу Марину. Оказывается, она обожает косплей, но совершенно не умеет шить костюмы. Вмезе они погружаются в мир рукоделия, сближаясь через общее хобби.", correctAnswer: "Эта фарфоровая кукла влюбилась" },
-      { description: "Эльфийка-маг  вместе с отрядом героев победила Короля Демонов. Будучи почти бессмертной, она видит, как её товарищи стареют и уходят. Спустя десятилетия она отправляется в новое путешествие, чтобы понять ценность времени и человеческих чувств.", correctAnswer: "Провожающая в последний путь Фрирен" },
+      { description: "Эльфийка-маг вместе с отрядом героев победила Короля Демонов. Будучи почти бессмертной, она видит, как её товарищи стареют и уходят. Спустя десятилетия она отправляется в новое путешествие, чтобы понять ценность времени и человеческих чувств.", correctAnswer: "Провожающая в последний путь Фрирен" },
       { description: "Бессмертное существо, способное принимающее облик того, что его впечатлило. Начав как камень, оно встречается с людьми, познавая радость и боль земного существования через их потери, мечты и бескочную смену поколений.", correctAnswer: "Для тебя, Бессмертный" },
       { description: "Девочка-детектив из академии в маленьком европейском государстве и японский студент распутывают мрачные тайны и легенды. Она обладает острым умом и живет в библиотеке, окутанная атмосферой готических мифов и заговоров.", correctAnswer: "Готика" },
       { description: "красавица с русскими корнями, которая часто бормочет свои искренние чувства на русском языке, думая, что её никто не понимает. Но Масачика, сидящий за соседней партой, прекрасно знает русский и слушает её признания втайне.", correctAnswer: "Аля иногда кокетничает со мной по-русски" },
@@ -220,16 +220,16 @@ const roundsData: Round[] = [
     answerTime: 30,
     pauseDuration: 10,
     questions: [
-      { text: "Угадай аниме по силуэту ", image: "public/foto7/foto7-1.png", correctAnswer: "Твоя апрельская ложь" },
-      { text: "Угадай аниме по силуэту ", image: "public/foto7/foto7-2.png", correctAnswer: "Невеста чародея" },
-      { text: "Угадай аниме по силуэту ", image: "public/foto7/foto7-3.png", correctAnswer: "Ох уж этот экстрасенс Сайки Кусуо!" },
-      { text: "Угадай аниме по силуэту ", image: "public/foto7/foto7-4.png", correctAnswer: "Дракониха-горничная госпожи Кобаяси" },
-      { text: "Угадай аниме по силуэту ", image: "public/foto7/foto7-5.png", correctAnswer: "Пламенная бригада пожарных!" },
-      { text: "Угадай аниме по силуэту ", image: "public/foto7/foto7-6.png", correctAnswer: "Этот глупый свин не понимает мечту девочки-зайки" },
-      { text: "Угадай аниме по силуэту ", image: "public/foto7/foto7-7.png", correctAnswer: "Моя геройская академия" },
-      { text: "Угадай аниме по силуэту ", image: "public/foto7/foto7-8.png", correctAnswer: "Danganronpa" },
-      { text: "Угадай аниме по силуэту ", image: "public/foto7/foto7-9.png", correctAnswer: "Hunter × Hunter" },
-      { text: "Угадай аниме по силуэту ", image: "public/foto7/foto7-10.png", correctAnswer: "Наруто" }
+      { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-1.png", correctAnswer: "Твоя апрельская ложь" },
+      { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-2.png", correctAnswer: "Невеста чародея" },
+      { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-3.png", correctAnswer: "Ох уж этот экстрасенс Сайки Кусуо!" },
+      { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-4.png", correctAnswer: "Дракониха-горничная госпожи Кобаяси" },
+      { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-5.png", correctAnswer: "Пламенная бригада пожарных!" },
+      { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-6.png", correctAnswer: "Этот глупый свин не понимает мечту девочки-зайки" },
+      { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-7.png", correctAnswer: "Моя геройская академия" },
+      { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-8.png", correctAnswer: "Danganronpa" },
+      { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-9.png", correctAnswer: "Hunter × Hunter" },
+      { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-10.png", correctAnswer: "Наруто" }
     ]
   },
   {
@@ -243,7 +243,7 @@ const roundsData: Round[] = [
       { text: "«Тогда, что есть «победа»? Неважно, сколько очков ты наберешь к концу игры, если ты не счастлив, то это не победа.»", correctAnswer: "Баскетбол Куроко (Kuroko no Basket)" },
       { text: "«В этом мире нет ни правды, ни лжи. Есть только факты. И по ошибке мы верим лишь тем фактам, которые нам нравятся. Другого способа жить мы не знаем.»", correctAnswer: "Блич (Bleach)" },
       { text: "«Любовь — это готовность создать иллюзию, чтобы жить в реальности.»", correctAnswer: "Гинтама (Gintama)" },
-      { text: "«Терпеть не могу добрых девушек. Стоит с ней поздороваться, и не идёт из головы, начнёт переписываться, западёт в сердце. А уж вдруг позвонит, будешь раз за разом заглядывать в список входящих не в силах сдержать улыбки. Но я уже это проходил, вот что такое доброта... Если кто-то добр ко мне, как и к остальным, я сам замечаю, как начинаю забывать... Раз за разом надеешься, каждый раз обжигаешься и сам не замечаешь, как теряешь надежду.»", correctAnswer: "Как и ожидалось, моя школьная романтическая жизнь не удалась (Oregairu)" },
+      { text: "«Терпеть не моху добрых девушек. Стоит с ней поздороваться, и не идёт из головы, начнёт переписываться, западёт в сердце...»", correctAnswer: "Как и ожидалось, моя школьная романтическая жизнь не удалась (Oregairu)" },
       { text: "«Выражение «Я боюсь себе даже представить» — в корне неверно. Ведь люди боятся, потому что представляют.»", correctAnswer: "Пожиратель душ (Soul Eater)" },
       { text: "«Книги прекрасны, не так ли? Прочтя всего одно предложение, можно сразу погрязнуть в мечтах. Думаю, читатель видит и чувствует куда больше, чем автор.»", correctAnswer: "Токийский гуль (Tokyo Ghoul)" },
       { text: "«Человек не может жить, когда вокруг нет других людей. Человек не может выжить в одиночестве. Поэтому ты хочешь любви и физического присутствия.»", correctAnswer: "Евангелион (Evangelion)" },
@@ -604,8 +604,8 @@ export default function App() {
       potentialPoints = 2;
     }
 
-    if (round.type === "description_guess") {
-      potentialPoints = 1;
+    if (round.type === "character_guess" || round.type === "description_guess") {
+      potentialPoints = 2;
     }
 
     if (round.type === "rebus") {
@@ -954,12 +954,21 @@ export default function App() {
             )}
 
             {roundsData[gameState.currentRound]?.type === "character_guess" && (
-              <div className="max-w-md mx-auto">
-                <img 
-                  key={gameState.currentQuestion}
-                  src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].image || "")} 
-                  className="rounded-2xl border-2 border-white/20 shadow-2xl max-h-[40vh] mx-auto" 
-                />
+              <div className="max-w-4xl mx-auto space-y-6">
+                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].image && (
+                  <div className="max-w-md mx-auto">
+                    <img 
+                      key={gameState.currentQuestion}
+                      src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].image || "")} 
+                      className="rounded-2xl border-2 border-white/20 shadow-2xl max-h-[40vh] mx-auto" 
+                    />
+                  </div>
+                )}
+                <div className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-2xl">
+                  <p className="text-xl italic text-gray-300 leading-relaxed">
+                    "{roundsData[gameState.currentRound].questions[gameState.currentQuestion].description}"
+                  </p>
+                </div>
               </div>
             )}
 
@@ -1413,29 +1422,31 @@ export default function App() {
                 {/* Round 4 Content */}
                 {round.type === "character_guess" && (
                   <div className="space-y-6">
-                    <div className="grid md:grid-cols-2 gap-8 items-center">
-                      <div className="relative group">
-                        <img 
-                          src={getAssetPath(currentQuestion.image || "")} 
-                          alt="Character" 
-                          className="w-full h-auto rounded-2xl shadow-2xl border-4 border-white/10"
-                          onError={(e) => { 
-                            console.warn(`Failed to load image: ${currentQuestion.image}`);
-                            (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}/800/600`; 
-                          }}
-                        />
-                        <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded-full text-sm">Вопрос {currentQIdx + 1}</div>
-                      </div>
+                    <div className={`${currentQuestion.image ? 'grid md:grid-cols-2 gap-8 items-center' : 'max-w-3xl mx-auto text-center'}`}>
+                      {currentQuestion.image && (
+                        <div className="relative group">
+                          <img 
+                            src={getAssetPath(currentQuestion.image || "")} 
+                            alt="Character" 
+                            className="w-full h-auto rounded-2xl shadow-2xl border-4 border-white/10"
+                            onError={(e) => { 
+                              console.warn(`Failed to load image: ${currentQuestion.image}`);
+                              (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}/800/600`; 
+                            }}
+                          />
+                          <div className="absolute top-4 left-4 bg-black/60 px-3 py-1 rounded-full text-sm">Вопрос {currentQIdx + 1}</div>
+                        </div>
+                      )}
                       <div className="space-y-4">
-                        <div className="char-description">
-                          <p className="text-gray-400 text-sm mb-2 uppercase tracking-widest">Описание персонажа:</p>
-                          <p className="text-lg leading-relaxed italic">
+                        <div className="char-description bg-white/5 p-6 rounded-2xl border border-white/10">
+                          <p className="text-gray-400 text-sm mb-2 uppercase tracking-widest">Описание:</p>
+                          <p className="text-xl md:text-2xl leading-relaxed italic font-medium">
                             "{currentQuestion.description}"
                           </p>
                         </div>
                         
                         {!user.isAdmin && (
-                          <div className="space-y-4">
+                          <div className="space-y-4 max-w-md mx-auto">
                             <input 
                               type="text"
                               className="answer-input w-full"
@@ -1705,7 +1716,7 @@ export default function App() {
                     
                     {!user.isAdmin && (
                       <div className="max-w-md mx-auto space-y-4">
-                        {gameState.currentRound === 7 && !hasAnswered && (
+                        {roundsData[gameState.currentRound]?.name.includes("Дабл-раунд") && !hasAnswered && (
                           <button
                             onClick={() => setIsDoubleChoice(!isDoubleChoice)}
                             className={`w-full py-3 rounded-2xl font-bold border-2 transition-all flex items-center justify-center gap-2 ${
