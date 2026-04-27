@@ -78,122 +78,115 @@ const roundsData: Round[] = [
     pauseDuration: 5,
     questions: [
       ...Array.from({ length: 8 }, (_, i) => ({
-        text: `Тестовый вопрос ${i + 1} (Проверка звука и картинок)`,
-        images: [`test/q${i + 1}_img1.jpg`, `test/q${i + 1}_img2.jpg`, `test/q${i + 1}_img3.jpg`, `test/q${i + 1}_img4.jpg`],
-        video: `test/q${i + 1}_vid.mp4`,
-        correctAnswer: "Тест пройден"
+        text: `Проверочный вопрос №${i + 1} (Настройка оборудования)`,
+        images: [`test/v${i + 1}_1.jpg`, `test/v${i + 1}_2.jpg`, `test/v${i + 1}_3.jpg`, `test/v${i + 1}_4.jpg`],
+        video: `test/v${i + 1}_vid.mp4`,
+        correctAnswer: "Проверка"
       })),
       {
-        text: "Финальный тестовый вопрос (45 секунд)",
-        images: ["test/q9_img1.jpg", "test/q9_img2.jpg", "test/q9_img3.jpg", "test/q9_img4.jpg"],
-        video: "test/q9_vid.mp4",
-        correctAnswer: "Тест завершен",
-        answerTime: 45
+        text: "Финальная проверка связи (60 секунд)",
+        images: ["test/final_1.jpg", "test/final_2.jpg", "test/final_3.jpg", "test/final_4.jpg"],
+        video: "test/final_vid.mp4",
+        correctAnswer: "Готовы к игре",
+        answerTime: 60
       }
     ]
   },
   { 
     type: "image_sequence", 
-    name: "Раунд 1: Угадай аниме по картинке", 
-    answerTime: 36, // 8+8+8+12
+    name: "Раунд 1: Облик истории", 
+    answerTime: 36,
     questions: [
-      { images: ["foto1/image1.png", "foto1/image2.png", "foto1/image3.png", "foto1/image4.png"], correctAnswer: "Реинкарнация безработного" },
-      { images: ["foto1/image1маг.png", "foto1/image2маг.png", "foto1/image3маг.png", "foto1/image4маг.png"], correctAnswer: "Магическая битва " },
-      { images: ["foto1/image1невест.png", "foto1/image2невест.png", "foto1/image3невест.png", "foto1/image4невест.png"], correctAnswer: "Пять невест" },
-      { images: ["foto1/images1джо.jpg", "foto1/images2джо.jpg", "foto1/images3джо.jpg", "foto1/images4джо.jpg"], correctAnswer: "ДжоДжо" },
-      { images: ["foto1/image1angel.png", "foto1/image2angel.png", "foto1/image3angel.png", "foto1/image4angel.png"], correctAnswer: "Ангел по соседству меня балует" },
-      { images: ["foto1/image1грех.png", "foto1/image2грех.png", "foto1/image3грех.png", "foto1/image4грех.png"], correctAnswer: "Семь смертных грехов" },
-      { images: ["foto1/image1лейм.png", "foto1/image2лейм.png", "foto1/image3лейм.png", "foto1/image4лейм.png"], correctAnswer: "Эксперименты Лэйн" },
-      { images: ["foto1/image1ток.png", "foto1/image2ток.png", "foto1/image3ток.png", "foto1/image4ток.png"], correctAnswer: "Токийский гуль" },
-      { images: ["foto1/image1цвет.png", "foto1/image2цвет.png", "foto1/image3цвет.png", "foto1/image4цвет.png"], correctAnswer: "Благоухающий цветок расцветает с достоинством" },
-      { images: ["foto1/image1тит.png", "foto1/image2тит.png", "foto1/image3тит.png", "foto1/image4тит.png"], correctAnswer: "Атака титанов" }
+      { images: ["foto1/naruto1.png", "foto1/naruto2.png", "foto1/naruto3.png", "foto1/naruto4.png"], correctAnswer: "Наруто" },
+      { images: ["foto1/op1.png", "foto1/op2.png", "foto1/op3.png", "foto1/op4.png"], correctAnswer: "Ван Пис" },
+      { images: ["foto1/dbz1.png", "foto1/dbz2.png", "foto1/dbz3.png", "foto1/dbz4.png"], correctAnswer: "Драконий жемчуг" },
+      { images: ["foto1/hxh1.png", "foto1/hxh2.png", "foto1/hxh3.png", "foto1/hxh4.png"], correctAnswer: "Хантер х Хантер" },
+      { images: ["foto1/fmab1.png", "foto1/fmab2.png", "foto1/fmab3.png", "foto1/fmab4.png"], correctAnswer: "Стальной алхимик" },
+      { images: ["foto1/dn1.png", "foto1/dn2.png", "foto1/dn3.png", "foto1/dn4.png"], correctAnswer: "Тетрадь смерти" },
+      { images: ["foto1/bebop1.png", "foto1/bebop2.png", "foto1/bebop3.png", "foto1/bebop4.png"], correctAnswer: "Ковбой Бибоп" },
+      { images: ["foto1/akira1.png", "foto1/akira2.png", "foto1/akira3.png", "foto1/akira4.png"], correctAnswer: "Акира" },
+      { images: ["foto1/evangelion1.png", "foto1/evangelion2.png", "foto1/evangelion3.png", "foto1/evangelion4.png"], correctAnswer: "Евангелион" },
+      { images: ["foto1/mononoke1.png", "foto1/mononoke2.png", "foto1/mononoke3.png", "foto1/mononoke4.png"], correctAnswer: "Принцесса Мононоке" }
     ] 
   },
   { 
     type: "mixed_text", 
-    name: "Раунд 2: Общие знания (Сложный)", 
+    name: "Раунд 2: Тайны миров", 
     answerTime: 30,
     pauseDuration: 10,
     questions: [
-      { text: "Что можно ответить на фразу 月が綺麗ですね (луна сегодня красивая)?", correctAnswer: "Настолько красивая, что можно умереть / Как и ты / Ты мне тоже нравишься" },
-      { text: "На каком этаже подземелья в аниме «Поднятие уровня в одиночку» главный герой встретил Элис Радиру?", correctAnswer: "80 этаж", image: "foto2/2.png" },
-      { text: "Сколько всего серий в сумме в САО , Бличе  и Дорохедоро  (Разброс +-20)", correctAnswer: "537 серий" },
-      { text: "Назовите имя данной девушки на фотографии (Имя и Фамилия):", correctAnswer: "Маюри Шиина", image: "foto2/4.png" },
-      { text: "Назовите как минимум 2 персонажей из Редана (Геней Рёдан) из аниме «Хантер х Хантер»:", correctAnswer: "Куроро, Фейтан, Мачи, Хисока и др." },
-      { text: "Как звали первого хокаге в аниме «Наруто»?", correctAnswer: "Хаширама Сенджу" },
-      { text: "В каком аниме-сериале была культовая фраза, где персонажи по очереди говорят «Congratulations» и хлопают в ладоши?", correctAnswer: "Евангелион" },
-      { text: "Из-за чего на город новичков пришел сильный демон (Вердия) в аниме «Коносуба»?", correctAnswer: "Мегумин взрывала его замок каждый день" },
-      { text: "Какое аниме начинается с истории: существует «4 пустых» (Пробел), и они настолько хорошо играют, что их считают читерами?", correctAnswer: "Нет игры — нет жизни" },
-      { text: "Угадай аниме по описанию: главная героиня стала Богом и отправилась в прошлое, чтобы убить себя и пережить игру заново вместе с ГГ. В итоге она убивает себя и становится Богом в пустом мире.", correctAnswer: "Дневник будущего (Mirai Nikki)" }
+      { text: "Сколько всего 'Смертных грехов' в одноименном аниме?", correctAnswer: "7" },
+      { text: "Как называется организация, в которой состоит Оказака Ринтаро в аниме 'Врата Штейна'?", correctAnswer: "Лаборатория гаджетов будущего" },
+      { text: "Какое 'имя' носит главная героиня в аниме 'Город, в котором меня нет'?", correctAnswer: "Каё Хинадзуки" },
+      { text: "Кто является первым владельцем Тетради смерти в мире людей (из аниме)?", correctAnswer: "Лайт Ягами" },
+      { text: "В какой стране происходит действие аниме 'Вайолет Эвергарден' (вымышленное название)?", correctAnswer: "Лейденшафтлих" },
+      { text: "Как зовут искусственный интеллект, управляющий городом в аниме 'Психопаспорт'?", correctAnswer: "Сивилла" },
+      { text: "Какого цвета волосы у главной героини Луиз в 'Подручном Луизы-Нулизы'?", correctAnswer: "Розовые" },
+      { text: "Какую игрушку подарил главный герой своей сестре в 'Могиле светлячков'?", correctAnswer: "Жестяная банка с леденцами" },
+      { text: "Как называется город, в котором живут герои 'Невероятных приключений ДжоДжо' в 4 части?", correctAnswer: "Морио" },
+      { text: "Как звали демонического коня в аниме 'Берсерк'?", correctAnswer: "Зодд" }
     ]
   },
   { 
     type: "video", 
-    name: "Раунд 3: Угадай аниме по отрывку опенинга", 
+    name: "Раунд 3: Голоса и ритмы", 
     questions: [
-      { video: "video3/bleach1.mp4", correctAnswer: "Блич" },
-      { video: "video3/moidevushka2.mp4", correctAnswer: "Моя девушка не только милая" },
-      { video: "video3/devushkitank3.mp4", correctAnswer: "Девушки и танки" },
-      { video: "video3/voshoshdenievteni4.mp4", correctAnswer: "Восхождение в тени" },
-      { video: "video3/feriteil5.mp4", correctAnswer: "Фейри Тейл" },
-      { video: "video3/mbvstrichy6.mp4", correctAnswer: "Может я встречу тебя в подземелье" },
-      { video: "video3/angelofdeth7.mp4", correctAnswer: "Ангел кровопролития" },
-      { video: "video3/stranachudes8.mp4", correctAnswer: "Страна чудес смертников" },
-      { video: "video3/monolog9.mp4", correctAnswer: "Монолог фармацевта" },
-      { video: "video3/patriotism10.mp4", correctAnswer: "Патриотизм Мориарти" }
+      { video: "video3/jojo1.mp4", correctAnswer: "ДжоДжо" },
+      { video: "video3/chainsawman1.mp4", correctAnswer: "Человек-бензопила" },
+      { video: "video3/spyxfamily1.mp4", correctAnswer: "Семья шпиона" },
+      { video: "video3/kimetzu1.mp4", correctAnswer: "Клинок, рассекающий демонов" },
+      { video: "video3/jujutsu1.mp4", correctAnswer: "Магическая битва" },
+      { video: "video3/swordartonline1.mp4", correctAnswer: "Мастера меча онлайн" },
+      { video: "video3/haikyuu1.mp4", correctAnswer: "Волейбол" },
+      { video: "video3/fireforce1.mp4", correctAnswer: "Пламенный отряд" },
+      { video: "video3/blueexorcist1.mp4", correctAnswer: "Синий экзорцист" },
+      { video: "video3/blackclover1.mp4", correctAnswer: "Черный клевер" }
     ],
     pauseDuration: 10
   },
   {
     type: "character_guess",
-    name: "Раунд 4: Угадай персонажа по описанию и ИИ-картинке",
-    answerTime: 25,
+    name: "Раунд 4: Генезис ИИ",
+    answerTime: 30,
     pauseDuration: 10,
     questions: [
-      { character: "Тинацу Кан", anime: "Голубая шкатулка", description: "Талантливая баскетболистка, старшеклассница, в которую влюблен главный герой.", image: "foto4/шкатул.png" },
-      { character: "Кейна Кагами", anime: "Мир Лидейл", description: "Девушка, очнувшаяся в мире своей любимой VRMMO через 200 лет после того, как перестала играть.", image: "foto4/Магическаябашнявлесу.png" },
-      { character: "Pochita", anime: "Человек-бензопила", description: "Маленький оранжевый демон-собака с бензопилой на голове.", image: "foto4/Кроваваяпилавтемномпереулке.png" },
-      { character: "Принцесса рёвозавров (Код 001)", anime: "DARLING in the FRANXX", description: "Последняя из своего рода, управляет рёвозаврами и имеет синюю кожу.", image: "foto4/милыйвофранксе.jpg" },
-      { character: "Нао Томори", anime: "Шарлотта", description: "Президент школьного совета, способна становиться невидимой для одного человека.", image: "foto4/sharlotta.jpg" },
-      { character: "Виллибальд", anime: "Сага о Винланде", description: "Молодой священник, который ищет истинное значение любви в мире викингов.", image: "foto4/saga.jpg" },
-      { character: "Лорд Демонов Диабло", anime: "О моем перерождении в слизь", description: "Один из Первородных демонов, фанатично преданный Римуру Темпесту.", image: "foto4/pereroshdenie.jpg" },
-      { character: "Сатоко Ходжо", anime: "Когда плачут цикады", description: "Девочка, любящая ставить ловушки, чья судьба трагически переплетена с циклом смертей в деревне.", image: "foto4/kogdaplachut.jpg" },
-      { character: "Рика Кава", anime: "Приоритет чудо-яйца", description: "Бывшая модель, которая присоединяется к группе девочек, сражающихся в мире снов.", image: "foto4/prioritet.jpg" },
-      { character: "Анри Сонохара", anime: "Дюрарара", description: "Тихая девушка в очках, которая является носителем проклятого меча Сайка.", image: "foto4/дюрара.jpg" },
-      { character: "Naoyuki Andō", anime: "Инуяшики", description: "Лучший друг главного героя, который помогает ему освоиться с новым механическим телом.", image: "foto4/iunashiki.jpg" },
-      { character: "Нидзика Идзити", anime: "Одинокий рокер", description: "Энергичная барабанщица группы Kessoku Band, которая пригласила Хитори в группу.", image: "foto4/roker.jpg" },
-      { character: "Кохаку Итимура", anime: "Прекрасная вечерняя луна", description: "Девушка, которую часто принимают за парня из-за её внешности и манер.", image: "foto4/luna.jpg" },
-      { character: "Канамэ Судо", anime: "Игра Дарвина", description: "Игрок, втянутый в смертельную игру через мобильное приложение.", image: "foto4/darvina.jpg" },
-      { character: "Асакадзэ", anime: "Sonny Boy", description: "Парень, обладающий способностью управлять гравитацией в странном пустом мире.", image: "foto4/sonnyboy.jpg" },
-      { character: "Сион Караномори", anime: "Психопаспорт", description: "Аналитик Бюро Общественной Безопасности, 'латентный преступник'.", image: "foto4/pasport.jpg" },
-      { character: "Амамия", anime: "Рон Камонохаси: Невменяемый детектив", description: "Полицейский, который становится напарником гениального, но странного детектива.", image: "foto4/ronkamonohashi.jpg" },
-      { character: "Сюити Кагая", anime: "Глейпнир", description: "Парень, способный превращаться в огромный костюм собаки с молнией на спине.", image: "foto4/glepnir.jpg" },
-      { character: "Рин Окумура", anime: "Синий экзорцист", description: "Сын Сатаны, который решил стать экзорцистом, чтобы победить своего отца.", image: "foto4/sinieecz.jpg" },
-      { character: "Крул Цепеш", anime: "Последний серафим", description: "Королева вампиров Японии, третья среди Основателей.", image: "foto4/krull.jpg" }
+      { character: "Субару Нацуки", anime: "Re:Zero", description: "Парень, попавший в другой мир и обладающий способностью 'Возвращение после смерти'.", image: "foto4/subaru.jpg" },
+      { character: "Микаса Аккерман", anime: "Атака титанов", description: "Сильнейшая воительница разведкорпуса с красным шарфом.", image: "foto4/mikasa.jpg" },
+      { character: "Кирилл (Кирито)", anime: "САО", description: "Черный мечник, застрявший в виртуальной реальности на два года.", image: "foto4/kirito.jpg" },
+      { character: "Юю Хакушо", anime: "Юю Хакушо", description: "Духовный детектив с прической в стиле 90-х.", image: "foto4/yuyu.jpg" },
+      { character: "Синобу Кочо", anime: "Клинок, рассекающий демонов", description: "Столп Насекомого, использующая яды вместо силы меча.", image: "foto4/shinobu.jpg" },
+      { character: "Макима", anime: "Человек-бензопила", description: "Загадочная охотница на демонов с пронзительным взглядом и желтыми глазами.", image: "foto4/makima.jpg" },
+      { character: "Виви", anime: "Ван Пис", description: "Принцесса пустынного королевства Алабаста.", image: "foto4/vivi.jpg" },
+      { character: "Лелуш Ламперуж", anime: "Код Гиас", description: "Опальный принц с силой Гиаса — способностью командовать любым человеком.", image: "foto4/lelouch.jpg" },
+      { character: "Реви", anime: "Пираты Черной Лагуны", description: "Двурукая наемница с буйным нравом и двумя пистолетами.", image: "foto4/revy.jpg" },
+      { character: "Сенку Исигами", anime: "Доктор Стоун", description: "Гениальный ученый, восстанавливающий цивилизацию с нуля через 3700 лет.", image: "foto4/senku.jpg" }
     ]
   },
   {
     type: "rebus",
-    name: "Раунд 5: Ребусы",
-    answerTime: 45,
+    name: "Раунд 5: Шифровка",
+    answerTime: 60,
     pauseDuration: 10,
     questions: [
-      { text: "Назовите аниме", correctAnswer: "Наруто", image: "foto5/1.png" },
-      { text: "Назови имя персонажа", correctAnswer: "Томпа из Хантер х Хантер", image: "foto5/2.png" },
-      { text: "Назовите имя персонажа", correctAnswer: "Сейджуру Акаши", image: "foto5/3.png" },
-      { text: "Назовите имя персонажа", correctAnswer: "Танджиро", image: "foto5/4.png" },
-      { text: "Угадай кличку персонажа", correctAnswer: "Деку", image: "foto5/5.png" },
-      { text: "Назовите ", correctAnswer: "gigantic563wall", image: "foto5/6.png" }
+      { text: "Расшифруйте название шедевра:", correctAnswer: "spiritedaway", image: "foto5/rebus1.png" },
+      { text: "Загаданное аниме:", correctAnswer: "fullmetalalchemist", image: "foto5/rebus2.png" },
+      { text: "Краткий ребус:", correctAnswer: "onepiece", image: "foto5/rebus3.png" },
+      { text: "Угадай классику:", correctAnswer: "deathnote", image: "foto5/rebus4.png" },
+      { text: "Финальный шифр:", correctAnswer: "yourname", image: "foto5/rebus5.png" }
     ]
   },
   {
     type: "description_guess",
-    name: "Раунд 6: Угадай аниме по описанию",
-    answerTime: 20,
+    name: "Раунд 6: Манускрипты",
+    answerTime: 30,
     pauseDuration: 10,
     questions: [
-      { description: "Обычный офисник случайно активирует древний ритуал и попадает в фэнтези-мир. Его единственное «божественное» умение — открывать окно онлайн-магазина из родного супермаркета. Вместо меча он жонглирует сковородкой, а вместо драконов — приручает легендарного волка, которого кормит готовыми блюдами. Всё, что нужно для спасения мира, — правильный соус и немного тушёного мяса.", correctAnswer: "Кулинарные скитания в ином мире" },
-      { description: "Божество без святилища, без прихожан и даже без крыши над головой. Носит спортивный костюм, работает за пятирублёвую монету и готов выполнить любой каприз смертного — от поиска пропавшего кота до убийства демона. Его оружие — связанные шарфы, а лучший друг — мальчик, который видит духов. Проблема: забывчивый бог вечно в долгах и его собственная жизнь висит на волоске.", correctAnswer: "Бездомный бог" },
+      { description: "Популярный шеф-повар умирает и перерождается в теле наследника обедневшего дворянского рода. Он решает использовать современную кулинарию, чтобы превратить захолустный городок в мировую столицу гурманов. Вместо мечей он сражается специями, а его главный враг — невкусная еда.", correctAnswer: "Кулинарный мастер из другого мира" },
+      { description: "Молодая девушка работает в книжной лавке и мечтает написать свой роман. Однако мир, в котором она живет, наполнен магическими существами, питающимися историями. Чтобы выжить, ей приходится скармливать им свои воспоминания. Чем больше она пишет, тем меньше помнит о себе.", correctAnswer: "Библиотека воспоминаний" },
+      { description: "Двенадцать подростков оказываются заперты в школе, где единственный способ выйти — совершить идеальное преступление. Каждые несколько дней проводится классное собрание, где нужно найти виновного. Если найдут — его казнят, если нет — казнят всех остальных. Кукловод — черно-белый плюшевый медведь.", correctAnswer: "Данганронпа" },
+      { description: "Обычный студент находит старый меч, внутри которого заперт дух величайшего воина в истории. Дух обещает обучить его всему, что знает, но взамен требует, чтобы парень помог ему отыскать его бывшую возлюбленную, которая давно стала демоном. Проблема в том, что дух видит мир совершенно иначе.", correctAnswer: "Клинок ветра" },
+      { description: "В мире, где у каждого есть врожденный талант, главный герой обнаруживает, что его талант — это 'абсолютная удача'. Однако удача работает странно: каждый раз, когда ему везет, с кем-то рядом случается несчастье. Он пытается прожить жизнь как можно спокойнее, но мир постоянно бросает его в эпицентр событий.", correctAnswer: "Счастливая жизнь Лаки" },
+      { description: "Малоизвестный бог, который за 5-рублёвую монету готов выполнить любой каприз смертного — от поиска пропавшего кота до убийства демона. Его оружие — связанные шарфы, а лучший друг — мальчик, который видит духов. Проблема: забывчивый бог вечно в долгах и его собственная жизнь висит на волоске.", correctAnswer: "Бездомный бог" },
       { description: "Повелитель магии и смерти перерождается… в капризного малыша королевской крови. Теперь он седьмой сын седьмого сына, без трона и власти. Но его душа помнит всё: запретные заклинания, катастрофы и вкус страха врагов. Пока окружающие видят лишь милого ребёнка, он втайне тренирует мышцы, создаёт взрывоопасные игрушки и с улыбкой уничтожает демонов. Единственная слабость — слишком много внимания от взрослых.", correctAnswer: "Перевоплотился в 7-го принца" },
       { description: "В мире, где каждый крестьянин умеет колдовать, два сироты-соперника мечтают стать главным магистром. Один — гений с небесной силой и королевской кровью, второй — парень без капли магии, зато с огромными мышцами и взрывным характером. Их оруженосцы: четырёхлистный гримуар и… чёрный пятилистный, в котором живёт демон. Вместе они орут, бесятся и спасают королевство, игнорируя все правила.", correctAnswer: "Чёрный клевер" },
       { description: "Будущее, где тела заменяют хромом, а души продают корпорации. Уличный парень с редким генетическим дефектом — он почти не может ставить импланты. Мечтает добраться до вершины города — на орбиту. Встречает девушку-анархистку с мощной пушкой в руке и команду отбросов. Цена мечты — его рассудок, его друзья и последняя пуля в затылок.", correctAnswer: "Киберпанк" },
@@ -293,6 +286,7 @@ export default function App() {
     setRevealIdx(gameState.currentQuestion || 0);
   }, [gameState?.revealMode, gameState?.currentQuestion, gameState?.active]);
   const [hasAnswered, setHasAnswered] = useState(false);
+  const [isChangingTeam, setIsChangingTeam] = useState(false);
   const [preloaderStatus, setPreloaderStatus] = useState("");
 
   const timerRef = useRef<any>(null);
@@ -453,11 +447,15 @@ export default function App() {
 
   const handleJoin = async () => {
     if (!nickname) { setError("Введите никнейм"); return; }
-    const id = `${nickname}_${Date.now()}`;
+    
+    // If we are changing team, use same ID
+    const id = isChangingTeam && user ? user.id : `${nickname}_${Date.now()}`;
     const newUser = { nickname, team: selectedTeam, isAdmin: false, id };
-    await restPut(`players/${id}`, { nickname, team: selectedTeam, score: 0, isAdmin: false });
+    
+    await restPut(`players/${id}`, { nickname, team: selectedTeam, score: (isChangingTeam ? getPlayerScore(players[user?.id]) : 0), isAdmin: false });
     setUser(newUser);
     localStorage.setItem('quizUser', JSON.stringify(newUser));
+    setIsChangingTeam(false);
   };
 
   const handleAdminLogin = async () => {
@@ -632,7 +630,7 @@ export default function App() {
   };
 
   // ==================== RENDER ====================
-  if (!user) {
+  if (!user || isChangingTeam) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="w-full max-w-2xl glass p-12 rounded-[3rem] neon-border text-center">
@@ -641,16 +639,17 @@ export default function App() {
             animate={{ y: 0, opacity: 1 }}
             className="text-5xl font-black mb-8 text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500 uppercase tracking-tighter"
           >
-            🎌 Аниме Викторина
+            {isChangingTeam ? "🎌 Смена команды" : "🎌 Аниме Викторина"}
           </motion.h1>
           <div className="space-y-8">
             <div className="space-y-2">
               <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Твой никнейм</label>
               <input 
                 type="text" 
-                className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xl text-center focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all" 
+                className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-xl text-center focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all disabled:opacity-50" 
                 placeholder="Введи имя..." 
                 value={nickname}
+                disabled={isChangingTeam}
                 onChange={(e) => setNickname(e.target.value)}
               />
             </div>
@@ -676,11 +675,18 @@ export default function App() {
 
             <div className="flex flex-col sm:flex-row gap-4 pt-4">
               <button onClick={handleJoin} className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl transition-all active:scale-95">
-                Присоединиться
+                {isChangingTeam ? "Сохранить" : "Присоединиться"}
               </button>
-              <button onClick={handleAdminLogin} className="sm:w-1/3 bg-white/10 hover:bg-white/20 text-white py-4 rounded-2xl font-black uppercase tracking-widest border border-white/10 transition-all active:scale-95">
-                Админ
-              </button>
+              {!isChangingTeam && (
+                <button onClick={handleAdminLogin} className="sm:w-1/3 bg-white/10 hover:bg-white/20 text-white py-4 rounded-2xl font-black uppercase tracking-widest border border-white/10 transition-all active:scale-95">
+                  Админ
+                </button>
+              )}
+              {isChangingTeam && (
+                <button onClick={() => setIsChangingTeam(false)} className="sm:w-1/3 bg-white/10 hover:bg-white/20 text-white py-4 rounded-2xl font-black uppercase tracking-widest border border-white/10 transition-all active:scale-95">
+                  Отмена
+                </button>
+              )}
             </div>
             {error && <p className="text-red-400 font-medium animate-pulse">{error}</p>}
           </div>
@@ -705,7 +711,21 @@ export default function App() {
                 {user.isAdmin ? (
                   <span className="bg-yellow-500/20 text-yellow-500 text-[10px] font-black px-2 py-0.5 rounded-full border border-yellow-500/30 uppercase tracking-widest">Админ</span>
                 ) : (
-                  <span className="bg-purple-500/20 text-purple-400 text-[10px] font-black px-2 py-0.5 rounded-full border border-purple-500/30 uppercase tracking-widest">Команда #{user.team + 1}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-purple-500/20 text-purple-400 text-[10px] font-black px-2 py-0.5 rounded-full border border-purple-500/30 uppercase tracking-widest">Команда #{user.team + 1}</span>
+                    {!gameState?.active && (
+                      <button 
+                        onClick={() => {
+                          setSelectedTeam(user.team);
+                          setNickname(user.nickname);
+                          setIsChangingTeam(true);
+                        }}
+                        className="text-[10px] text-gray-400 hover:text-white underline uppercase tracking-widest"
+                      >
+                        Сменить команду
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
