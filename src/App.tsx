@@ -112,7 +112,7 @@ const roundsData: Round[] = [
   {
     type: "mixed_text",
     name: "Раунд 2: Общие знания",
-    answerTime: 30,
+    answerTime: 8,
     pauseDuration: 10,
     questions: [
       { text: "В центре истории — двое парней, Чэн Сяоши и Лу Гуан, которые работают в маленьком фотоателье «Время». Они обладают сверхспособностями, позволяющими им проникать в прошлое через фотографии для выполнения заказов клиентов.", correctAnswer: "Агент времени" },
@@ -130,7 +130,7 @@ const roundsData: Round[] = [
   {
     type: "video",
     name: "Раунд 3: Видео раунд",
-    answerTime: 60,
+    answerTime: 8,
     pauseDuration: 10,
     questions: [
       { text: "Вопрос по видео ", video: "/video3/3r1.mp4", correctAnswer: "Первородный грех Такопи" },
@@ -148,7 +148,7 @@ const roundsData: Round[] = [
   {
     type: "mixed_text",
     name: "Раунд 4: Цифровой раунд",
-    answerTime: 20,
+    answerTime: 8,
     pauseDuration: 5,
     questions: [
       { text: "Сколько теней управляет «Садом теней»? (Восхождение в тени)", correctAnswer: "7" },
@@ -176,7 +176,7 @@ const roundsData: Round[] = [
   {
     type: "mixed_text",
     name: "Раунд 5: Раунд ребусов",
-    answerTime: 30,
+    answerTime: 8,
     pauseDuration: 10,
     questions: [
       { text: "Ребус 1", image: "/foto5/5-1.png", correctAnswer: "Паразит" },
@@ -189,7 +189,7 @@ const roundsData: Round[] = [
   {
     type: "character_guess",
     name: "Раунд 6: Угадай аниме по описанию",
-    answerTime: 40,
+    answerTime: 8,
     pauseDuration: 10,
     questions: [
       { description: "Популярная старшеклассница Кёко и нелюдимый Изуми случайно узнают секреты друг друга вне школы. Кёко дома — образцовая домохозяйка, а Изуми — парень с пирсингом и татуировками. Их тайная дружба постепенно перерастает в нечто большее.", correctAnswer: "Хоримия" },
@@ -217,7 +217,7 @@ const roundsData: Round[] = [
   {
     type: "mixed_text",
     name: "Раунд 7: Угадай по силуэту",
-    answerTime: 30,
+    answerTime: 8,
     pauseDuration: 10,
     questions: [
       { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-1.png", correctAnswer: "Твоя апрельская ложь" },
@@ -235,7 +235,7 @@ const roundsData: Round[] = [
   {
     type: "mixed_text",
     name: "Раунд 8: Цитаты (💎 Дабл-раунд)",
-    answerTime: 40,
+    answerTime: 8,
     pauseDuration: 10,
     questions: [
       { text: "«Человек, который пытается кому-либо подражать, всё равно делает это по-своему! Никто не может скрыть свою натуру и привычки!»", correctAnswer: "Тетрадь смерти (Death note)" },
