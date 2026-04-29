@@ -183,7 +183,12 @@ const roundsData: Round[] = [
       { text: "Ребус 2", image: "/foto5/5-2.png", correctAnswer: "Черный Клевер" },
       { text: "Ребус 3", image: "/foto5/2-3.png", correctAnswer: "Рейтинг Короля" },
       { text: "Ребус 4", image: "/foto5/5-1-1.png", correctAnswer: "Кланнад" },
-      { text: "Ребус 5", image: "/foto5/5-5.png", correctAnswer: "Розовая Пора Моей Школьной Жизни Сплошной Обман" }
+      { text: "Ребус 5", image: "/foto5/5-5.png", correctAnswer: "Розовая Пора Моей Школьной Жизни Сплошной Обман" },
+      { text: "Ребус 6", image: "/foto5/5-6.png", correctAnswer: "Синий Экзорцист" },
+      { text: "Ребус 7", image: "/foto5/5-7.png", correctAnswer: "Магическая Битва" },
+      { text: "Ребус 8", image: "/foto5/5-8.png", correctAnswer: "Моб Психо 100" },
+      { text: "Ребус 9", image: "/foto5/5-10.png", correctAnswer: "О моем перерождении в слизь" },
+      { text: "Ребус 10", image: "/foto5/image2-1.png", correctAnswer: "Созданный в Бездне" }
     ]
   },
   {
@@ -598,7 +603,13 @@ export default function App() {
     }
 
     if (round.type === "mixed_text") {
-      potentialPoints = gameState.currentRound === 4 ? 3 : 2;
+      if (gameState.currentRound === 4) {
+        potentialPoints = 3;
+      } else if (gameState.currentRound === 5) {
+        potentialPoints = 5;
+      } else {
+        potentialPoints = 2;
+      }
     }
 
     if (round.type === "personal") {
