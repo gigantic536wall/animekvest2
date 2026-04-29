@@ -130,7 +130,7 @@ const roundsData: Round[] = [
   {
     type: "video",
     name: "Раунд 3: Видео раунд",
-    answerTime: 60,
+    answerTime: 25,
     pauseDuration: 10,
     questions: [
       { text: "Вопрос по видео ", video: "/video3/3r1.mp4", correctAnswer: "Первородный грех Такопи" },
@@ -148,7 +148,7 @@ const roundsData: Round[] = [
   {
     type: "mixed_text",
     name: "Раунд 4: Цифровой раунд",
-    answerTime: 20,
+    answerTime: 25,
     pauseDuration: 5,
     questions: [
       { text: "Сколько теней управляет «Садом теней»? (Восхождение в тени)", correctAnswer: "7" },
@@ -176,7 +176,7 @@ const roundsData: Round[] = [
   {
     type: "mixed_text",
     name: "Раунд 5: Раунд ребусов",
-    answerTime: 30,
+    answerTime: 45,
     pauseDuration: 10,
     questions: [
       { text: "Ребус 1", image: "/foto5/5-1.png", correctAnswer: "Паразит" },
@@ -217,7 +217,7 @@ const roundsData: Round[] = [
   {
     type: "mixed_text",
     name: "Раунд 7: Угадай по силуэту",
-    answerTime: 30,
+    answerTime: 25,
     pauseDuration: 10,
     questions: [
       { text: "Угадай аниме по силуэту ", image: "/foto7/foto7-1.png", correctAnswer: "Твоя апрельская ложь" },
@@ -235,7 +235,7 @@ const roundsData: Round[] = [
   {
     type: "mixed_text",
     name: "Раунд 8: Цитаты (💎 Дабл-раунд)",
-    answerTime: 40,
+    answerTime: 35,
     pauseDuration: 10,
     questions: [
       { text: "«Человек, который пытается кому-либо подражать, всё равно делает это по-своему! Никто не может скрыть свою натуру и привычки!»", correctAnswer: "Тетрадь смерти (Death note)" },
@@ -555,6 +555,11 @@ export default function App() {
     });
   };
 
+  const skipQuestion = async () => {
+    if (!user?.isAdmin || !gameState?.active || pauseState?.active) return;
+    await startPauseBetweenQuestions();
+  };
+
   const startPauseBetweenQuestions = async () => {
     if (pauseState?.active) return; // Prevent double trigger
     const round = roundsData[gameState.currentRound];
@@ -593,7 +598,7 @@ export default function App() {
     }
 
     if (round.type === "mixed_text") {
-      potentialPoints = 2;
+      potentialPoints = gameState.currentRound === 4 ? 3 : 2;
     }
 
     if (round.type === "personal") {
@@ -1109,15 +1114,17 @@ export default function App() {
                             <div className="flex gap-1 ml-2">
                               <button 
                                 onClick={() => markAnswer(id, gameState.currentRound, qKey, ans.potentialPoints || 2)} 
-                                className="p-1.5 hover:bg-green-500 rounded-lg text-green-400 hover:text-white transition-all"
+                                className="p-1.5 hover:bg-green-500 rounded-lg text-green-400 hover:text-white transition-all flex flex-col items-center"
                               >
                                 <CheckCircle2 className="w-4 h-4" />
+                                <span className="text-[8px] font-bold">+{ans.isDouble ? (ans.potentialPoints || 2) * 2 : (ans.potentialPoints || 2)}</span>
                               </button>
                               <button 
                                 onClick={() => markAnswer(id, gameState.currentRound, qKey, 0)} 
-                                className="p-1.5 hover:bg-red-500 rounded-lg text-red-400 hover:text-white transition-all"
+                                className="p-1.5 hover:bg-red-500 rounded-lg text-red-400 hover:text-white transition-all flex flex-col items-center"
                               >
                                 <XCircle className="w-4 h-4" />
+                                <span className="text-[8px] font-bold">{ans.isDouble ? -2 : 0}</span>
                               </button>
                             </div>
                           </div>
@@ -1842,6 +1849,12 @@ export default function App() {
                   {globalPause?.active ? 'ПРОДОЛЖИТЬ' : 'ПАУЗА'}
                 </button>
                 <button 
+                  onClick={skipQuestion}
+                  className="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-full font-bold flex items-center gap-2"
+                >
+                  <SkipForward className="w-4 h-4" /> ПРОПУСТИТЬ ВОПРОС
+                </button>
+                <button 
                   onClick={async () => {
                     if (confirm("Сбросить игру?")) {
                       // 1. Wipe everything from database
@@ -2007,14 +2020,14 @@ export default function App() {
                             className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
                           >
                             <CheckCircle2 className="text-green-500 w-5 h-5" />
-                            <span className="text-[10px] font-bold">+{ans.potentialPoints || 2}</span>
+                            <span className="text-[10px] font-bold">+{ans.isDouble ? (ans.potentialPoints || 2) * 2 : (ans.potentialPoints || 2)}</span>
                           </button>
                           <button 
                             onClick={() => markAnswer(id, gameState.currentRound, qKey, 0)} 
                             className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
                           >
                             <XCircle className="text-red-500 w-5 h-5" />
-                            <span className="text-[10px] font-bold">0</span>
+                            <span className="text-[10px] font-bold">{ans.isDouble ? -2 : 0}</span>
                           </button>
                         </div>
                       </div>
