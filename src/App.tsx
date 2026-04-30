@@ -603,18 +603,22 @@ export default function App() {
     await restPatch('gameState', { currentTeamTurn: nextTeam });
   };
 
-  const markRound9Correct = async () => {
+  const markRound9Correct = async (teamIdx: number) => {
     if (!user?.isAdmin) return;
-    const currentTeam = gameState.currentTeamTurn || 0;
     const scoreKey = `round9_win`;
     
-    const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === currentTeam);
+    const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
     
+    if (teamPlayers.length === 0) {
+      alert(`В команде ${teamIdx + 1} нет игроков.`);
+      return;
+    }
+
     await Promise.all(teamPlayers.map(([id, _]) => 
       restPut(`players/${id}/scores/${scoreKey}`, 10)
     ));
     
-    alert(`Команда ${currentTeam + 1} угадала! +10 баллов всем участникам команды.`);
+    alert(`Команда ${teamIdx + 1} угадала! +10 баллов начислено.`);
     await restPatch('gameState', { roundFinished: true, showAnswer: true });
   };
 
@@ -2016,12 +2020,24 @@ export default function App() {
                       <Bell className="w-5 h-5" /> УЧЕСТЬ ЛОЖЬ
                     </button>
                   </div>
-                  <button 
-                    onClick={markRound9Correct}
-                    className="w-full bg-green-600 hover:bg-green-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-green-900/30"
-                  >
-                    <CheckCircle2 className="w-6 h-6" /> ПРАВИЛЬНЫЙ ОТВЕТ (+10 БАЛЛОВ)
-                  </button>
+                  <div className="space-y-2">
+                    <div className="text-[10px] text-gray-500 uppercase font-black tracking-widest text-center mb-2">Начислить +10 баллов за правильный ответ:</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {Array.from({ length: TOTAL_TEAMS }).map((_, i) => {
+                        const hasPlayers = Object.values(players).some((p: any) => p.team === i);
+                        if (!hasPlayers) return null;
+                        return (
+                          <button 
+                            key={i}
+                            onClick={() => markRound9Correct(i)}
+                            className="bg-green-600 hover:bg-green-700 py-2 rounded-xl text-xs font-black shadow-lg shadow-green-900/20 transition-all active:scale-95"
+                          >
+                            КОМАНДА {i + 1}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <div className="p-4 bg-black/30 rounded-2xl border border-white/5 text-center">
                     <div className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-1">Сейчас спрашивает:</div>
                     <div className="text-2xl font-black text-purple-400">КОМАНДА {(gameState?.currentTeamTurn || 0) + 1}</div>
