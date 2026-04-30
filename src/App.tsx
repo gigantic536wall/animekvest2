@@ -188,7 +188,7 @@ const roundsData: Round[] = [
       { text: "Ребус 7", image: "/foto5/image5-2-8.png", correctAnswer: "Ветролом" },
       { text: "Ребус 8", image: "/foto5/5-2-7.png", correctAnswer: "Мононоке" },
       { text: "Ребус Персонаж 9", image: "/foto5/image5-2-9.png", correctAnswer: "Джузе Сузуя " },
-      { text: "Ребус Персонаж 10", image: "public/foto5/image5-5-5.png", correctAnswer: "Эсканор" }
+      { text: "Ребус Персонаж 10", image: "/foto5/image5-5-5.png", correctAnswer: "Эсканор" }
     ]
   },
   {
