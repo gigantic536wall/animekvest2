@@ -180,15 +180,15 @@ const roundsData: Round[] = [
     pauseDuration: 10,
     questions: [
       { text: "Ребус 1", image: "/foto5/5-1.png", correctAnswer: "Паразит" },
-      { text: "Ребус 2", image: "/foto5/5-2.png", correctAnswer: "Черный Клевер" },
+      { text: "Ребус 2", image: "/foto5/image5-1-3.png", correctAnswer: "Сой фон" },
       { text: "Ребус 3", image: "/foto5/2-3.png", correctAnswer: "Рейтинг Короля" },
       { text: "Ребус 4", image: "/foto5/5-1-1.png", correctAnswer: "Кланнад" },
       { text: "Ребус 5", image: "/foto5/5-5.png", correctAnswer: "Розовая Пора Моей Школьной Жизни Сплошной Обман" },
-      { text: "Ребус 6", image: "/foto5/5-6.png", correctAnswer: "Синий Экзорцист" },
-      { text: "Ребус 7", image: "/foto5/5-7.png", correctAnswer: "Магическая Битва" },
-      { text: "Ребус 8", image: "/foto5/5-8.png", correctAnswer: "Моб Психо 100" },
-      { text: "Ребус 9", image: "/foto5/5-10.png", correctAnswer: "О моем перерождении в слизь" },
-      { text: "Ребус 10", image: "/foto5/image2-1.png", correctAnswer: "Созданный в Бездне" }
+      { text: "Ребус 6", image: "/foto5/image5-2-6.png", correctAnswer: "Врата Штейна" },
+      { text: "Ребус 7", image: "/foto5/image5-2-8.png", correctAnswer: "Ветролом" },
+      { text: "Ребус 8", image: "/foto5/5-2-7.png", correctAnswer: "Мононоке" },
+      { text: "Ребус Персонаж 9", image: "/foto5/image5-2-9.png", correctAnswer: "Джузе Сузуя " },
+      { text: "Ребус Персонаж 10", image: "public/foto5/image5-5-5.png", correctAnswer: "Эсканор" }
     ]
   },
   {
