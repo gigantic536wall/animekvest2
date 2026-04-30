@@ -264,6 +264,17 @@ const roundsData: Round[] = [
       { text: "«Ива-чан, напрягать мозг, когда его нет, — плохо, голова может заболеть.»", correctAnswer: "Волейбол!! (Haikyuu!!)" },
       { text: "«Не опускай взгляд. Когда глаза затуманены — душа темнеет, и тогда будущее закрывается от тебя, и ты теряешь причину, чтобы жить дальше. Делая то, что ты считаешь верным, как многого ты добьешься, опустив голову? Выпрямись! Устреми взгляд вперед и добейся своего.»", correctAnswer: "Re:Zero" }
     ]
+  },
+  {
+    type: "da_net",
+    name: "Раунд 9: Да или Нет",
+    answerTime: 0,
+    questions: [
+      { 
+        text: "В данном раунде вы будете по очереди по номерам команд задавать вопрос администратору который имеет право отвечать только да или нет так же у него есть возможность солгать 3 раза после того как человек из первой команды спросил ему дали ответ спрашивает человек из 2 команды и так далее когда круг пройдет все начинаеться опять с первой команды пока не угадаете персонажа из аниме.",
+        correctAnswer: "Персонаж угадан"
+      }
+    ]
   }
 ];
 
@@ -547,8 +558,9 @@ export default function App() {
   };
 
   const startRound = async (idx: number) => {
-    const duration = roundsData[idx].questions[0]?.answerTime || roundsData[idx].answerTime || 25;
-    await restPatch('gameState', {
+    const round = roundsData[idx];
+    const duration = round.questions[0]?.answerTime || round.answerTime || 25;
+    const newState: any = {
       active: true,
       currentRound: idx,
       currentQuestion: 0,
@@ -557,12 +569,58 @@ export default function App() {
       endTime: Date.now() + duration * 1000,
       showAnswer: false,
       reset: false
-    });
+    };
+
+    if (round.type === "da_net") {
+      newState.currentTeamTurn = 0; // Start with Team 1
+      newState.liesLeft = 3;
+      newState.endTime = 0; // No timer
+    }
+
+    await restPatch('gameState', newState);
   };
 
   const skipQuestion = async () => {
     if (!user?.isAdmin || !gameState?.active || pauseState?.active) return;
     await startPauseBetweenQuestions();
+  };
+
+  const nextRound9Team = async () => {
+    if (!user?.isAdmin || gameState?.currentRound === undefined) return;
+    
+    const currentTeam = gameState.currentTeamTurn || 0;
+    let nextTeam = (currentTeam + 1) % TOTAL_TEAMS;
+    
+    // Find next team with players
+    let attempts = 0;
+    const teamHasPlayers = (tIdx: number) => Object.values(players).some((p: any) => p.team === tIdx);
+    
+    while (!teamHasPlayers(nextTeam) && attempts < TOTAL_TEAMS) {
+      nextTeam = (nextTeam + 1) % TOTAL_TEAMS;
+      attempts++;
+    }
+    
+    await restPatch('gameState', { currentTeamTurn: nextTeam });
+  };
+
+  const markRound9Correct = async () => {
+    if (!user?.isAdmin) return;
+    const currentTeam = gameState.currentTeamTurn || 0;
+    const scoreKey = `round9_win`;
+    
+    const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === currentTeam);
+    
+    await Promise.all(teamPlayers.map(([id, _]) => 
+      restPut(`players/${id}/scores/${scoreKey}`, 10)
+    ));
+    
+    alert(`Команда ${currentTeam + 1} угадала! +10 баллов всем участникам команды.`);
+    await restPatch('gameState', { roundFinished: true, showAnswer: true });
+  };
+
+  const useRound9Lie = async () => {
+    if (!user?.isAdmin || (gameState?.liesLeft || 0) <= 0) return;
+    await restPatch('gameState', { liesLeft: (gameState.liesLeft || 0) - 1 });
   };
 
   const startPauseBetweenQuestions = async () => {
@@ -1035,6 +1093,48 @@ export default function App() {
                     />
                   </div>
                 )}
+              </div>
+            )}
+
+            {roundsData[gameState.currentRound]?.type === "da_net" && (
+              <div className="max-w-4xl mx-auto space-y-8">
+                <div className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md">
+                  <h3 className="text-2xl font-black text-purple-400 mb-4 uppercase tracking-widest text-center">ПРАВИЛА РАУНДА</h3>
+                  <p className="text-lg text-gray-300 leading-relaxed italic text-center">
+                    "{roundsData[gameState.currentRound].questions[0].text}"
+                  </p>
+                </div>
+                
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  {Array.from({ length: TOTAL_TEAMS }).map((_, i) => {
+                    const isActive = gameState.currentTeamTurn === i;
+                    const teamPlayers = Object.values(players).filter((p: any) => p.team === i);
+                    if (teamPlayers.length === 0) return null;
+                    
+                    return (
+                      <motion.div 
+                        key={i}
+                        animate={{ 
+                          scale: isActive ? 1.1 : 1,
+                          borderColor: isActive ? 'rgba(168, 85, 247, 0.8)' : 'rgba(255, 255, 255, 0.1)'
+                        }}
+                        className={`p-4 rounded-2xl border-2 transition-all ${isActive ? 'bg-purple-900/40 shadow-[0_0_20px_rgba(168,85,247,0.4)]' : 'bg-white/5'}`}
+                      >
+                        <div className={`text-[10px] font-black mb-2 uppercase tracking-tighter ${isActive ? 'text-purple-300' : 'text-gray-500'}`}>Команда {i + 1}</div>
+                        <div className="space-y-1">
+                          {teamPlayers.map((p: any) => (
+                            <div key={p.uid} className={`text-sm font-bold truncate ${isActive ? 'text-white underline underline-offset-4 decoration-purple-500' : 'text-gray-400'}`}>
+                              {p.nickname}
+                            </div>
+                          ))}
+                        </div>
+                        {isActive && (
+                            <div className="mt-2 text-[8px] font-black bg-purple-500 text-white px-2 py-0.5 rounded-full inline-block animate-pulse">ВАШ ХОД!</div>
+                        )}
+                      </motion.div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -1891,6 +1991,43 @@ export default function App() {
                   <RotateCcw className="w-4 h-4" /> СБРОС
                 </button>
               </div>
+
+              {roundsData[gameState?.currentRound]?.type === "da_net" && (
+                <div className="mt-8 bg-purple-900/20 p-6 rounded-3xl border border-purple-500/30 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-bold text-purple-400 uppercase tracking-widest text-sm">Управление Ходом (9 Раунд)</h4>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-400">Лжи осталось:</span>
+                      <span className="bg-red-500 text-white px-2 py-0.5 rounded-full font-black">{gameState?.liesLeft || 0}</span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button 
+                      onClick={nextRound9Team}
+                      className="bg-purple-600 hover:bg-purple-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-purple-900/30"
+                    >
+                      <SkipForward className="w-5 h-5" /> СЛЕД. КОМАНДА
+                    </button>
+                    <button 
+                      onClick={useRound9Lie}
+                      disabled={(gameState?.liesLeft || 0) <= 0}
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-30 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-red-900/30"
+                    >
+                      <Bell className="w-5 h-5" /> УЧЕСТЬ ЛОЖЬ
+                    </button>
+                  </div>
+                  <button 
+                    onClick={markRound9Correct}
+                    className="w-full bg-green-600 hover:bg-green-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-green-900/30"
+                  >
+                    <CheckCircle2 className="w-6 h-6" /> ПРАВИЛЬНЫЙ ОТВЕТ (+10 БАЛЛОВ)
+                  </button>
+                  <div className="p-4 bg-black/30 rounded-2xl border border-white/5 text-center">
+                    <div className="text-[10px] text-gray-500 uppercase font-black tracking-widest mb-1">Сейчас спрашивает:</div>
+                    <div className="text-2xl font-black text-purple-400">КОМАНДА {(gameState?.currentTeamTurn || 0) + 1}</div>
+                  </div>
+                </div>
+              )}
 
               {/* Leaderboard Table */}
               <div className="mt-8 glass-dark rounded-[2rem] p-8 border border-white/10">
