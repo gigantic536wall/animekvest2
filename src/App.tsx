@@ -529,6 +529,7 @@ export default function App() {
   const targetDurationRef = useRef<number>(25);
   const isFreshTransitionRef = useRef<boolean>(false);
   const gameStateRef = useRef<any>(null);
+  const isStartingPauseRef = useRef<boolean>(false);
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -890,34 +891,57 @@ export default function App() {
   };
 
   const startPauseBetweenQuestions = async () => {
-    if (pauseState?.active) return; // Prevent double trigger
-    const currentGameState = gameStateRef.current || gameState;
-    const round = roundsData[currentGameState.currentRound];
-    if (!round) return;
-    const duration = round.pauseDuration || 10;
-    const endTime = Date.now() + duration * 1000;
-    await restPut('gameState/pause', { active: true, endTime, skip: false });
-    await restPatch('gameState', { showAnswer: false, endTime: null }); 
+    if (isStartingPauseRef.current || pauseState?.active) return; // Prevent double trigger
+    isStartingPauseRef.current = true;
 
-    const checkPause = setInterval(async () => {
-      const { data: p } = await restGet('gameState/pause');
-      const latestGameState = gameStateRef.current || gameState;
-      if (!p || p.skip || (Date.now() + serverOffset) >= p.endTime) {
-        clearInterval(checkPause);
-        const nextQ = latestGameState.currentQuestion + 1;
-        if (nextQ < round.questions.length) {
-          const qDuration = round.questions[nextQ].answerTime || round.answerTime || 25;
-          await restPatch('gameState', { 
-            currentQuestion: nextQ, 
-            timeLeft: qDuration,
-            endTime: Date.now() + qDuration * 1000,
-            pause: null // Atomic removal of the pause state
-          });
-        } else {
-          await restPatch('gameState', { active: false, roundFinished: true, pause: null });
-        }
+    try {
+      const currentGameState = gameStateRef.current || gameState;
+      const round = roundsData[currentGameState.currentRound];
+      if (!round) {
+        isStartingPauseRef.current = false;
+        return;
       }
-    }, 1000);
+      const duration = round.pauseDuration || 10;
+      const endTime = Date.now() + duration * 1000;
+      await restPut('gameState/pause', { active: true, endTime, skip: false });
+      await restPatch('gameState', { showAnswer: false, endTime: null }); 
+
+      const checkPause = setInterval(async () => {
+        try {
+          const { data: p } = await restGet('gameState/pause');
+          if (!p) {
+            clearInterval(checkPause);
+            isStartingPauseRef.current = false;
+            return;
+          }
+          const latestGameState = gameStateRef.current || gameState;
+          if (p.skip || (Date.now() + serverOffset) >= p.endTime) {
+            clearInterval(checkPause);
+            // Delete the pause document first from DB to prevent double executing by parallel timers
+            await restDelete('gameState/pause');
+            isStartingPauseRef.current = false;
+
+            const nextQ = latestGameState.currentQuestion + 1;
+            if (nextQ < round.questions.length) {
+              const qDuration = round.questions[nextQ].answerTime || round.answerTime || 25;
+              await restPatch('gameState', { 
+                currentQuestion: nextQ, 
+                timeLeft: qDuration,
+                endTime: Date.now() + qDuration * 1000,
+                pause: null // Atomic removal of the pause state
+              });
+            } else {
+              await restPatch('gameState', { active: false, roundFinished: true, pause: null });
+            }
+          }
+        } catch (intervalErr) {
+          console.error("Error in checkPause interval:", intervalErr);
+        }
+      }, 1000);
+    } catch (err) {
+      console.error("Error starting pause:", err);
+      isStartingPauseRef.current = false;
+    }
   };
 
   const submitAnswer = async (overrideAnswer?: string) => {
@@ -1657,7 +1681,7 @@ export default function App() {
               <div className="flex flex-col items-center justify-center py-20">
                 <div className="text-6xl font-bold text-yellow-500 mb-4 animate-pulse">⏸️ ПАУЗА</div>
                 <div className="text-4xl font-mono bg-black/40 px-8 py-4 rounded-2xl">
-                  {Math.max(0, Math.ceil((pauseState.endTime - Date.now()) / 1000))}
+                  {Math.max(0, Math.ceil((pauseState.endTime - (Date.now() + serverOffset)) / 1000))}
                 </div>
                 <p className="mt-6 text-xl text-gray-300">Готовьтесь к следующему вопросу!</p>
                 {user.isAdmin && (
@@ -1741,6 +1765,9 @@ export default function App() {
                           placeholder="Проверка ввода..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') submitAnswer();
+                          }}
                           disabled={hasAnswered}
                           maxLength={50}
                         />
@@ -1776,6 +1803,7 @@ export default function App() {
                           >
                             {show && (
                               <img 
+                                key={img}
                                 src={getAssetPath(img)} 
                                 alt={`Hint ${idx + 1}`} 
                                 className="w-full h-full object-cover"
@@ -1798,6 +1826,9 @@ export default function App() {
                           placeholder="Ваш ответ..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') submitAnswer();
+                          }}
                           disabled={hasAnswered}
                           maxLength={50}
                         />
@@ -1881,6 +1912,9 @@ export default function App() {
                           placeholder="Название аниме..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') submitAnswer();
+                          }}
                           disabled={hasAnswered}
                           maxLength={50}
                         />
