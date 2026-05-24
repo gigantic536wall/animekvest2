@@ -1088,6 +1088,22 @@ export default function App() {
     }
   };
 
+  const getRoundPoints = (type: string, idx: number, tLeft: number): number => {
+    switch (type) {
+      case 'anime_info': return 3;
+      case 'audio_guess': return 3;
+      case 'quiz_six': return 4;
+      case 'mixed_text': return idx === 4 ? 3 : idx === 5 ? 5 : 2;
+      case 'personal': return 1;
+      case 'emoji_guess': return 2;
+      case 'character_guess': return 2;
+      case 'description_guess': return 2;
+      case 'rebus': return 5;
+      case 'image_sequence': return tLeft > 28 ? 4 : tLeft > 20 ? 3 : tLeft > 12 ? 2 : 1;
+      default: return 2;
+    }
+  };
+
   // ==================== RENDER ====================
   if (!user || isChangingTeam) {
     return (
@@ -1155,9 +1171,17 @@ export default function App() {
     );
   }
 
+  const activeAccent = gameState?.active ? (ROUND_ACCENT[roundsData[gameState.currentRound]?.type] || '#8b5cf6') : '#8b5cf6';
+
   return (
     <div className="min-h-screen p-4 md:p-8">
-      <div className="max-w-[1600px] mx-auto">
+      {/* Global animated background orbs */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden" style={{zIndex:0}}>
+        <div className="bg-orb-a absolute top-[8%] left-[6%] w-[480px] h-[480px] rounded-full blur-[130px]" style={{background:activeAccent, opacity:0.055}} />
+        <div className="bg-orb-b absolute bottom-[10%] right-[6%] w-[380px] h-[380px] rounded-full blur-[110px]" style={{background:'#ec4899', opacity:0.045}} />
+        <div className="bg-orb-c absolute top-[45%] left-[40%] w-[300px] h-[300px] rounded-full blur-[120px]" style={{background:activeAccent, opacity:0.03, animationDelay:'12s'}} />
+      </div>
+      <div className="max-w-[1600px] mx-auto relative" style={{zIndex:1}}>
         {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12 glass p-8 rounded-[2.5rem] neon-border">
           <div className="flex items-center gap-4">
