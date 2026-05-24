@@ -528,6 +528,11 @@ export default function App() {
   const localStartTimeRef = useRef<number | null>(null);
   const targetDurationRef = useRef<number>(25);
   const isFreshTransitionRef = useRef<boolean>(false);
+  const gameStateRef = useRef<any>(null);
+
+  useEffect(() => {
+    gameStateRef.current = gameState;
+  }, [gameState]);
 
   const getPlayerScore = (p: any) => {
     if (!p) return 0;
@@ -886,7 +891,9 @@ export default function App() {
 
   const startPauseBetweenQuestions = async () => {
     if (pauseState?.active) return; // Prevent double trigger
-    const round = roundsData[gameState.currentRound];
+    const currentGameState = gameStateRef.current || gameState;
+    const round = roundsData[currentGameState.currentRound];
+    if (!round) return;
     const duration = round.pauseDuration || 10;
     const endTime = Date.now() + duration * 1000;
     await restPut('gameState/pause', { active: true, endTime, skip: false });
@@ -894,26 +901,27 @@ export default function App() {
 
     const checkPause = setInterval(async () => {
       const { data: p } = await restGet('gameState/pause');
+      const latestGameState = gameStateRef.current || gameState;
       if (!p || p.skip || (Date.now() + serverOffset) >= p.endTime) {
         clearInterval(checkPause);
-        await restDelete('gameState/pause');
-        const nextQ = gameState.currentQuestion + 1;
+        const nextQ = latestGameState.currentQuestion + 1;
         if (nextQ < round.questions.length) {
           const qDuration = round.questions[nextQ].answerTime || round.answerTime || 25;
           await restPatch('gameState', { 
             currentQuestion: nextQ, 
             timeLeft: qDuration,
-            endTime: Date.now() + qDuration * 1000
+            endTime: Date.now() + qDuration * 1000,
+            pause: null // Atomic removal of the pause state
           });
         } else {
-          await restPatch('gameState', { active: false, roundFinished: true });
+          await restPatch('gameState', { active: false, roundFinished: true, pause: null });
         }
       }
     }, 1000);
   };
 
   const submitAnswer = async (overrideAnswer?: string) => {
-    const finalAnswer = overrideAnswer !== undefined ? overrideAnswer : answerText;
+    const finalAnswer = typeof overrideAnswer === "string" ? overrideAnswer : answerText;
     if (hasAnswered || !finalAnswer.trim()) return;
     const round = roundsData[gameState.currentRound];
     let potentialPoints = 2; // Default
@@ -1711,7 +1719,7 @@ export default function App() {
                       {/* Images Grid Section */}
                       <div className="lg:col-span-4 grid grid-cols-2 gap-4">
                         {currentQuestion.images?.map((img, idx) => (
-                          <div key={idx} className="aspect-video rounded-3xl overflow-hidden border border-white/10 glass-dark relative group">
+                          <div key={`${gameState.currentQuestion}_${idx}`} className="aspect-video rounded-3xl overflow-hidden border border-white/10 glass-dark relative group">
                             <img 
                               src={getAssetPath(img)} 
                               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
@@ -1761,7 +1769,7 @@ export default function App() {
                         
                         return (
                           <motion.div 
-                            key={idx}
+                            key={`${gameState.currentQuestion}_${idx}`}
                             initial={{ opacity: 0, scale: 0.9 }}
                             animate={{ opacity: show ? 1 : 0, scale: show ? 1 : 0.9 }}
                             className="relative aspect-video overflow-hidden rounded-xl border-2 border-white/10"
