@@ -12,6 +12,13 @@ import { AudioPlayer } from './components/AudioPlayer';
 const DB_URL = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
 const TOTAL_TEAMS = 10;
 
+const ROUND_ACCENT: Record<string, string> = {
+  test_round:'#64748b', image_sequence:'#8b5cf6', video:'#3b82f6', quiz:'#f59e0b',
+  audio_guess:'#10b981', rebus:'#ec4899', quiz_six:'#f59e0b',
+  description_guess:'#6366f1', emoji_guess:'#f97316', personal:'#14b8a6',
+  mixed_text:'#a855f7', anime_info:'#8b5cf6', da_net:'#ef4444',
+};
+
 const restGet = async (p: string) => { 
   const r = await fetch(`${DB_URL}/${p}.json`); 
   if (!r.ok) throw new Error(`GET ${p} ${r.status}`); 
@@ -558,8 +565,10 @@ export default function App() {
   }, [gameState?.revealMode, gameState?.currentQuestion, gameState?.active]);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [isChangingTeam, setIsChangingTeam] = useState(false);
-  const [isDoubleChoice, setIsDoubleChoice] = useState(false); // To toggle double points
+  const [isDoubleChoice, setIsDoubleChoice] = useState(false);
   const [preloaderStatus, setPreloaderStatus] = useState("");
+  // Накопленные видимые картинки раунда 1 — никогда не убираются назад
+  const [revealedImages, setRevealedImages] = useState<Set<number>>(new Set([0]));
 
   const timerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -724,6 +733,24 @@ export default function App() {
     };
     checkAnswered();
   }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin]);
+  // Сброс видимых картинок при новом вопросе раунда 1
+  useEffect(() => {
+    setRevealedImages(new Set([0]));
+  }, [gameState?.currentQuestion, gameState?.currentRound]);
+
+  // Накопление картинок по таймеру — только добавляем, никогда не убираем
+  useEffect(() => {
+    if (!gameState?.active) return;
+    if (roundsData[gameState?.currentRound]?.type !== 'image_sequence') return;
+    setRevealedImages(prev => {
+      const next = new Set(prev);
+      if (timeLeft <= 28) next.add(1);
+      if (timeLeft <= 20) next.add(2);
+      if (timeLeft <= 12) next.add(3);
+      return next.size !== prev.size ? next : prev;
+    });
+  }, [timeLeft, gameState?.currentRound, gameState?.active]);
+
   // Enter key for quiz_six: confirm selected option
   useEffect(() => {
     if (!gameState?.active || !user || user.isAdmin) return;
@@ -1305,277 +1332,253 @@ export default function App() {
       )}
 
       {/* Reveal Mode Overlay */}
-      {gameState?.revealMode && (
-        <div className={`fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-8 ${user?.isAdmin ? 'pb-80' : ''}`}>
-          {/* Volume Control for Reveal Mode */}
-          <div className="absolute top-8 right-8 z-[110] flex items-center gap-4 glass px-6 py-3 rounded-full border border-white/10">
-            <div onClick={() => setIsMuted(!isMuted)} className="cursor-pointer hover:scale-110 transition-transform">
-              {isMuted || volume === 0 ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5 text-purple-400" />}
+      {gameState?.revealMode && (() => {
+        const rv = roundsData[gameState.currentRound];
+        const rvQ = rv?.questions[gameState.currentQuestion];
+        const accent = ROUND_ACCENT[rv?.type] || '#8b5cf6';
+        const rvCorrect = rv?.type === "character_guess"
+          ? `${rvQ?.character} (${rvQ?.anime})`
+          : rvQ?.correctAnswer;
+        return (
+          <div className={`fixed inset-0 z-[100] overflow-hidden flex flex-col${user?.isAdmin ? ' pb-[320px]' : ''}`}>
+            {/* Animated background */}
+            <div className="absolute inset-0 bg-[#08091a]">
+              <div className="absolute inset-0" style={{background:`radial-gradient(ellipse 70% 60% at 15% 50%, ${accent}1a, transparent), radial-gradient(ellipse 50% 70% at 85% 40%, ${accent}12, transparent)`}} />
+              <div className="absolute top-[18%] left-[8%] w-80 h-80 rounded-full blur-[90px] animate-float-orb" style={{background:accent, opacity:0.08}} />
+              <div className="absolute bottom-[15%] right-[8%] w-60 h-60 rounded-full blur-[70px] animate-float-orb" style={{background:accent, opacity:0.06, animationDelay:'3s'}} />
             </div>
-            <input 
-              type="range" 
-              min="0" max="1" step="0.01" 
-              value={volume} 
-              onChange={(e) => setVolume(parseFloat(e.target.value))}
-              className="w-32 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500"
-            />
-          </div>
-
-          <div className="max-w-4xl w-full space-y-8 text-center" key={gameState.currentQuestion}>
-            <h2 className="text-3xl font-black text-purple-400 uppercase tracking-widest mb-8">Правильные ответы</h2>
-            
-            {roundsData[gameState.currentRound]?.type === "test_round" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-5xl mx-auto">
-                <div className="aspect-video bg-black rounded-2xl overflow-hidden border-2 border-white/20">
-                  <video 
-                    ref={videoRef}
-                    key={roundsData[gameState.currentRound].questions[gameState.currentQuestion].video}
-                    src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].video || "")} 
-                    autoPlay 
-                    muted={isMuted}
-                    className="w-full h-full"
-                  />
+            {/* Header bar */}
+            <div className="relative z-10 flex items-center justify-between px-8 pt-5 pb-2 shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-black text-white/40 uppercase tracking-widest bg-white/5 border border-white/10 px-4 py-2 rounded-full">{rv?.name}</span>
+                <span className="flex items-center gap-2 bg-white/5 border border-white/10 px-3 py-1.5 rounded-full">
+                  <span className="text-xs text-gray-500 uppercase font-bold">Вопрос</span>
+                  <span className="text-base font-black text-white">{gameState.currentQuestion + 1}</span>
+                  <span className="text-gray-600">/</span>
+                  <span className="text-sm text-gray-400">{rv?.questions.length}</span>
+                </span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-black uppercase tracking-[0.2em] px-4 py-2 rounded-full border" style={{color:accent, borderColor:`${accent}50`, background:`${accent}12`}}>Правильные ответы</span>
+                <div className="flex items-center gap-3 glass px-4 py-2 rounded-full border border-white/10">
+                  <div onClick={() => setIsMuted(!isMuted)} className="cursor-pointer hover:scale-110 transition-transform">
+                    {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-purple-400" />}
+                  </div>
+                  <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-24 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {roundsData[gameState.currentRound].questions[gameState.currentQuestion].images?.map((img, i) => (
-                    <img key={i} src={getAssetPath(img)} className="rounded-xl aspect-video object-cover border border-white/20" />
+              </div>
+            </div>
+            {/* Thin progress bar */}
+            <div className="relative z-10 px-8 mb-1 shrink-0">
+              <div className="w-full bg-white/10 h-[3px] rounded-full overflow-hidden">
+                <motion.div key={`timer-rv-${gameState.currentQuestion}`} initial={{width:"100%"}} animate={{width:"0%"}} transition={{duration:rv?.type==="video"?19:14, ease:"linear"}} className="h-full rounded-full" style={{background:`linear-gradient(90deg, ${accent}, ${accent}88)`}} />
+              </div>
+            </div>
+            <AnimatePresence mode="wait">
+            <motion.div key={`rv-content-${gameState.currentQuestion}`} initial={{opacity:0, y:14}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-14}} transition={{duration:0.35}} className="relative z-10 flex-1 flex flex-col items-center justify-center overflow-auto px-8 py-3 gap-4">
+            
+              {/* test_round */}
+              {rv?.type === "test_round" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-5xl w-full">
+                  <div className="aspect-video bg-black rounded-2xl overflow-hidden border border-white/20 shadow-xl">
+                    <video ref={videoRef} key={rvQ?.video} src={getAssetPath(rvQ?.video || "")} autoPlay muted={isMuted} className="w-full h-full" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {rvQ?.images?.map((img: string, i: number) => (
+                      <img key={i} src={getAssetPath(img)} className="rounded-xl aspect-video object-cover border border-white/20 shadow-md" />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* image_sequence — все 4 картинки сразу */}
+              {rv?.type === "image_sequence" && (
+                <div className="grid grid-cols-2 gap-3 max-w-3xl w-full">
+                  {rvQ?.images?.map((img: string, i: number) => (
+                    <motion.div key={i} initial={{opacity:0, scale:0.9}} animate={{opacity:1, scale:1}} transition={{delay:i*0.1}}
+                      className="relative aspect-video overflow-hidden rounded-2xl border-2 shadow-xl" style={{borderColor:`${accent}55`}}>
+                      <img src={getAssetPath(img)} alt={`Hint ${i+1}`} className="w-full h-full object-cover" />
+                      <div className="absolute top-2 left-2 text-[10px] font-black bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full text-white">#{i+1}</div>
+                    </motion.div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
 
-            {roundsData[gameState.currentRound]?.type === "image_sequence" && (
-              <div className="grid grid-cols-2 gap-4">
-                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].images?.map((img, i) => (
-                  <img key={`${gameState.currentQuestion}-${i}`} src={getAssetPath(img)} className="rounded-xl aspect-video object-cover border-2 border-white/20" />
-                ))}
-              </div>
-            )}
+              {/* video */}
+              {rv?.type === "video" && (
+                <div className="aspect-video bg-black rounded-2xl overflow-hidden border border-white/20 shadow-2xl max-w-3xl w-full">
+                  <video ref={videoRef} key={gameState.currentQuestion} src={getAssetPath(rvQ?.video || "")} autoPlay muted={isMuted} className="w-full h-full" />
+                </div>
+              )}
 
-            {roundsData[gameState.currentRound]?.type === "video" && (
-              <div className="aspect-video bg-black rounded-2xl overflow-hidden border-2 border-white/20">
-                <video 
-                  ref={videoRef}
-                  key={gameState.currentQuestion}
-                  src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].video || "")} 
-                  autoPlay 
-                  muted={isMuted}
-                  className="w-full h-full"
-                />
-              </div>
-            )}
-
-            {roundsData[gameState.currentRound]?.type === "character_guess" && (
-              <div className="max-w-4xl mx-auto space-y-6">
-                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].image && (
-                  <div className="max-w-md mx-auto">
-                    <img 
-                      key={gameState.currentQuestion}
-                      src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].image || "")} 
-                      className="rounded-2xl border-2 border-white/20 shadow-2xl max-h-[40vh] mx-auto" 
-                    />
+              {/* character_guess */}
+              {rv?.type === "character_guess" && (
+                <div className="flex flex-col md:flex-row gap-5 max-w-4xl w-full items-center">
+                  {rvQ?.image && (
+                    <div className="shrink-0">
+                      <img key={gameState.currentQuestion} src={getAssetPath(rvQ.image)} className="rounded-2xl border-2 shadow-2xl max-h-[35vh] object-contain" style={{borderColor:`${accent}60`}} />
+                    </div>
+                  )}
+                  <div className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-xl flex-1">
+                    <p className="text-sm text-gray-400 uppercase font-bold tracking-widest mb-3">Описание персонажа:</p>
+                    <p className="text-xl italic text-white leading-relaxed">"{rvQ?.description}"</p>
                   </div>
-                )}
-                <div className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-2xl">
-                  <p className="text-xl italic text-gray-300 leading-relaxed">
-                    "{roundsData[gameState.currentRound].questions[gameState.currentQuestion].description}"
-                  </p>
                 </div>
-              </div>
-            )}
+              )}
 
-            {roundsData[gameState.currentRound]?.type === "quiz_six" && (
-              <div className="max-w-4xl mx-auto space-y-6">
-                <div className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-2xl text-center">
-                  <h3 className="text-3xl font-bold leading-normal text-white">
-                    {roundsData[gameState.currentRound].questions[gameState.currentQuestion].text}
-                  </h3>
+              {/* quiz_six — вопрос + варианты с подсветкой правильного */}
+              {rv?.type === "quiz_six" && (
+                <div className="space-y-4 max-w-3xl w-full">
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-center shadow-lg">
+                    <h3 className="text-2xl font-bold text-white leading-normal">{rvQ?.text}</h3>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {rvQ?.options?.map((opt: string, idx: number) => {
+                      const isCorrect = opt === rvQ?.correctAnswer;
+                      return (
+                        <motion.div key={idx} initial={{opacity:0, x:idx%2===0?-20:20}} animate={{opacity:1, x:0}} transition={{delay:idx*0.08}}
+                          className={`p-4 rounded-2xl font-medium border-2 flex items-center gap-3 ${isCorrect ? 'border-green-500/60 bg-green-500/15 text-green-200' : 'border-white/10 bg-white/5 text-gray-500 opacity-50'}`}
+                          style={isCorrect ? {boxShadow:'0 0 25px rgba(34,197,94,0.25)'} : {}}>
+                          <span className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-mono shrink-0 ${isCorrect ? 'border-green-400 bg-green-500 text-white' : 'border-white/20 text-gray-500'}`}>{idx+1}</span>
+                          <span className="leading-snug flex-1">{opt}</span>
+                          {isCorrect && <span className="text-green-400 font-black shrink-0">✓</span>}
+                        </motion.div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {roundsData[gameState.currentRound].questions[gameState.currentQuestion].options?.map((opt: string, idx: number) => {
-                    const isCorrect = opt === roundsData[gameState.currentRound].questions[gameState.currentQuestion].correctAnswer;
-                    return (
-                      <div
-                        key={idx}
-                        className={`p-5 rounded-2xl text-left font-medium border-2 transition-all ${
-                          isCorrect 
-                            ? 'bg-green-600/30 border-green-500 text-green-300 shadow-[0_0_15px_rgba(34,197,94,0.2)]' 
-                            : 'bg-white/5 border-white/10 text-gray-400 opacity-60'
-                        }`}
-                      >
-                        <span className="font-mono text-sm mr-2 text-white/40">{idx + 1}.</span> {opt}
+              )}
+
+              {/* rebus */}
+              {rv?.type === "rebus" && (
+                <motion.div initial={{scale:0.94, opacity:0}} animate={{scale:1, opacity:1}} className="max-w-2xl w-full">
+                  <img key={gameState.currentQuestion} src={getAssetPath(rvQ?.image || "")} className="rounded-2xl border-2 shadow-2xl max-h-[45vh] mx-auto object-contain" style={{borderColor:`${accent}60`}} />
+                </motion.div>
+              )}
+
+              {/* description_guess */}
+              {rv?.type === "description_guess" && (
+                <div className="max-w-3xl w-full bg-white/5 p-8 rounded-3xl border border-white/10 shadow-xl">
+                  <p className="text-sm text-gray-400 uppercase font-bold tracking-widest mb-4">Описание аниме:</p>
+                  <p className="text-xl italic text-white leading-relaxed">"{rvQ?.description}"</p>
+                </div>
+              )}
+
+              {/* emoji_guess */}
+              {rv?.type === "emoji_guess" && (
+                <motion.div initial={{scale:0.5, opacity:0}} animate={{scale:1, opacity:1}} transition={{type:"spring", stiffness:200, damping:18}}
+                  className="text-7xl md:text-9xl tracking-widest py-4 drop-shadow-2xl">
+                  {rvQ?.emojis}
+                </motion.div>
+              )}
+
+              {/* personal */}
+              {rv?.type === "personal" && (
+                <div className="max-w-3xl w-full bg-white/5 p-10 rounded-3xl border border-white/10 shadow-xl text-center">
+                  <p className="text-sm text-gray-400 uppercase font-bold tracking-widest mb-4">Вопрос от Назара:</p>
+                  <p className="text-3xl font-bold text-white leading-tight">{rvQ?.text}</p>
+                </div>
+              )}
+
+              {/* mixed_text */}
+              {rv?.type === "mixed_text" && (
+                <div className="space-y-4 max-w-4xl w-full">
+                  <div className="bg-white/5 p-7 rounded-3xl border border-white/10 shadow-xl text-center">
+                    <p className="text-2xl font-bold text-white leading-tight">{rvQ?.text}</p>
+                  </div>
+                  {rvQ?.image && (
+                    <div className="max-w-2xl mx-auto">
+                      <img src={getAssetPath(rvQ.image)} className="rounded-2xl border-2 shadow-2xl max-h-[35vh] mx-auto" style={{borderColor:`${accent}40`}} />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* anime_info */}
+              {rv?.type === "anime_info" && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-4xl w-full text-left">
+                  <div className="bg-slate-900/60 p-6 rounded-3xl border border-white/10 shadow-xl space-y-2">
+                    <h4 className="text-xs font-black text-purple-400 uppercase tracking-wider mb-3 border-b border-white/10 pb-2">📂 Производство</h4>
+                    {([['Год', rvQ?.year,'text-white font-semibold'], ['Жанр', rvQ?.genre,'text-pink-300'], ['Режиссер', rvQ?.director,'text-white'], ['Композитор', rvQ?.composer,'text-white'], ['Художник', rvQ?.painter,'text-white'], ['Монтаж', rvQ?.editor,'text-white']] as [string,any,string][]).map(([label,val,cls])=>(
+                      <div key={label} className="flex justify-between items-center border-b border-white/5 pb-1 text-sm">
+                        <span className="text-gray-400">{label}:</span><span className={cls}>{val||'—'}</span>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {roundsData[gameState.currentRound]?.type === "rebus" && (
-              <div className="max-w-2xl mx-auto">
-                <img 
-                  key={gameState.currentQuestion}
-                  src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].image || "")} 
-                  className="rounded-2xl border-2 border-white/20 shadow-2xl max-h-[50vh] mx-auto" 
-                />
-              </div>
-            )}
-
-            {roundsData[gameState.currentRound]?.type === "description_guess" && (
-              <div className="max-w-3xl mx-auto bg-white/5 p-8 rounded-3xl border border-white/10">
-                <p className="text-xl italic text-gray-300 leading-relaxed">
-                  "{roundsData[gameState.currentRound].questions[gameState.currentQuestion].description}"
-                </p>
-              </div>
-            )}
-
-            {roundsData[gameState.currentRound]?.type === "emoji_guess" && (
-              <div className="text-6xl md:text-8xl tracking-widest py-8">
-                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].emojis}
-              </div>
-            )}
-
-            {roundsData[gameState.currentRound]?.type === "personal" && (
-              <div className="max-w-3xl mx-auto bg-white/5 p-12 rounded-3xl border border-white/10 shadow-2xl">
-                <p className="text-3xl font-bold text-white leading-tight">
-                  {roundsData[gameState.currentRound].questions[gameState.currentQuestion].text}
-                </p>
-              </div>
-            )}
-
-            {roundsData[gameState.currentRound]?.type === "mixed_text" && (
-              <div className="max-w-4xl mx-auto space-y-6">
-                <div className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-2xl">
-                  <p className="text-2xl font-bold text-white leading-tight">
-                    {roundsData[gameState.currentRound].questions[gameState.currentQuestion].text}
-                  </p>
-                </div>
-                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].image && (
-                  <div className="max-w-2xl mx-auto">
-                    <img 
-                      src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].image || "")} 
-                      className="rounded-2xl border-2 border-white/20 shadow-2xl max-h-[40vh] mx-auto" 
-                    />
+                    ))}
                   </div>
-                )}
-              </div>
-            )}
-
-            {roundsData[gameState.currentRound]?.type === "anime_info" && (
-              <div className="space-y-6 max-w-4xl mx-auto text-left">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-3 bg-white/5 p-6 rounded-3xl border border-white/10 shadow-xl">
-                    <h4 className="text-xs font-black text-purple-400 uppercase tracking-wider mb-2 border-b border-white/5 pb-1">📂 Производство</h4>
-                    <div className="space-y-2 text-sm">
-                      <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-400">Год:</span> <span className="text-white font-semibold">{roundsData[gameState.currentRound].questions[gameState.currentQuestion].year}</span></div>
-                      <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-400">Жанр:</span> <span className="text-pink-300 font-medium">{roundsData[gameState.currentRound].questions[gameState.currentQuestion].genre}</span></div>
-                      <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-400">Режиссер:</span> <span className="text-white">{roundsData[gameState.currentRound].questions[gameState.currentQuestion].director}</span></div>
-                      <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-400">Композитор:</span> <span className="text-white">{roundsData[gameState.currentRound].questions[gameState.currentQuestion].composer}</span></div>
-                      <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-400">Художник:</span> <span className="text-white">{roundsData[gameState.currentRound].questions[gameState.currentQuestion].painter}</span></div>
-                      <div className="flex justify-between"><span className="text-gray-400">Монтаж:</span> <span className="text-white">{roundsData[gameState.currentRound].questions[gameState.currentQuestion].editor}</span></div>
-                    </div>
-                  </div>
-                  <div className="space-y-3 bg-white/5 p-6 rounded-3xl border border-white/10 shadow-xl flex flex-col justify-between">
-                    <div>
-                      <h4 className="text-xs font-black text-purple-400 uppercase tracking-wider mb-2 border-b border-white/5 pb-1">📺 Выпуск</h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-400">Премьера:</span> <span className="text-white font-semibold">{roundsData[gameState.currentRound].questions[gameState.currentQuestion].premiere}</span></div>
-                        <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-400">Возраст:</span> <span className="text-red-400 font-bold">{roundsData[gameState.currentRound].questions[gameState.currentQuestion].ageRating}</span></div>
-                        <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-400">Сезоны:</span> <span className="text-amber-300 font-bold">{roundsData[gameState.currentRound].questions[gameState.currentQuestion].seasons}</span></div>
-                        <div className="flex justify-between"><span className="text-gray-400">Серии:</span> <span className="text-teal-300 font-bold">{roundsData[gameState.currentRound].questions[gameState.currentQuestion].episodes}</span></div>
-                      </div>
-                    </div>
-                    <div className="mt-4 bg-purple-900/20 p-4 rounded-2xl border border-purple-500/20">
-                      <p className="text-xs text-purple-300 uppercase font-black tracking-widest mb-1">💡 Описание:</p>
-                      <p className="text-sm text-white italic">"{roundsData[gameState.currentRound].questions[gameState.currentQuestion].info}"</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {roundsData[gameState.currentRound]?.type === "audio_guess" && (
-              <div className="max-w-xl mx-auto space-y-6">
-                <AudioPlayer 
-                  src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].audio || "")}
-                  isMuted={isMuted}
-                  volume={volume}
-                />
-              </div>
-            )}
-
-            {roundsData[gameState.currentRound]?.type === "da_net" && (
-              <div className="max-w-4xl mx-auto space-y-8">
-                <div className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md">
-                  <h3 className="text-2xl font-black text-purple-400 mb-4 uppercase tracking-widest text-center">ПРАВИЛА РАУНДА</h3>
-                  <p className="text-lg text-gray-300 leading-relaxed italic text-center">
-                    "{roundsData[gameState.currentRound].questions[0].text}"
-                  </p>
-                </div>
-                
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {Array.from({ length: TOTAL_TEAMS }).map((_, i) => {
-                    const isActive = gameState.currentTeamTurn === i;
-                    const teamPlayers = Object.values(players).filter((p: any) => p.team === i);
-                    if (teamPlayers.length === 0) return null;
-                    
-                    return (
-                      <motion.div 
-                        key={i}
-                        animate={{ 
-                          scale: isActive ? 1.1 : 1,
-                          borderColor: isActive ? 'rgba(168, 85, 247, 0.8)' : 'rgba(255, 255, 255, 0.1)'
-                        }}
-                        className={`p-4 rounded-2xl border-2 transition-all ${isActive ? 'bg-purple-900/40 shadow-[0_0_20px_rgba(168,85,247,0.4)]' : 'bg-white/5'}`}
-                      >
-                        <div className={`text-[10px] font-black mb-2 uppercase tracking-tighter ${isActive ? 'text-purple-300' : 'text-gray-500'}`}>Команда {i + 1}</div>
-                        <div className="space-y-1">
-                          {teamPlayers.map((p: any) => (
-                            <div key={p.uid} className={`text-sm font-bold truncate ${isActive ? 'text-white underline underline-offset-4 decoration-purple-500' : 'text-gray-400'}`}>
-                              {p.nickname}
-                            </div>
-                          ))}
+                  <div className="flex flex-col gap-4">
+                    <div className="bg-slate-900/60 p-6 rounded-3xl border border-white/10 shadow-xl space-y-2">
+                      <h4 className="text-xs font-black text-purple-400 uppercase tracking-wider mb-3 border-b border-white/10 pb-2">📺 Выпуск</h4>
+                      {([['Премьера', rvQ?.premiere,'text-white font-semibold'], ['Возраст', rvQ?.ageRating,'text-red-400 font-bold'], ['Сезоны', rvQ?.seasons,'text-amber-300 font-bold'], ['Серии', rvQ?.episodes,'text-teal-300 font-bold']] as [string,any,string][]).map(([label,val,cls])=>(
+                        <div key={label} className="flex justify-between items-center border-b border-white/5 pb-1 text-sm">
+                          <span className="text-gray-400">{label}:</span><span className={cls}>{val||'—'}</span>
                         </div>
-                        {isActive && (
-                            <div className="mt-2 text-[8px] font-black bg-purple-500 text-white px-2 py-0.5 rounded-full inline-block animate-pulse">ВАШ ХОД!</div>
-                        )}
-                      </motion.div>
-                    );
-                  })}
+                      ))}
+                    </div>
+                    <div className="bg-purple-900/20 p-5 rounded-3xl border border-purple-500/20 flex-1">
+                      <p className="text-xs text-purple-300 uppercase font-bold tracking-widest mb-2">💡 Описание:</p>
+                      <p className="text-sm text-white italic leading-relaxed">"{rvQ?.info}"</p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <motion.div 
-              key={`ans-${gameState.currentQuestion}`}
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              className="bg-white/10 p-8 rounded-3xl border border-white/20"
-            >
-              <p className="text-gray-400 uppercase text-sm font-bold mb-2">Верный ответ:</p>
-              <p className="text-5xl font-black text-white drop-shadow-lg mb-4">
-                {roundsData[gameState.currentRound]?.type === "character_guess" 
-                  ? `${roundsData[gameState.currentRound].questions[gameState.currentQuestion].character} (${roundsData[gameState.currentRound].questions[gameState.currentQuestion].anime})`
-                  : roundsData[gameState.currentRound].questions[gameState.currentQuestion].correctAnswer
-                }
-              </p>
-              {(roundsData[gameState.currentRound]?.type === "character_guess" || roundsData[gameState.currentRound]?.type === "quiz_six") && (
-                <p className="text-xl text-purple-200 italic max-w-2xl mx-auto">
-                  "{roundsData[gameState.currentRound].questions[gameState.currentQuestion].description || roundsData[gameState.currentRound].questions[gameState.currentQuestion].text}"
-                </p>
+              {/* audio_guess */}
+              {rv?.type === "audio_guess" && (
+                <div className="max-w-xl w-full">
+                  <AudioPlayer src={getAssetPath(rvQ?.audio || "")} isMuted={isMuted} volume={volume} />
+                </div>
+              )}
+
+              {/* da_net */}
+              {rv?.type === "da_net" && (
+                <div className="space-y-5 max-w-4xl w-full">
+                  <div className="bg-white/5 p-7 rounded-3xl border border-white/10 shadow-xl text-center">
+                    <h3 className="text-xl font-black text-purple-400 mb-3 uppercase tracking-widest">ПРАВИЛА РАУНДА</h3>
+                    <p className="text-lg text-gray-300 italic">"{rv?.questions[0].text}"</p>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {Array.from({length:TOTAL_TEAMS}).map((_,i)=>{
+                      const isActive = gameState.currentTeamTurn===i;
+                      const teamPlayers = Object.values(players).filter((p:any)=>p.team===i);
+                      if(!teamPlayers.length) return null;
+                      return (
+                        <motion.div key={i} animate={{scale:isActive?1.08:1}} className={`p-4 rounded-2xl border-2 ${isActive?'bg-purple-900/40 border-purple-500 shadow-[0_0_20px_rgba(168,85,247,0.4)]':'bg-white/5 border-white/10'}`}>
+                          <div className={`text-[10px] font-black mb-1 uppercase ${isActive?'text-purple-300':'text-gray-500'}`}>Команда {i+1}</div>
+                          {teamPlayers.map((p:any)=>(
+                            <div key={p.uid} className={`text-sm font-bold truncate ${isActive?'text-white':'text-gray-400'}`}>{p.nickname}</div>
+                          ))}
+                          {isActive&&<div className="mt-1 text-[8px] font-black bg-purple-500 text-white px-2 py-0.5 rounded-full inline-block animate-pulse">ВАШ ХОД!</div>}
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Красивая карточка правильного ответа */}
+              {rv?.type !== "da_net" && rv?.type !== "personal" && rv?.type !== "test_round" && rvCorrect && (
+                <motion.div
+                  key={`ansbox-rv-${gameState.currentQuestion}`}
+                  initial={{y:28, opacity:0, scale:0.93}}
+                  animate={{y:0, opacity:1, scale:1}}
+                  transition={{delay:0.22, type:"spring", stiffness:280, damping:24}}
+                  className="w-full max-w-2xl animate-glow-green"
+                >
+                  <div className="relative overflow-hidden rounded-3xl p-7 text-center border-2"
+                    style={{background:'linear-gradient(135deg, rgba(34,197,94,0.13), rgba(16,185,129,0.07))', borderColor:'rgba(34,197,94,0.55)', boxShadow:'0 0 60px rgba(34,197,94,0.18), inset 0 1px 0 rgba(255,255,255,0.08)'}}>
+                    <div className="shimmer-line" />
+                    <p className="text-green-400 text-[10px] font-black uppercase tracking-[0.35em] mb-3 relative z-10">✓ Верный ответ</p>
+                    <p className="text-4xl md:text-5xl font-black text-white relative z-10 leading-tight" style={{textShadow:'0 0 40px rgba(34,197,94,0.55)'}}>
+                      {rvCorrect}
+                    </p>
+                    {(rv?.type === "character_guess" || rv?.type === "quiz_six") && (rvQ?.description || rvQ?.text) && (
+                      <p className="text-base text-green-200/70 italic mt-3 relative z-10">"{rvQ?.description || rvQ?.text}"</p>
+                    )}
+                  </div>
+                </motion.div>
               )}
             </motion.div>
-
-            <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
-              <motion.div 
-                key={`timer-${gameState.currentQuestion}`}
-                initial={{ width: "100%" }}
-                animate={{ width: "0%" }}
-                transition={{ duration: roundsData[gameState.currentRound]?.type === "video" ? 19 : 14, ease: "linear" }}
-                className="bg-purple-500 h-full"
-              />
-            </div>
-          </div>
+            </AnimatePresence>
 
           {/* Admin Controls during Reveal */}
           {user?.isAdmin && (
@@ -1682,7 +1685,8 @@ export default function App() {
             </div>
           )}
         </div>
-      )}
+      );
+    })()}
 
       {/* Main Content */}
       <main className="min-h-[500px]">
@@ -1811,30 +1815,34 @@ export default function App() {
                   <div className="space-y-6">
                     <div className="grid grid-cols-2 gap-4">
                       {currentQuestion.images?.map((img, idx) => {
-                        // Logic: 36-29 (img 1), 28-21 (img 2), 20-13 (img 3), 12-0 (img 4)
-                        const show = (idx === 0) || 
-                                     (idx === 1 && timeLeft <= 28) || 
-                                     (idx === 2 && timeLeft <= 20) || 
-                                     (idx === 3 && timeLeft <= 12);
-                        
+                        const show = revealedImages.has(idx);
                         return (
-                          <motion.div 
+                          <motion.div
                             key={`${gameState.currentQuestion}_${idx}`}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: show ? 1 : 0, scale: show ? 1 : 0.9 }}
-                            className="relative aspect-video overflow-hidden rounded-xl border-2 border-white/10"
+                            initial={{ opacity: 0, scale: 0.88 }}
+                            animate={{ opacity: show ? 1 : 0.08, scale: show ? 1 : 0.92 }}
+                            transition={{ duration: 0.5, type: "spring", stiffness: 180, damping: 20 }}
+                            className="relative aspect-video overflow-hidden rounded-2xl border-2"
+                            style={{ borderColor: show ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.05)' }}
                           >
+                            <img
+                              key={img}
+                              src={getAssetPath(img)}
+                              alt={`Hint ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}_${idx}/400/300`;
+                              }}
+                            />
                             {show && (
-                              <img 
-                                key={img}
-                                src={getAssetPath(img)} 
-                                alt={`Hint ${idx + 1}`} 
-                                className="w-full h-full object-cover"
-                                onError={(e) => { 
-                                  console.warn(`Failed to load image: ${img}`);
-                                  (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}_${idx}/400/300`; 
-                                }}
-                              />
+                              <div className="absolute top-2 left-2 text-[10px] font-black bg-purple-600/80 backdrop-blur-sm px-2 py-0.5 rounded-full text-white uppercase tracking-widest">
+                                #{idx + 1}
+                              </div>
+                            )}
+                            {!show && (
+                              <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
+                                <div className="text-4xl text-white/20 font-black">?</div>
+                              </div>
                             )}
                           </motion.div>
                         );
@@ -2306,16 +2314,31 @@ export default function App() {
                     {!user.isAdmin && (
                       <div className="max-w-md mx-auto space-y-4">
                         {roundsData[gameState.currentRound]?.name.includes("Дабл-раунд") && !hasAnswered && (
-                          <button
-                            onClick={() => setIsDoubleChoice(!isDoubleChoice)}
-                            className={`w-full py-3 rounded-2xl font-bold border-2 transition-all flex items-center justify-center gap-2 ${
-                              isDoubleChoice 
-                                ? 'bg-purple-600 border-purple-400 text-white shadow-[0_0_15px_rgba(168,85,247,0.5)]' 
-                                : 'bg-white/5 border-white/20 text-gray-400 hover:bg-white/10'
-                            }`}
-                          >
-                            {isDoubleChoice ? '💎 ДАБЛ АКТИВЕН' : '💎 АКТИВИРОВАТЬ ДАБЛ'}
-                          </button>
+                          <div className="space-y-2">
+                            <button
+                              onClick={() => {
+                                if (!isDoubleChoice) {
+                                  if (!window.confirm('⚠️ Активировать ДАБЛ?\n\n✅ Правильный ответ = очки ×2\n❌ Неправильный ответ = −2 штрафа\n\nВы уверены?')) return;
+                                }
+                                setIsDoubleChoice(!isDoubleChoice);
+                              }}
+                              className={`w-full py-3 rounded-2xl font-bold border-2 transition-all flex items-center justify-center gap-2 ${
+                                isDoubleChoice
+                                  ? 'bg-red-700/60 text-white animate-double-danger'
+                                  : 'bg-white/5 border-white/20 text-gray-300 hover:bg-purple-900/20 hover:border-purple-500/40'
+                              }`}
+                            >
+                              {isDoubleChoice ? '💎 ДАБЛ АКТИВЕН — нажмите чтобы отменить' : '💎 АКТИВИРОВАТЬ ДАБЛ'}
+                            </button>
+                            {isDoubleChoice ? (
+                              <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
+                                className="text-center text-xs bg-red-900/30 border border-red-500/40 rounded-xl p-2.5 text-red-300 font-medium">
+                                ⚠️ Верно: <span className="font-black text-white">очки ×2</span> · Неверно: <span className="font-black text-red-400">−2 штрафа</span>
+                              </motion.div>
+                            ) : (
+                              <p className="text-[10px] text-gray-600 text-center">Верно: ×2 очков · Неверно: −2 штрафа</p>
+                            )}
+                          </div>
                         )}
                         <input 
                           type="text"
