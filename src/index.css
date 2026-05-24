@@ -112,3 +112,38 @@ input:focus {
     pointer-events: none;
 }
 
+/* ── Global background orbs ── */
+@keyframes drift-a {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33%       { transform: translate(30px, -40px) scale(1.06); }
+    66%       { transform: translate(-20px, 20px) scale(0.96); }
+}
+@keyframes drift-b {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    40%       { transform: translate(-40px, 30px) scale(1.08); }
+    70%       { transform: translate(20px, -20px) scale(0.94); }
+}
+@keyframes drift-c {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50%       { transform: translate(25px, 35px) scale(1.05); }
+}
+.bg-orb-a { animation: drift-a 18s ease-in-out infinite; }
+.bg-orb-b { animation: drift-b 24s ease-in-out infinite; }
+.bg-orb-c { animation: drift-c 30s ease-in-out infinite; }
+
+/* ── Submit button ── */
+.btn-submit {
+    @apply w-full py-4 rounded-2xl font-black text-lg uppercase tracking-widest transition-all active:scale-95 text-white;
+    background: linear-gradient(135deg, #7c3aed, #db2777);
+    box-shadow: 0 4px 24px rgba(124,58,237,0.3);
+}
+.btn-submit:hover { filter: brightness(1.12); box-shadow: 0 6px 30px rgba(124,58,237,0.45); }
+.btn-submit:disabled { background: rgba(34,197,94,0.3); box-shadow: none; cursor: default; filter: none; border: 1px solid rgba(34,197,94,0.4); }
+
+/* ── Timer glow ── */
+@keyframes timer-warn {
+    0%, 100% { box-shadow: 0 0 8px rgba(239,68,68,0.4); }
+    50%       { box-shadow: 0 0 22px rgba(239,68,68,0.75); }
+}
+.timer-warn { animation: timer-warn 0.9s ease-in-out infinite; }
+
