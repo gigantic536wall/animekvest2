@@ -724,6 +724,18 @@ export default function App() {
     };
     checkAnswered();
   }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin]);
+  // Enter key for quiz_six: confirm selected option
+  useEffect(() => {
+    if (!gameState?.active || !user || user.isAdmin) return;
+    const round = roundsData[gameState?.currentRound];
+    if (round?.type !== 'quiz_six' || hasAnswered || !answerText) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') submitAnswer();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [gameState?.active, gameState?.currentRound, hasAnswered, answerText, user?.isAdmin]);
+
   // ==================== HELPERS ====================
   const getAssetPath = (path: string) => {
     if (!path) return "";
@@ -1013,8 +1025,10 @@ export default function App() {
     };
 
     if (round.type === "quiz_six") {
-      const isCorrect = currentQuestion.correctAnswer 
-        ? finalAnswer.trim().toLowerCase() === currentQuestion.correctAnswer.trim().toLowerCase()
+      const normalizeStr = (s: string) =>
+        s.trim().toLowerCase().replace(/[.,!?;:'"«»()[\]{}\-–—]/g, '').replace(/\s+/g, ' ');
+      const isCorrect = currentQuestion.correctAnswer
+        ? normalizeStr(finalAnswer) === normalizeStr(currentQuestion.correctAnswer)
         : false;
       
       payload.checked = true;
@@ -1604,17 +1618,26 @@ export default function App() {
                       .map(({ id, p, qKey, ans }) => {
                         const qIdx = parseInt(qKey.replace('q',''));
                         const correctAns = roundsData[gameState.currentRound]?.questions[qIdx]?.correctAnswer;
-                        
+                        const normReveal = (s: string) =>
+                          s.trim().toLowerCase().replace(/[.,!?;:'"«»()[\]{}\-–—]/g, '').replace(/\s+/g, ' ');
+                        const normA = normReveal(ans.answer || '');
+                        const normC = normReveal(correctAns || '');
+                        const revealExact = normC && normA === normC;
+                        const revealPartial = !revealExact && normC && (normC.includes(normA) || normA.includes(normC)) && normA.length >= 3;
+                        const revealBorder = revealExact ? 'border-green-500' : revealPartial ? 'border-yellow-500' : 'border-purple-500';
+
                         return (
-                          <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-xl flex justify-between items-center border-l-4 border-purple-500">
+                          <div key={`${id}-${qKey}`} className={`bg-white/5 p-3 rounded-xl flex justify-between items-center border-l-4 ${revealBorder}`}>
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-xs">{p.nickname}</span>
                                 <span className="text-[8px] bg-white/10 px-1.5 py-0.5 rounded uppercase">К{p.team + 1}</span>
                                 <span className="text-[8px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-black">В{qIdx + 1}</span>
                                 {ans.isDouble && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-black animate-pulse">💎 ДАБЛ</span>}
+                                {revealExact && <span className="text-[8px] bg-green-500/20 text-green-400 px-1 py-0.5 rounded font-bold">✓</span>}
+                                {revealPartial && <span className="text-[8px] bg-yellow-500/20 text-yellow-400 px-1 py-0.5 rounded font-bold">~</span>}
                               </div>
-                              <p className="text-xs text-purple-200 mt-1">Ответ: <span className="font-bold">{ans.answer}</span></p>
+                              <p className="text-xs text-purple-200 mt-1">Ответ: <span className={`font-bold ${revealExact ? 'text-green-300' : revealPartial ? 'text-yellow-300' : ''}`}>{ans.answer}</span></p>
                             </div>
                             <div className="flex gap-1 ml-2">
                               <button 
@@ -1952,37 +1975,56 @@ export default function App() {
                     </div>
                     
                     {!user.isAdmin && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {currentQuestion.options?.map((opt: string, idx: number) => {
-                          const isSelected = answerText === opt;
-                          return (
-                            <button
-                              key={idx}
-                              onClick={() => {
-                                if (hasAnswered || user.isAdmin) return;
-                                setAnswerText(opt);
-                                submitAnswer(opt);
-                              }}
-                              disabled={hasAnswered || user.isAdmin}
-                              className={`p-5 rounded-2xl text-left font-medium text-base transition-all border-2 flex items-start gap-3 group relative ${
-                                hasAnswered && isSelected 
-                                  ? 'bg-purple-600/30 border-purple-400 text-purple-200 shadow-[0_0_15px_rgba(168,85,247,0.15)]' 
-                                  : hasAnswered 
-                                    ? 'bg-white/5 border-white/5 text-gray-500 cursor-not-allowed opacity-50'
-                                    : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/30 text-gray-200 active:scale-[0.98]'
-                              }`}
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {currentQuestion.options?.map((opt: string, idx: number) => {
+                            const isSelected = answerText === opt;
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => {
+                                  if (hasAnswered || user.isAdmin) return;
+                                  setAnswerText(opt);
+                                }}
+                                disabled={hasAnswered || user.isAdmin}
+                                className={`p-5 rounded-2xl text-left font-medium text-base transition-all border-2 flex items-start gap-3 group relative ${
+                                  hasAnswered && isSelected
+                                    ? 'bg-green-600/30 border-green-400 text-green-200 shadow-[0_0_15px_rgba(34,197,94,0.2)]'
+                                    : hasAnswered
+                                      ? 'bg-white/5 border-white/5 text-gray-500 cursor-not-allowed opacity-50'
+                                      : isSelected
+                                        ? 'bg-purple-600/30 border-purple-400 text-purple-200 shadow-[0_0_20px_rgba(168,85,247,0.35)] scale-[1.01]'
+                                        : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/30 text-gray-200 active:scale-[0.98]'
+                                }`}
+                              >
+                                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center font-mono text-xs select-none shrink-0 ${
+                                  hasAnswered && isSelected
+                                    ? 'border-green-400 bg-green-500 text-white'
+                                    : isSelected
+                                      ? 'border-purple-400 bg-purple-500 text-white'
+                                      : 'border-white/20 group-hover:border-white/40 text-gray-400'
+                                }`}>
+                                  {idx + 1}
+                                </div>
+                                <span className="leading-tight">{opt}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <AnimatePresence>
+                          {answerText && !hasAnswered && (
+                            <motion.button
+                              key="confirm-btn"
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              exit={{ opacity: 0, y: 10 }}
+                              onClick={() => submitAnswer()}
+                              className="w-full py-4 rounded-2xl font-black text-lg uppercase tracking-widest bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white shadow-xl transition-all active:scale-95 border-2 border-purple-400/50"
                             >
-                              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center font-mono text-xs select-none shrink-0 ${
-                                hasAnswered && isSelected 
-                                  ? 'border-purple-400 bg-purple-500 text-white' 
-                                  : 'border-white/20 group-hover:border-white/40 text-gray-400'
-                              }`}>
-                                {idx + 1}
-                              </div>
-                              <span className="leading-tight">{opt}</span>
-                            </button>
-                          );
-                        })}
+                              Подтвердить ответ ✓
+                            </motion.button>
+                          )}
+                        </AnimatePresence>
                       </div>
                     )}
 
@@ -2052,6 +2094,7 @@ export default function App() {
                           placeholder="Ваш ответ..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
                           disabled={hasAnswered}
                           maxLength={50}
                         />
@@ -2101,6 +2144,7 @@ export default function App() {
                           placeholder="Название аниме..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
                           disabled={hasAnswered}
                           maxLength={50}
                         />
@@ -2150,6 +2194,7 @@ export default function App() {
                           placeholder="Название аниме..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
                           disabled={hasAnswered}
                           maxLength={50}
                         />
@@ -2199,6 +2244,7 @@ export default function App() {
                           placeholder="Ваш ответ..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
                           disabled={hasAnswered}
                           maxLength={50}
                         />
@@ -2277,6 +2323,7 @@ export default function App() {
                           placeholder="Ваш ответ..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
                           disabled={hasAnswered}
                           maxLength={50}
                         />
@@ -2390,6 +2437,7 @@ export default function App() {
                           placeholder="Название аниме..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
                           disabled={hasAnswered}
                           maxLength={50}
                         />
@@ -2433,6 +2481,7 @@ export default function App() {
                           placeholder="Ваш ответ (название аниме)..."
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
                           disabled={hasAnswered}
                           maxLength={50}
                         />
@@ -2748,15 +2797,31 @@ export default function App() {
                       correctAns = qData.options[qData.correct];
                     }
                     
+                    const normalizeForCheck = (s: string) =>
+                      s.trim().toLowerCase().replace(/[.,!?;:'"«»()[\]{}\-–—]/g, '').replace(/\s+/g, ' ');
+                    const normAnswer = normalizeForCheck(ans.answer || '');
+                    const normCorrect = normalizeForCheck(correctAns || '');
+                    const isExactMatch = normCorrect && normAnswer === normCorrect;
+                    const isPartialMatch = !isExactMatch && normCorrect && (
+                      normCorrect.includes(normAnswer) || normAnswer.includes(normCorrect)
+                    ) && normAnswer.length >= 3;
+                    const borderColor = isExactMatch
+                      ? 'border-green-500'
+                      : isPartialMatch
+                        ? 'border-yellow-500'
+                        : 'border-blue-500';
+
                     return (
-                      <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-lg flex justify-between items-center border-l-4 border-blue-500">
+                      <div key={`${id}-${qKey}`} className={`bg-white/5 p-3 rounded-lg flex justify-between items-center border-l-4 ${borderColor}`}>
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-bold">{p.nickname}</span>
                             <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded">К{p.team + 1}</span>
                             <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-mono">Вопрос {qIdx + 1}</span>
+                            {isExactMatch && <span className="text-[10px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded font-bold">✓ совпадает</span>}
+                            {isPartialMatch && <span className="text-[10px] bg-yellow-500/20 text-yellow-400 px-1.5 py-0.5 rounded font-bold">~ похоже</span>}
                           </div>
-                          <p className="text-sm text-blue-300 mt-1">Ответ игрока: <span className="font-bold">{ans.answer}</span></p>
+                          <p className="text-sm text-blue-300 mt-1">Ответ игрока: <span className={`font-bold ${isExactMatch ? 'text-green-300' : isPartialMatch ? 'text-yellow-300' : ''}`}>{ans.answer}</span></p>
                           <p className="text-[10px] text-green-400 mt-1 uppercase tracking-wider">Правильный: {correctAns}</p>
                         </div>
                         <div className="flex gap-2 ml-4">
