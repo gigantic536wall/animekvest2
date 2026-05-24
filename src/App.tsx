@@ -567,8 +567,7 @@ export default function App() {
   const [isChangingTeam, setIsChangingTeam] = useState(false);
   const [isDoubleChoice, setIsDoubleChoice] = useState(false);
   const [preloaderStatus, setPreloaderStatus] = useState("");
-  // Накопленные видимые картинки раунда 1 — никогда не убираются назад
-  const [revealedImages, setRevealedImages] = useState<Set<number>>(new Set([0]));
+
 
   const timerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -733,23 +732,6 @@ export default function App() {
     };
     checkAnswered();
   }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin]);
-  // Сброс видимых картинок при новом вопросе раунда 1
-  useEffect(() => {
-    setRevealedImages(new Set([0]));
-  }, [gameState?.currentQuestion, gameState?.currentRound]);
-
-  // Накопление картинок по таймеру — только добавляем, никогда не убираем
-  useEffect(() => {
-    if (!gameState?.active) return;
-    if (roundsData[gameState?.currentRound]?.type !== 'image_sequence') return;
-    setRevealedImages(prev => {
-      const next = new Set(prev);
-      if (timeLeft <= 28) next.add(1);
-      if (timeLeft <= 20) next.add(2);
-      if (timeLeft <= 12) next.add(3);
-      return next.size !== prev.size ? next : prev;
-    });
-  }, [timeLeft, gameState?.currentRound, gameState?.active]);
 
   // Enter key for quiz_six: confirm selected option
   useEffect(() => {
@@ -1811,40 +1793,74 @@ export default function App() {
                 )}
 
                 {/* Round 1: Image Sequence */}
-                {round.type === "image_sequence" && (
-                  <div className="space-y-6">
+                {round.type === "image_sequence" && (() => {
+                  // Сколько картинок видно прямо сейчас
+                  const visibleCount = timeLeft > 28 ? 1 : timeLeft > 20 ? 2 : timeLeft > 12 ? 3 : 4;
+                  // Когда появится следующая картинка
+                  const nextRevealAt = timeLeft > 28 ? 28 : timeLeft > 20 ? 20 : timeLeft > 12 ? 12 : null;
+                  const secsToNext = nextRevealAt !== null ? timeLeft - nextRevealAt : null;
+                  // Очки за ответ сейчас
+                  const nowPoints = timeLeft > 28 ? 4 : timeLeft > 20 ? 3 : timeLeft > 12 ? 2 : 1;
+                  return (
+                  <div className="space-y-4">
+                    {/* Полоса статуса: очки + следующая картинка */}
+                    <div className="flex items-center justify-between px-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500 uppercase tracking-widest font-bold">Ответить сейчас:</span>
+                        <span className="text-lg font-black text-yellow-400">{nowPoints} {nowPoints === 1 ? 'очко' : nowPoints < 5 ? 'очка' : 'очков'}</span>
+                      </div>
+                      {secsToNext !== null && (
+                        <div className="flex items-center gap-1.5 bg-purple-900/40 border border-purple-500/30 px-3 py-1 rounded-full">
+                          <span className="text-[10px] text-purple-400 uppercase font-bold tracking-widest">Картинка {visibleCount + 1} через</span>
+                          <span className="text-sm font-black text-purple-300">{secsToNext}с</span>
+                        </div>
+                      )}
+                      {secsToNext === null && (
+                        <span className="text-[10px] text-green-400 uppercase font-bold tracking-widest bg-green-900/30 border border-green-500/20 px-3 py-1 rounded-full">Все картинки открыты</span>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       {currentQuestion.images?.map((img, idx) => {
-                        const show = revealedImages.has(idx);
+                        const show = idx < visibleCount;
                         return (
-                          <motion.div
-                            key={`${gameState.currentQuestion}_${idx}`}
-                            initial={{ opacity: 0, scale: 0.88 }}
-                            animate={{ opacity: show ? 1 : 0.08, scale: show ? 1 : 0.92 }}
-                            transition={{ duration: 0.5, type: "spring", stiffness: 180, damping: 20 }}
-                            className="relative aspect-video overflow-hidden rounded-2xl border-2"
-                            style={{ borderColor: show ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.05)' }}
-                          >
-                            <img
-                              key={img}
-                              src={getAssetPath(img)}
-                              alt={`Hint ${idx + 1}`}
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}_${idx}/400/300`;
-                              }}
-                            />
-                            {show && (
-                              <div className="absolute top-2 left-2 text-[10px] font-black bg-purple-600/80 backdrop-blur-sm px-2 py-0.5 rounded-full text-white uppercase tracking-widest">
-                                #{idx + 1}
-                              </div>
+                          <AnimatePresence key={`${gameState.currentQuestion}_${idx}`} mode="wait">
+                            {show ? (
+                              <motion.div
+                                key="revealed"
+                                initial={{ opacity: 0, scale: 0.85, y: 12 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                transition={{ duration: 0.45, type: "spring", stiffness: 200, damping: 22 }}
+                                className="relative aspect-video overflow-hidden rounded-2xl border-2"
+                                style={{ borderColor: 'rgba(139,92,246,0.7)', boxShadow: '0 0 18px rgba(139,92,246,0.25)' }}
+                              >
+                                <img
+                                  src={getAssetPath(img)}
+                                  alt={`Hint ${idx + 1}`}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}_${idx}/400/300`;
+                                  }}
+                                />
+                                <div className="absolute top-2 left-2 text-[10px] font-black bg-purple-600/90 backdrop-blur-sm px-2.5 py-0.5 rounded-full text-white uppercase tracking-widest">
+                                  #{idx + 1}
+                                </div>
+                              </motion.div>
+                            ) : (
+                              <motion.div
+                                key="locked"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="relative aspect-video rounded-2xl border-2 border-white/8 bg-slate-900/60 flex flex-col items-center justify-center gap-2"
+                              >
+                                <div className="text-3xl text-white/15 font-black">#{idx + 1}</div>
+                                <div className="text-[10px] text-white/20 uppercase tracking-widest font-bold">скоро</div>
+                                <div className="absolute inset-0 rounded-2xl overflow-hidden">
+                                  <div className="shimmer-line opacity-30" />
+                                </div>
+                              </motion.div>
                             )}
-                            {!show && (
-                              <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
-                                <div className="text-4xl text-white/20 font-black">?</div>
-                              </div>
-                            )}
-                          </motion.div>
+                          </AnimatePresence>
                         );
                       })}
                     </div>
@@ -1874,7 +1890,7 @@ export default function App() {
                     )}
 
                     {gameState.showAnswer && (
-                      <motion.div 
+                      <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         className="bg-green-500/20 p-4 rounded-2xl border border-green-500/50 text-center"
@@ -1884,7 +1900,8 @@ export default function App() {
                       </motion.div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* Round 2: Quiz */}
                 {round.type === "quiz" && (
