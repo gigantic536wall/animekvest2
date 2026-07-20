@@ -314,16 +314,16 @@ const roundsData: Round[] = [
     answerTime: 45,
     pauseDuration: 10,
     questions: [
-      { text: "Ребус 1", image: "/foto5/image3-5-1-1.png", correctAnswer: "Паразит" },
-      { text: "Ребус 2", image: "/foto5/image3-5-2-2.png", correctAnswer: "Черный Клевер" },
-      { text: "Ребус 3", image: "/foto5/image3-5-3-3.png", correctAnswer: "Рейтинг Короля" },
-      { text: "Ребус 4", image: "/foto5/image3-5-4-4.png", correctAnswer: "Кланнад" },
-      { text: "Ребус 5", image: "/foto5/image3-5-5-5.png", correctAnswer: "Розовая Пора Моей Школьной Жизни Сплошной Обман" },
-      { text: "Ребус 6", image: "/foto5/image3-5-6-6.png", correctAnswer: "Синий Экзорцист" },
-      { text: "Ребус 7", image: "/foto5/image3-5-7-7.png", correctAnswer: "Магическая Битва" },
+      { text: "Ребус 1", image: "/foto5/image3-5-1-1.png", correctAnswer: "Фрирен" },
+      { text: "Ребус 2", image: "/foto5/image3-5-2-2.png", correctAnswer: "Каяба акихико" },
+      { text: "Ребус 3", image: "/foto5/image3-5-3-3.png", correctAnswer: "кайто" },
+      { text: "Ребус 4", image: "/foto5/image3-5-4-4.png", correctAnswer: "Годжо" },
+      { text: "Ребус 5", image: "/foto5/image3-5-5-5.png", correctAnswer: "хиро" },
+      { text: "Ребус 6", image: "/foto5/image3-5-6-6.png", correctAnswer: "наса" },
+      { text: "Ребус 7", image: "/foto5/image3-5-7-7.png", correctAnswer: "крул цепишь" },
       { text: "Ребус 8", image: "/foto5/image3-5-8-8.png", correctAnswer: "Моб Психо 100" },
-      { text: "Ребус 9", image: "/foto5/image3-5-9-9.png", correctAnswer: "О моем перерождении в слизь" },
-      { text: "Ребус 10", image: "/foto5/image3-5-10-10.png", correctAnswer: "Созданный в Бездне" }
+      { text: "Ребус 9", image: "/foto5/image3-5-9-9.png", correctAnswer: "Рип Ван Винкль" },
+      { text: "Ребус 10", image: "/foto5/image3-5-10-10.png", correctAnswer: "юкиношита" }
     ]
   },
   {
