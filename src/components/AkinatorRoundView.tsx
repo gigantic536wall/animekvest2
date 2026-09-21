@@ -93,7 +93,7 @@ export default function AkinatorRoundView({
       });
     } else {
       const newTeams: Record<string, any> = {};
-      for (let i = 0; i < 5; i++) {
+      for (let i = 0; i < 10; i++) {
         const picked = shuffled[i % shuffled.length];
         newTeams[i] = {
           animeId: picked.id,
@@ -311,7 +311,7 @@ export default function AkinatorRoundView({
             </button>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {[0, 1, 2, 3, 4].map((idx) => {
+            {Array.from({ length: 10 }, (_, i) => i).map((idx) => {
               const tData = teamsData[idx];
               const isSelected = adminViewTeam === idx;
               return (
@@ -324,15 +324,18 @@ export default function AkinatorRoundView({
                       : "bg-white/5 border-white/10 hover:bg-white/10 text-gray-300"
                   }`}
                 >
-                  <div className="text-[10px] font-black uppercase tracking-wider opacity-80">
-                    Команда {idx + 1}
+                  <div className="text-[10px] font-black uppercase tracking-wider opacity-80 flex items-center justify-between">
+                    <span>Команда {idx + 1}</span>
+                    {tData?.guessed && <span className="text-green-400 font-bold">✅</span>}
                   </div>
                   <div className="text-xs font-bold truncate mt-0.5">
                     {tData?.animeTitle || "Не задано"}
                   </div>
-                  <div className="text-[10px] mt-1 flex items-center justify-between">
+                  <div className="text-[10px] mt-1 flex items-center justify-between text-gray-400">
                     <span>{tData?.questions?.length || 0} вопр.</span>
-                    {tData?.guessed && <span className="text-green-400 font-bold">✅</span>}
+                    {tData?.guessed && (
+                      <span className="text-green-400 font-bold">+{tData?.pointsAwarded || 10} б.</span>
+                    )}
                   </div>
                 </button>
               );
