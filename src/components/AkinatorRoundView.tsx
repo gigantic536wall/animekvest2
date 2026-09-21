@@ -2,9 +2,10 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Bot, Send, HelpCircle, CheckCircle2, XCircle, 
-  Sparkles, Loader2, Trophy, MessageSquare, AlertCircle, RefreshCw, Eye
+  Sparkles, Loader2, Trophy, MessageSquare, AlertCircle, RefreshCw, Eye, Trash2
 } from "lucide-react";
 import { AKINATOR_ANIME_LIST } from "../data/akinatorAnime";
+import { askAkinator, checkAkinatorGuess } from "../utils/akinatorClient";
 
 interface AkinatorRoundViewProps {
   user: any;
@@ -110,6 +111,17 @@ export default function AkinatorRoundView({
     }
   };
 
+  const handleClearQuestions = async () => {
+    if (!window.confirm(`Очистить список вопросов команды ${teamIdx + 1}?`)) return;
+    try {
+      await restPut(`${teamBasePath}/questions`, []);
+      setErrorMsg("");
+      setLastFailedQuestion("");
+    } catch (e: any) {
+      console.error("Clear questions error:", e);
+    }
+  };
+
   const handleAskQuestion = async (customQ?: string) => {
     const qText = (customQ || questionInput).trim();
     if (!qText || isAsking) return;
@@ -123,37 +135,24 @@ export default function AkinatorRoundView({
     setIsAsking(true);
 
     try {
-      const res = await fetch("/api/akinator/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          animeTitle: currentTeamData.animeTitle,
-          question: qText,
-        }),
+      const geminiKey = gameState?.geminiApiKey || gameState?.config?.geminiApiKey;
+      const res = await askAkinator({
+        animeTitle: currentTeamData.animeTitle,
+        question: qText,
+        geminiKey,
       });
 
-      let aiAnswer = "НЕ ЗНАЮ / НЕПРИМЕНИМО";
-      if (res.ok) {
-        const data = await res.json();
-        aiAnswer = data.answer || "НЕ ЗНАЮ / НЕПРИМЕНИМО";
-      } else {
-        const errJson = await res.json().catch(() => null);
-        console.warn("Akinator ask API response:", errJson);
-        const details = errJson?.details || errJson?.error || "";
-        if (details.includes("503") || details.includes("demand") || details.includes("UNAVAILABLE")) {
-          setLastFailedQuestion(qText);
-          setErrorMsg("ИИ временно перегружен запросами. Пожалуйста, нажмите «Повторить вопрос» через несколько секунд.");
-          return;
-        }
-        // Fallback default answer rather than blocking
-        aiAnswer = "НЕ ЗНАЮ / НЕПРИМЕНИМО";
+      if (!res.success) {
+        setLastFailedQuestion(qText);
+        setErrorMsg(res.error || "Не удалось связаться с ИИ. Нажмите «Повторить вопрос».");
+        return;
       }
 
       const prevQuestions = currentTeamData.questions || [];
       const newQuestionObj = {
         id: Date.now(),
         question: qText,
-        answer: aiAnswer,
+        answer: res.answer,
         askedBy: user.nickname,
         timestamp: Date.now(),
       };
@@ -180,27 +179,13 @@ export default function AkinatorRoundView({
     setIsGuessing(true);
 
     try {
-      const res = await fetch("/api/akinator/check-guess", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          animeTitle: currentTeamData.animeTitle,
-          guess: gText,
-        }),
+      const geminiKey = gameState?.geminiApiKey || gameState?.config?.geminiApiKey;
+      const isCorrect = await checkAkinatorGuess({
+        animeTitle: currentTeamData.animeTitle,
+        originalOrEn: currentTeamData.originalOrEn,
+        guess: gText,
+        geminiKey,
       });
-
-      let isCorrect = false;
-      if (res.ok) {
-        const data = await res.json();
-        isCorrect = !!data.correct;
-      } else {
-        // Fallback to client-side fuzzy match
-        const clean = (s: string) => (s || "").toLowerCase().replace(/[^a-zа-я0-9]/gi, "").trim();
-        const cg = clean(gText);
-        const ct = clean(currentTeamData.animeTitle);
-        const co = clean(currentTeamData.originalOrEn || "");
-        isCorrect = cg === ct || (cg.length >= 4 && (ct.includes(cg) || co.includes(cg)));
-      }
 
       if (isCorrect) {
         // Calculate points: 1-5 questions: 10pts, 6-10: 8pts, 11-15: 6pts, 16+: 4pts
@@ -440,11 +425,22 @@ export default function AkinatorRoundView({
               История вопросов и ответов ({currentTeamData.questions?.length || 0})
             </h4>
           </div>
-          {currentTeamData.questions?.length > 0 && (
-            <span className="text-xs text-gray-500 font-medium">
-              Последний вопрос от: {currentTeamData.questions[currentTeamData.questions.length - 1].askedBy}
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {currentTeamData.questions?.length > 0 && (
+              <span className="text-xs text-gray-500 font-medium hidden sm:inline">
+                Последний вопрос от: {currentTeamData.questions[currentTeamData.questions.length - 1].askedBy}
+              </span>
+            )}
+            {(user.isAdmin || (currentTeamData?.questions?.length || 0) > 0) && (
+              <button
+                onClick={handleClearQuestions}
+                className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 hover:bg-red-500/10 px-2.5 py-1 rounded-lg transition-all border border-red-500/20"
+                title="Очистить историю вопросов этой команды"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Очистить
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Questions list */}
