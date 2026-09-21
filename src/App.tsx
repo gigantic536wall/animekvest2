@@ -527,6 +527,9 @@ export default function App() {
   const [revealIdx, setRevealIdx] = useState(0);
   const [answerText, setAnswerText] = useState("");
   const [serverOffset, setServerOffset] = useState(0);
+  const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [isSavingKey, setIsSavingKey] = useState(false);
+  const [keySavedMsg, setKeySavedMsg] = useState("");
   const isDrivingReveal = useRef(false);
   const prevQKeyRef = useRef<string | null>(null);
   const localStartTimeRef = useRef<number | null>(null);
@@ -2726,6 +2729,85 @@ export default function App() {
                         );
                       })}
                     </div>
+                  </div>
+
+                  {/* Akinator Key & Reset Controls */}
+                  <div className="pt-3 border-t border-purple-500/20 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-bold text-white flex items-center gap-2">
+                          <span>🤖 Gemini API Ключ для ИИ:</span>
+                          {(gameState?.geminiApiKey || gameState?.config?.geminiApiKey) ? (
+                            <span className="bg-green-500/20 text-green-400 text-[10px] px-2 py-0.5 rounded-full border border-green-500/30">
+                              ✓ Подключен
+                            </span>
+                          ) : (
+                            <span className="bg-yellow-500/20 text-yellow-400 text-[10px] px-2 py-0.5 rounded-full border border-yellow-500/30">
+                              ⚠️ Не настроен
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-gray-400">
+                          Ключ необходим для ответов ИИ на GitHub Pages. Ключ сохраняется в общую базу игры.
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          if (!window.confirm("Очистить историю вопросов и попыток для ВСЕХ 10 команд в текущем раунде?")) return;
+                          const qIdx = gameState?.currentQuestion ?? 0;
+                          const qKey = `q${qIdx}`;
+                          const basePath = gameState?.akinator?.[qKey]?.teams ? `gameState/akinator/${qKey}/teams` : `gameState/akinator/teams`;
+                          for (let t = 0; t < TOTAL_TEAMS; t++) {
+                            await restPut(`${basePath}/${t}/questions`, []);
+                            await restPut(`${basePath}/${t}/attempts`, []);
+                            await restPatch(`${basePath}/${t}`, { guessed: false, pointsAwarded: 0 });
+                          }
+                          alert("История вопросов всех команд очищена!");
+                        }}
+                        className="text-[11px] text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 px-3 py-1.5 rounded-xl font-bold transition-all shrink-0"
+                      >
+                        🗑️ Очистить вопросы всех 10 команд
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="password"
+                        value={geminiKeyInput}
+                        onChange={(e) => setGeminiKeyInput(e.target.value)}
+                        placeholder={
+                          (gameState?.geminiApiKey || gameState?.config?.geminiApiKey)
+                            ? "•••••••••••••••••••• (Ключ уже сохранен)"
+                            : "Введите AI Studio Gemini API Key (AIzaSy...)"
+                        }
+                        className="flex-1 bg-black/40 border border-purple-500/30 rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-400"
+                      />
+                      <button
+                        onClick={async () => {
+                          const k = geminiKeyInput.trim();
+                          if (!k) return;
+                          setIsSavingKey(true);
+                          try {
+                            await restPut("gameState/geminiApiKey", k);
+                            setKeySavedMsg("Ключ успешно сохранен в базе!");
+                            setGeminiKeyInput("");
+                            setTimeout(() => setKeySavedMsg(""), 4000);
+                          } catch (e: any) {
+                            setKeySavedMsg("Ошибка сохранения ключа");
+                          } finally {
+                            setIsSavingKey(false);
+                          }
+                        }}
+                        disabled={isSavingKey || !geminiKeyInput.trim()}
+                        className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold text-xs px-4 py-1.5 rounded-xl transition-all shadow-md shrink-0"
+                      >
+                        {isSavingKey ? "Сохранение..." : "Сохранить ключ"}
+                      </button>
+                    </div>
+                    {keySavedMsg && (
+                      <p className="text-[11px] text-green-400 font-bold">{keySavedMsg}</p>
+                    )}
                   </div>
                 </div>
               )}
