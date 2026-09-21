@@ -60,6 +60,39 @@ function normalizeAkinatorAnswer(rawText: string): string {
   return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
 }
 
+// Supported Gemini models with fallbacks in case of high demand / 503 errors
+const GEMINI_MODELS = [
+  "gemini-3.1-flash-lite",
+  "gemini-flash-latest",
+  "gemini-3.8-flash",
+];
+
+async function generateWithFallback(
+  ai: GoogleGenAI,
+  contents: string,
+  config: any
+): Promise<string> {
+  let lastErr: any = null;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents,
+        config,
+      });
+      if (response && response.text) {
+        return response.text;
+      }
+    } catch (err: any) {
+      console.warn(`[Gemini] Model ${model} encountered an issue, trying next candidate:`, err?.message || err);
+      lastErr = err;
+      // Brief pause before trying next fallback model
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  throw lastErr || new Error("All Gemini models failed to respond");
+}
+
 // API: Ask Akinator a question about the assigned anime
 app.post("/api/akinator/ask", async (req, res) => {
   try {
@@ -95,16 +128,25 @@ app.post("/api/akinator/ask", async (req, res) => {
 3. Отвечай честно и точно по канону сюжета, персонажей, авторов, жанров и фактов об аниме "${animeTitle}".
 4. Если вопрос бессмысленный, не по теме или на него невозможно ответить в таком формате, отвечай "НЕ ЗНАЮ / НЕПРИМЕНИМО".`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: `Вопрос игрока: "${question}"`,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.1,
-      },
-    });
+    let rawAnswer = "";
+    try {
+      rawAnswer = await generateWithFallback(
+        ai,
+        `Вопрос игрока: "${question}"`,
+        {
+          systemInstruction: systemPrompt,
+          temperature: 0.1,
+        }
+      );
+    } catch (genErr: any) {
+      console.error("All Gemini models failed for /api/akinator/ask:", genErr);
+      // Soft fallback so the game is not disrupted
+      return res.json({
+        answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
+        warning: "ИИ временно перегружен, ответ по умолчанию: НЕ ЗНАЮ"
+      });
+    }
 
-    const rawAnswer = response.text || "";
     const cleanAnswer = normalizeAkinatorAnswer(rawAnswer);
 
     return res.json({ 
@@ -142,23 +184,22 @@ app.post("/api/akinator/check-guess", async (req, res) => {
       return res.json({ correct: cleanGuess === cleanTitle });
     }
 
-    const ai = getAIClient();
-    const prompt = `Загадано аниме: "${animeTitle}".
+    let correct = false;
+    try {
+      const ai = getAIClient();
+      const prompt = `Загадано аниме: "${animeTitle}".
 Игрок назвал свой вариант догадки: "${guess}".
 
 Является ли вариант игрока тем же самым аниме (с учетом официального перевода на русский, английский, японский романдзи, небольших опечаток или сокращений вроде "АоТ" / "Тетрадка смерти" / "Клинки")?
 Ответь строго ОДНИМ словом: ДА или НЕТ.`;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.8-flash",
-      contents: prompt,
-      config: {
-        temperature: 0.0,
-      },
-    });
-
-    const text = (response.text || "").trim().toUpperCase();
-    const correct = text.startsWith("ДА") || text === "ДА";
+      const rawText = await generateWithFallback(ai, prompt, { temperature: 0.0 });
+      const text = rawText.trim().toUpperCase();
+      correct = text.startsWith("ДА") || text === "ДА";
+    } catch (aiErr) {
+      console.warn("AI check-guess fallback to basic string match:", aiErr);
+      correct = cleanGuess === cleanTitle;
+    }
 
     return res.json({ correct });
   } catch (err: any) {
