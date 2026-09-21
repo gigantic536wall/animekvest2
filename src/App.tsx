@@ -452,10 +452,19 @@ const roundsData: Round[] = [
   {
     type: "akinator",
     name: "Раунд 7: Акинатор (Угадай аниме с ИИ)",
-    answerTime: 0,
+    answerTime: 90,
+    pauseDuration: 10,
     questions: [
       { 
-        text: "Каждой команде ИИ загадал секретное аниме из пула 50 популярных тайтлов. Задавайте вопросы на «Да/Нет/Частично», общайтесь с ИИ-Акинатором и постарайтесь первыми отгадать загаданное аниме!", 
+        text: "Вопрос 1: ИИ загадал секретное аниме для каждой команды. Задавайте вопросы на «Да/Нет/Частично» и угадайте его за 1.5 минуты!", 
+        correctAnswer: "Аниме угадано" 
+      },
+      { 
+        text: "Вопрос 2: Новый раунд вопросов! ИИ загадал следующее секретное аниме. Задавайте вопросы и успейте угадать за 1.5 минуты!", 
+        correctAnswer: "Аниме угадано" 
+      },
+      { 
+        text: "Вопрос 3: Финальный вопрос Акинатора! Задавайте вопросы и отгадайте третье секретное аниме за 1.5 минуты!", 
         correctAnswer: "Аниме угадано" 
       }
     ]
@@ -805,7 +814,11 @@ export default function App() {
     await restPatch('gameState', { revealMode: true, currentQuestion: 0, active: true, currentRound: idx, showLeaderboard: false, endTime: null });
     
     if (round.type === "akinator") {
-      await new Promise(r => setTimeout(r, 20000));
+      for (let i = 0; i < round.questions.length; i++) {
+        setGameState((prev: any) => ({ ...prev, currentQuestion: i }));
+        await restPatch('gameState', { currentQuestion: i });
+        await new Promise(r => setTimeout(r, 12000));
+      }
       await restPatch('gameState', { revealMode: false, active: false, roundFinished: true });
       isDrivingReveal.current = false;
       return;
@@ -843,26 +856,31 @@ export default function App() {
     }
 
     if (round.type === "akinator") {
-      newState.endTime = 0; // No timer
       const shuffled = [...AKINATOR_ANIME_LIST].sort(() => 0.5 - Math.random());
-      const akinatorTeams: Record<string, any> = {};
-      for (let i = 0; i < TOTAL_TEAMS; i++) {
-        const picked = shuffled[i % shuffled.length];
-        akinatorTeams[i] = {
-          animeId: picked.id,
-          animeTitle: picked.title,
-          originalOrEn: picked.originalOrEn,
-          questions: [],
-          guessed: false,
-          guessedBy: null,
-          pointsAwarded: 0,
-          attempts: []
-        };
-      }
-      newState.akinator = {
-        teams: akinatorTeams,
+      const akinatorState: Record<string, any> = {
         startedAt: Date.now()
       };
+      let ptr = 0;
+      for (let q = 0; q < round.questions.length; q++) {
+        const qTeams: Record<string, any> = {};
+        for (let t = 0; t < TOTAL_TEAMS; t++) {
+          const picked = shuffled[ptr % shuffled.length];
+          ptr++;
+          qTeams[t] = {
+            animeId: picked.id,
+            animeTitle: picked.title,
+            originalOrEn: picked.originalOrEn,
+            questions: [],
+            guessed: false,
+            guessedBy: null,
+            pointsAwarded: 0,
+            attempts: []
+          };
+        }
+        akinatorState[`q${q}`] = { teams: qTeams };
+      }
+      akinatorState.teams = akinatorState.q0.teams;
+      newState.akinator = akinatorState;
     }
 
     await restPatch('gameState', newState);
@@ -949,12 +967,16 @@ export default function App() {
             const nextQ = latestGameState.currentQuestion + 1;
             if (nextQ < round.questions.length) {
               const qDuration = round.questions[nextQ].answerTime || round.answerTime || 25;
-              await restPatch('gameState', { 
+              const updateData: any = { 
                 currentQuestion: nextQ, 
                 timeLeft: qDuration,
                 endTime: Date.now() + qDuration * 1000,
                 pause: null // Atomic removal of the pause state
-              });
+              };
+              if (round.type === "akinator" && latestGameState.akinator?.[`q${nextQ}`]?.teams) {
+                updateData["akinator/teams"] = latestGameState.akinator[`q${nextQ}`].teams;
+              }
+              await restPatch('gameState', updateData);
             } else {
               await restPatch('gameState', { active: false, roundFinished: true, pause: null });
             }
@@ -1519,16 +1541,17 @@ export default function App() {
               <div className="max-w-5xl mx-auto space-y-6">
                 <div className="bg-white/5 p-6 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md">
                   <h3 className="text-2xl font-black text-purple-400 mb-2 uppercase tracking-widest text-center">
-                    ИТОГИ РАУНДА АКИНАТОРА
+                    ИТОГИ: ВОПРОС {(gameState.currentQuestion ?? 0) + 1} ИЗ {roundsData[gameState.currentRound]?.questions?.length || 3} (АКИНАТОР)
                   </h3>
                   <p className="text-sm text-gray-300 text-center">
-                    Загаданные тайтлы и результаты команд
+                    Загаданные тайтлы и результаты команд для этого вопроса
                   </p>
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   {Array.from({ length: 5 }).map((_, i) => {
-                    const tData = gameState?.akinator?.teams?.[i];
+                    const qKey = `q${gameState?.currentQuestion ?? 0}`;
+                    const tData = gameState?.akinator?.[qKey]?.teams?.[i] || gameState?.akinator?.teams?.[i];
                     return (
                       <div key={i} className="glass p-4 rounded-2xl border border-white/10 text-left">
                         <div className="text-[10px] font-black uppercase text-purple-400 mb-1">Команда {i + 1}</div>
@@ -2654,27 +2677,34 @@ export default function App() {
               {roundsData[gameState?.currentRound]?.type === "akinator" && (
                 <div className="mt-8 bg-purple-900/20 p-6 rounded-3xl border border-purple-500/30 space-y-4">
                   <div className="flex justify-between items-center">
-                    <h4 className="font-bold text-purple-400 uppercase tracking-widest text-sm">Управление Раундом Акинатора (7 Раунд)</h4>
-                    <span className="text-xs text-purple-300 font-bold">50 аниме в пуле</span>
+                    <h4 className="font-bold text-purple-400 uppercase tracking-widest text-sm">
+                      Управление Раундом Акинатора (Вопрос {(gameState?.currentQuestion ?? 0) + 1} из {roundsData[gameState?.currentRound]?.questions?.length || 3})
+                    </h4>
+                    <span className="text-xs text-purple-300 font-bold">⏱️ 1.5 мин (90 сек)</span>
                   </div>
                   <div className="space-y-2">
                     <div className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">
-                      Быстрое начисление победных очков (+10 баллов):
+                      Быстрое начисление победных очков (+10 баллов за текущий вопрос):
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                       {Array.from({ length: TOTAL_TEAMS }).map((_, i) => {
                         const hasPlayers = Object.values(players).some((p: any) => p.team === i);
                         if (!hasPlayers) return null;
-                        const tData = gameState?.akinator?.teams?.[i];
+                        const qIdx = gameState?.currentQuestion ?? 0;
+                        const qKey = `q${qIdx}`;
+                        const tData = gameState?.akinator?.[qKey]?.teams?.[i] || gameState?.akinator?.teams?.[i];
+                        const teamPath = gameState?.akinator?.[qKey]?.teams 
+                          ? `gameState/akinator/${qKey}/teams/${i}` 
+                          : `gameState/akinator/teams/${i}`;
                         return (
                           <button 
                             key={i}
                             onClick={async () => {
                               const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === i);
                               for (const [pId] of teamPlayers) {
-                                await restPut(`players/${pId}/scores/akinator_win`, 10);
+                                await restPut(`players/${pId}/scores/akinator_win_q${qIdx}`, 10);
                               }
-                              await restPatch(`gameState/akinator/teams/${i}`, {
+                              await restPatch(teamPath, {
                                 guessed: true,
                                 guessedBy: "Ведущий",
                                 pointsAwarded: 10
@@ -2906,4 +2936,5 @@ export default function App() {
       </div>
     </div>
   );
+  
 }
