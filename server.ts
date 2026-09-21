@@ -11,6 +11,38 @@ const PORT = 3000;
 
 app.use(express.json());
 
+// CORS configuration so external static deployments (like GitHub Pages) can use this API
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Auto-sync GEMINI_API_KEY into Firebase gameState so static clients (GitHub Pages) can also access it
+const FIREBASE_DB = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
+async function autoSyncKeyToFirebase() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") return;
+  try {
+    const existing = await fetch(`${FIREBASE_DB}/gameState/geminiApiKey.json`).then(r => r.json()).catch(() => null);
+    if (!existing) {
+      await fetch(`${FIREBASE_DB}/gameState/geminiApiKey.json`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(apiKey),
+      });
+      console.log("[Server] Synced GEMINI_API_KEY to Firebase gameState/geminiApiKey for GitHub Pages");
+    }
+  } catch (err) {
+    console.warn("[Server] Firebase key auto-sync warning:", err);
+  }
+}
+autoSyncKeyToFirebase();
+
 // Shared Gemini client utility
 let aiClient: GoogleGenAI | null = null;
 function getAIClient(): GoogleGenAI {
@@ -32,7 +64,7 @@ function getAIClient(): GoogleGenAI {
 }
 
 // Health check
-app.get("/api/health", (_req, res) => {
+app.get(["/api/health", "/animekvest2/api/health"], (_req, res) => {
   res.json({ status: "ok" });
 });
 
@@ -113,7 +145,7 @@ async function generateWithFallback(
 }
 
 // API: Ask Akinator a question about the assigned anime
-app.post("/api/akinator/ask", async (req, res) => {
+app.post(["/api/akinator/ask", "/animekvest2/api/akinator/ask"], async (req, res) => {
   try {
     const { animeTitle, question } = req.body;
     if (!animeTitle || !question) {
@@ -183,7 +215,7 @@ app.post("/api/akinator/ask", async (req, res) => {
 });
 
 // API: Check if player's guess matches the secret anime
-app.post("/api/akinator/check-guess", async (req, res) => {
+app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"], async (req, res) => {
   try {
     const { animeTitle, guess } = req.body;
     if (!animeTitle || !guess) {
