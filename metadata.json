@@ -1,5 +1,6 @@
 {
   "name": "Аниме Викторина",
-  "description": "Многораундовая викторина по аниме с поддержкой администратора и команд.",
-  "requestFramePermissions": []
+  "description": "Многораундовая викторина по аниме с поддержкой администратора, команд и ИИ-раунда Акинатор.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
