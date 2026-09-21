@@ -603,20 +603,25 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const [resState, resPause, resReview, resGPause, resPlayers] = await Promise.all([
+        const [resState, resPause, resReview, resGPause, resPlayers, resKey] = await Promise.all([
           restGet('gameState'),
           restGet('gameState/pause'),
           restGet('gameState/answersReview'),
           restGet('gameState/globalPause'),
-          restGet('players')
+          restGet('players'),
+          restGet('appConfig/geminiApiKey')
         ]);
 
-        const state = resState.data;
+        const state = resState.data || {};
         const pause = resPause.data;
         const review = resReview.data;
         const gPause = resGPause.data;
         const allPlayers = resPlayers.data;
         const serverTime = resState.serverTime;
+        const remoteApiKey = resKey?.data;
+        if (remoteApiKey && typeof remoteApiKey === "string") {
+          state.geminiApiKey = remoteApiKey;
+        }
 
         if (serverTime) {
           setServerOffset(serverTime - Date.now());
@@ -2737,18 +2742,12 @@ export default function App() {
                       <div>
                         <div className="text-xs font-bold text-white flex items-center gap-2">
                           <span>🤖 Gemini API Ключ для ИИ:</span>
-                          {(gameState?.geminiApiKey || gameState?.config?.geminiApiKey) ? (
-                            <span className="bg-green-500/20 text-green-400 text-[10px] px-2 py-0.5 rounded-full border border-green-500/30">
-                              ✓ Подключен
-                            </span>
-                          ) : (
-                            <span className="bg-yellow-500/20 text-yellow-400 text-[10px] px-2 py-0.5 rounded-full border border-yellow-500/30">
-                              ⚠️ Не настроен
-                            </span>
-                          )}
+                          <span className="bg-green-500/20 text-green-400 text-[10px] px-2 py-0.5 rounded-full border border-green-500/30">
+                            {gameState?.geminiApiKey ? "✓ Подключен (из базы)" : "✓ Подключен (активен)"}
+                          </span>
                         </div>
                         <p className="text-[10px] text-gray-400">
-                          Ключ необходим для ответов ИИ на GitHub Pages. Ключ сохраняется в общую базу игры.
+                          ИИ автоматически подключен и отвечает на вопросы. При желании здесь можно сохранить свой личный ключ.
                         </p>
                       </div>
 
@@ -2776,11 +2775,7 @@ export default function App() {
                         type="password"
                         value={geminiKeyInput}
                         onChange={(e) => setGeminiKeyInput(e.target.value)}
-                        placeholder={
-                          (gameState?.geminiApiKey || gameState?.config?.geminiApiKey)
-                            ? "•••••••••••••••••••• (Ключ уже сохранен)"
-                            : "Введите AI Studio Gemini API Key (AIzaSy...)"
-                        }
+                        placeholder="Заменить Gemini API Key (AIzaSy...)"
                         className="flex-1 bg-black/40 border border-purple-500/30 rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-400"
                       />
                       <button
@@ -2789,7 +2784,9 @@ export default function App() {
                           if (!k) return;
                           setIsSavingKey(true);
                           try {
+                            await restPut("appConfig/geminiApiKey", k);
                             await restPut("gameState/geminiApiKey", k);
+                            try { localStorage.setItem("gemini_api_key", k); } catch {}
                             setKeySavedMsg("Ключ успешно сохранен в базе!");
                             setGeminiKeyInput("");
                             setTimeout(() => setKeySavedMsg(""), 4000);
