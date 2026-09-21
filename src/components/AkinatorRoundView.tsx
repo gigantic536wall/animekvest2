@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Bot, Send, HelpCircle, CheckCircle2, XCircle, 
@@ -29,10 +29,24 @@ export default function AkinatorRoundView({
   const [wrongGuessAlert, setWrongGuessAlert] = useState("");
   const [adminViewTeam, setAdminViewTeam] = useState<number>(0);
 
+  const qIdx = gameState?.currentQuestion ?? 0;
+  const qKey = `q${qIdx}`;
   const teamIdx = user.isAdmin ? adminViewTeam : (user.team ?? 0);
   const akinatorState = gameState?.akinator || {};
-  const teamsData = akinatorState.teams || {};
+  
+  const hasQKey = !!akinatorState[qKey]?.teams;
+  const teamsData = (hasQKey ? akinatorState[qKey].teams : akinatorState.teams) || {};
   const currentTeamData = teamsData[teamIdx] || null;
+
+  const teamBasePath = hasQKey ? `gameState/akinator/${qKey}/teams/${teamIdx}` : `gameState/akinator/teams/${teamIdx}`;
+  const allTeamsBasePath = hasQKey ? `gameState/akinator/${qKey}/teams` : `gameState/akinator/teams`;
+
+  useEffect(() => {
+    setQuestionInput("");
+    setGuessInput("");
+    setErrorMsg("");
+    setWrongGuessAlert("");
+  }, [gameState?.currentQuestion]);
 
   const quickQuestions = [
     "Главный герой школьник?",
@@ -43,12 +57,12 @@ export default function AkinatorRoundView({
     "Это сёнэн?",
   ];
 
-  // Helper to re-roll anime for a team or all teams
+  // Helper to re-roll anime for a team or all teams for current question
   const reassignAnime = async (forTeam?: number) => {
     const shuffled = [...AKINATOR_ANIME_LIST].sort(() => 0.5 - Math.random());
     if (forTeam !== undefined) {
       const picked = shuffled[forTeam % shuffled.length];
-      await restPatch(`gameState/akinator/teams/${forTeam}`, {
+      await restPatch(teamBasePath, {
         animeId: picked.id,
         animeTitle: picked.title,
         originalOrEn: picked.originalOrEn,
@@ -73,7 +87,7 @@ export default function AkinatorRoundView({
           attempts: []
         };
       }
-      await restPut("gameState/akinator/teams", newTeams);
+      await restPut(allTeamsBasePath, newTeams);
     }
   };
 
@@ -112,7 +126,7 @@ export default function AkinatorRoundView({
       };
 
       const updatedList = [...prevQuestions, newQuestionObj];
-      await restPut(`gameState/akinator/teams/${teamIdx}/questions`, updatedList);
+      await restPut(`${teamBasePath}/questions`, updatedList);
       setQuestionInput("");
     } catch (err: any) {
       console.error("Ask question error:", err);
@@ -151,13 +165,14 @@ export default function AkinatorRoundView({
         else if (qCount > 10) points = 6;
         else if (qCount > 5) points = 8;
 
-        // Award points to all players in this team
+        // Award points to all players in this team for this question
+        const scoreKey = `akinator_win_q${qIdx}`;
         const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
         for (const [pId] of teamPlayers) {
-          await restPut(`players/${pId}/scores/akinator_win`, points);
+          await restPut(`players/${pId}/scores/${scoreKey}`, points);
         }
 
-        await restPatch(`gameState/akinator/teams/${teamIdx}`, {
+        await restPatch(teamBasePath, {
           guessed: true,
           guessedBy: user.nickname,
           pointsAwarded: points,
@@ -172,7 +187,7 @@ export default function AkinatorRoundView({
           timestamp: Date.now(),
           correct: false,
         };
-        await restPut(`gameState/akinator/teams/${teamIdx}/attempts`, [...prevAttempts, newAttempt]);
+        await restPut(`${teamBasePath}/attempts`, [...prevAttempts, newAttempt]);
         setWrongGuessAlert(`❌ Неверно! «${gText}» — это не то аниме. Задавайте новые вопросы!`);
         setTimeout(() => setWrongGuessAlert(""), 6000);
       }
@@ -281,12 +296,15 @@ export default function AkinatorRoundView({
               </div>
             </div>
             <div>
-              <div className="flex items-center gap-2 justify-center md:justify-start">
+              <div className="flex flex-wrap items-center gap-2 justify-center md:justify-start">
+                <span className="bg-purple-500/25 border border-purple-400/40 text-purple-300 text-[11px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                  Вопрос {qIdx + 1} из 3
+                </span>
                 <span className="text-xs font-black uppercase tracking-widest text-purple-400">
                   {user.isAdmin ? `Команда ${teamIdx + 1}` : `Ваша команда (${teamIdx + 1})`}
                 </span>
                 <span className="bg-white/10 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                  Вопросов задано: {currentTeamData?.questions?.length || 0}
+                  Вопросов: {currentTeamData?.questions?.length || 0}
                 </span>
               </div>
 
