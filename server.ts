@@ -38,25 +38,44 @@ app.get("/api/health", (_req, res) => {
 
 // Normalize Akinator responses
 function normalizeAkinatorAnswer(rawText: string): string {
-  const text = rawText.trim().toUpperCase();
-  if (text.includes("СКОРЕЕ ДА") || text.includes("PROBABLY YES") || text.includes("MOST LIKELY")) {
+  if (!rawText) return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
+  
+  // 1. Remove markdown symbols, quotes, punctuation
+  let cleaned = rawText
+    .replace(/[*_#~`"'«»“”]/g, " ")
+    .replace(/[.,!?;:()\[\]{}]/g, " ")
+    .trim()
+    .toUpperCase();
+
+  // 2. Remove common prefixes
+  cleaned = cleaned.replace(/^(ОТВЕТ|ANSWER|ВЕРДИКТ|ИТОГ)\s+/i, "").trim();
+
+  // 3. Multi-word phrases
+  if (cleaned.includes("СКОРЕЕ ДА") || cleaned.includes("PROBABLY YES") || cleaned.includes("ВЕРОЯТНО ДА")) {
     return "СКОРЕЕ ДА";
   }
-  if (text.includes("СКОРЕЕ НЕТ") || text.includes("PROBABLY NOT") || text.includes("UNLIKELY")) {
+  if (cleaned.includes("СКОРЕЕ НЕТ") || cleaned.includes("PROBABLY NOT") || cleaned.includes("ВЕРОЯТНО НЕТ")) {
     return "СКОРЕЕ НЕТ";
   }
-  if (text.includes("ЧАСТИЧНО") || text.includes("PARTIALLY")) {
+  if (cleaned.includes("ЧАСТИЧНО") || cleaned.includes("PARTIALLY")) {
     return "ЧАСТИЧНО";
   }
-  if (text.startsWith("ДА") || text === "ДА" || text.includes(" YES")) {
-    return "ДА";
-  }
-  if (text.startsWith("НЕТ") || text === "НЕТ" || text.includes(" NO")) {
-    return "НЕТ";
-  }
-  if (text.includes("НЕ ЗНАЮ") || text.includes("НЕПРИМЕНИМО") || text.includes("UNKNOWN")) {
+  if (cleaned.includes("НЕ ЗНАЮ") || cleaned.includes("НЕПРИМЕНИМО") || cleaned.includes("UNKNOWN") || cleaned.includes("НЕ УВЕРЕН")) {
     return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
   }
+
+  // 4. Tokenize by whitespace
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  if (tokens.length > 0) {
+    const first = tokens[0];
+    if (first === "ДА" || first === "YES") return "ДА";
+    if (first === "НЕТ" || first === "NO") return "НЕТ";
+  }
+
+  // 5. Look for standalone tokens
+  if (tokens.includes("ДА") || tokens.includes("YES")) return "ДА";
+  if (tokens.includes("НЕТ") || tokens.includes("NO")) return "НЕТ";
+
   return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
 }
 
@@ -126,7 +145,8 @@ app.post("/api/akinator/ask", async (req, res) => {
 1. Запрещено писать любые вступительные слова, пояснения, рассуждения или знаки препинания. Ответ — ТОЛЬКО одно выбранное словосочетание из списка выше.
 2. Никогда не называй само аниме и не подсказывай прямо.
 3. Отвечай честно и точно по канону сюжета, персонажей, авторов, жанров и фактов об аниме "${animeTitle}".
-4. Если вопрос бессмысленный, не по теме или на него невозможно ответить в таком формате, отвечай "НЕ ЗНАЮ / НЕПРИМЕНИМО".`;
+4. Если вопрос бессмысленный, не по теме или на него невозможно ответить в таком формате, отвечай "НЕ ЗНАЮ / НЕПРИМЕНИМО".
+5. Выведи ТОЛЬКО чистый текст ответа без звездочек (**), без кавычек и без точек.`;
 
     let rawAnswer = "";
     try {
