@@ -1549,7 +1549,7 @@ export default function App() {
                 </div>
 
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {Array.from({ length: 5 }).map((_, i) => {
+                  {Array.from({ length: TOTAL_TEAMS }).map((_, i) => {
                     const qKey = `q${gameState?.currentQuestion ?? 0}`;
                     const tData = gameState?.akinator?.[qKey]?.teams?.[i] || gameState?.akinator?.teams?.[i];
                     return (
@@ -2689,7 +2689,6 @@ export default function App() {
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                       {Array.from({ length: TOTAL_TEAMS }).map((_, i) => {
                         const hasPlayers = Object.values(players).some((p: any) => p.team === i);
-                        if (!hasPlayers) return null;
                         const qIdx = gameState?.currentQuestion ?? 0;
                         const qKey = `q${qIdx}`;
                         const tData = gameState?.akinator?.[qKey]?.teams?.[i] || gameState?.akinator?.teams?.[i];
@@ -2710,11 +2709,19 @@ export default function App() {
                                 pointsAwarded: 10
                               });
                             }}
-                            className={`py-2 rounded-xl text-xs font-black shadow-lg transition-all active:scale-95 ${
-                              tData?.guessed ? 'bg-green-600/50 text-white' : 'bg-purple-600 hover:bg-purple-700 text-white'
+                            className={`py-2 px-1 rounded-xl text-[11px] font-black shadow-lg transition-all active:scale-95 flex flex-col items-center justify-center ${
+                              tData?.guessed 
+                                ? 'bg-green-600/50 text-white border border-green-500/50' 
+                                : hasPlayers 
+                                  ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+                                  : 'bg-white/5 hover:bg-white/10 text-gray-400 border border-white/5'
                             }`}
+                            title={hasPlayers ? undefined : "В этой команде пока нет подключенных игроков"}
                           >
-                            КОМАНДА {i + 1} {tData?.guessed ? '✅' : ''}
+                            <span>КОМАНДА {i + 1} {tData?.guessed ? '✅' : ''}</span>
+                            <span className="text-[9px] font-normal opacity-70">
+                              {hasPlayers ? (tData?.guessed ? 'Угадано' : 'В игре') : '0 игр.'}
+                            </span>
                           </button>
                         );
                       })}
