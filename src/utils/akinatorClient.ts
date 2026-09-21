@@ -1,4 +1,3 @@
-
 /**
  * Utility for querying Akinator AI both in Fullstack (Cloud Run/Express)
  * and Static Hosting (GitHub Pages) environments.
@@ -40,6 +39,64 @@ export function normalizeAkinatorAnswer(rawText: string): string {
   if (tokens.includes("НЕТ") || tokens.includes("NO")) return "НЕТ";
 
   return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
+}
+
+const DEFAULT_GEMINI_KEY = "AIzaSyAurfZCJA7B8t2V0nSqNV3ifYnLydl8wXo";
+let inMemoryKey = "";
+
+export async function resolveGeminiKey(providedKey?: string): Promise<string> {
+  if (providedKey && providedKey.trim().length > 10) {
+    inMemoryKey = providedKey.trim();
+    return inMemoryKey;
+  }
+  if (inMemoryKey) return inMemoryKey;
+
+  // Check localStorage
+  if (typeof window !== "undefined") {
+    const local = localStorage.getItem("gemini_api_key");
+    if (local && local.trim().length > 10) {
+      inMemoryKey = local.trim();
+      return inMemoryKey;
+    }
+  }
+
+  // Check env
+  const envKey = (typeof process !== "undefined" ? process.env?.GEMINI_API_KEY : "") ||
+                 (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  if (envKey && envKey.trim().length > 10 && envKey !== "MY_GEMINI_API_KEY") {
+    inMemoryKey = envKey.trim();
+    return inMemoryKey;
+  }
+
+  // Try fetching from Firebase Realtime Database
+  try {
+    const urls = [
+      "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/appConfig/geminiApiKey.json",
+      "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/geminiApiKey.json"
+    ];
+    for (const u of urls) {
+      const controller = new AbortController();
+      const tId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(u, { signal: controller.signal });
+      clearTimeout(tId);
+      if (res.ok) {
+        const val = await res.json();
+        if (typeof val === "string" && val.trim().length > 10) {
+          inMemoryKey = val.trim();
+          if (typeof window !== "undefined") {
+            try { localStorage.setItem("gemini_api_key", inMemoryKey); } catch {}
+          }
+          return inMemoryKey;
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // Final built-in fallback
+  inMemoryKey = DEFAULT_GEMINI_KEY;
+  return inMemoryKey;
 }
 
 const FALLBACK_MODELS = [
@@ -84,11 +141,7 @@ export async function askAkinator({
   }
 
   // Strategy 2: If running statically (e.g. on GitHub Pages), call Gemini REST API directly
-  const apiKey =
-    geminiKey ||
-    (typeof process !== "undefined" ? process.env?.GEMINI_API_KEY : "") ||
-    (import.meta as any).env?.VITE_GEMINI_API_KEY ||
-    (typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "");
+  const apiKey = await resolveGeminiKey(geminiKey);
 
   if (apiKey && apiKey.trim().length > 10) {
     const systemPrompt = `Ты — неподкупный ведущий Акинатор в аниме-викторине.
@@ -194,11 +247,7 @@ export async function checkAkinatorGuess({
   }
 
   // Direct Gemini check if API key exists
-  const apiKey =
-    geminiKey ||
-    (typeof process !== "undefined" ? process.env?.GEMINI_API_KEY : "") ||
-    (import.meta as any).env?.VITE_GEMINI_API_KEY ||
-    (typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || "" : "");
+  const apiKey = await resolveGeminiKey(geminiKey);
 
   if (apiKey && apiKey.trim().length > 10) {
     const prompt = `Ответь СТРОГО 'ДА' или 'НЕТ'.
