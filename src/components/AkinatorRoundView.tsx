@@ -26,6 +26,7 @@ export default function AkinatorRoundView({
   const [isAsking, setIsAsking] = useState(false);
   const [isGuessing, setIsGuessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [lastFailedQuestion, setLastFailedQuestion] = useState("");
   const [wrongGuessAlert, setWrongGuessAlert] = useState("");
   const [adminViewTeam, setAdminViewTeam] = useState<number>(0);
 
@@ -45,8 +46,26 @@ export default function AkinatorRoundView({
     setQuestionInput("");
     setGuessInput("");
     setErrorMsg("");
+    setLastFailedQuestion("");
     setWrongGuessAlert("");
   }, [gameState?.currentQuestion]);
+
+  // Auto-recovery: if team has no secret anime assigned yet, host or player automatically assigns one
+  useEffect(() => {
+    if (!currentTeamData?.animeTitle && user?.isAdmin) {
+      const picked = AKINATOR_ANIME_LIST[Math.floor(Math.random() * AKINATOR_ANIME_LIST.length)];
+      restPatch(teamBasePath, {
+        animeId: picked.id,
+        animeTitle: picked.title,
+        originalOrEn: picked.originalOrEn,
+        questions: [],
+        guessed: false,
+        guessedBy: null,
+        pointsAwarded: 0,
+        attempts: []
+      }).catch(console.error);
+    }
+  }, [currentTeamData?.animeTitle, user?.isAdmin, teamBasePath]);
 
   const quickQuestions = [
     "Главный герой школьник?",
@@ -93,7 +112,11 @@ export default function AkinatorRoundView({
 
   const handleAskQuestion = async (customQ?: string) => {
     const qText = (customQ || questionInput).trim();
-    if (!qText || isAsking || !currentTeamData?.animeTitle) return;
+    if (!qText || isAsking) return;
+    if (!currentTeamData?.animeTitle) {
+      setErrorMsg("Аниме для команды не загружено. Обратитесь к ведущему или обновите страницу.");
+      return;
+    }
 
     setErrorMsg("");
     setWrongGuessAlert("");
@@ -109,12 +132,22 @@ export default function AkinatorRoundView({
         }),
       });
 
-      if (!res.ok) {
-        throw new Error("Сетевая ошибка при запросе к ИИ");
+      let aiAnswer = "НЕ ЗНАЮ / НЕПРИМЕНИМО";
+      if (res.ok) {
+        const data = await res.json();
+        aiAnswer = data.answer || "НЕ ЗНАЮ / НЕПРИМЕНИМО";
+      } else {
+        const errJson = await res.json().catch(() => null);
+        console.warn("Akinator ask API response:", errJson);
+        const details = errJson?.details || errJson?.error || "";
+        if (details.includes("503") || details.includes("demand") || details.includes("UNAVAILABLE")) {
+          setLastFailedQuestion(qText);
+          setErrorMsg("ИИ временно перегружен запросами. Пожалуйста, нажмите «Повторить вопрос» через несколько секунд.");
+          return;
+        }
+        // Fallback default answer rather than blocking
+        aiAnswer = "НЕ ЗНАЮ / НЕПРИМЕНИМО";
       }
-
-      const data = await res.json();
-      const aiAnswer = data.answer || "НЕ ЗНАЮ / НЕПРИМЕНИМО";
 
       const prevQuestions = currentTeamData.questions || [];
       const newQuestionObj = {
@@ -128,9 +161,11 @@ export default function AkinatorRoundView({
       const updatedList = [...prevQuestions, newQuestionObj];
       await restPut(`${teamBasePath}/questions`, updatedList);
       setQuestionInput("");
+      setLastFailedQuestion("");
     } catch (err: any) {
       console.error("Ask question error:", err);
-      setErrorMsg("Ошибка связи с ИИ. Попробуйте снова или проверьте GEMINI_API_KEY.");
+      setLastFailedQuestion(qText);
+      setErrorMsg("Не удалось связаться с ИИ. Нажмите «Повторить вопрос» или задайте другой.");
     } finally {
       setIsAsking(false);
     }
@@ -154,8 +189,18 @@ export default function AkinatorRoundView({
         }),
       });
 
-      const data = await res.json();
-      const isCorrect = !!data.correct;
+      let isCorrect = false;
+      if (res.ok) {
+        const data = await res.json();
+        isCorrect = !!data.correct;
+      } else {
+        // Fallback to client-side fuzzy match
+        const clean = (s: string) => (s || "").toLowerCase().replace(/[^a-zа-я0-9]/gi, "").trim();
+        const cg = clean(gText);
+        const ct = clean(currentTeamData.animeTitle);
+        const co = clean(currentTeamData.originalOrEn || "");
+        isCorrect = cg === ct || (cg.length >= 4 && (ct.includes(cg) || co.includes(cg)));
+      }
 
       if (isCorrect) {
         // Calculate points: 1-5 questions: 10pts, 6-10: 8pts, 11-15: 6pts, 16+: 4pts
@@ -193,7 +238,19 @@ export default function AkinatorRoundView({
       }
     } catch (err: any) {
       console.error("Guess check error:", err);
-      setErrorMsg("Ошибка проверки догадки. Попробуйте еще раз.");
+      // Fallback local match on error
+      const clean = (s: string) => (s || "").toLowerCase().replace(/[^a-zа-я0-9]/gi, "").trim();
+      const isMatch = clean(gText) === clean(currentTeamData.animeTitle);
+      if (isMatch) {
+        await restPatch(teamBasePath, {
+          guessed: true,
+          guessedBy: user.nickname,
+          pointsAwarded: 10,
+        });
+        setGuessInput("");
+      } else {
+        setErrorMsg("Ошибка связи при проверке. Попробуйте еще раз.");
+      }
     } finally {
       setIsGuessing(false);
     }
@@ -479,9 +536,21 @@ export default function AkinatorRoundView({
             </div>
 
             {errorMsg && (
-              <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                {errorMsg}
+              <div className="p-3 bg-red-500/20 border border-red-500/50 rounded-xl text-red-300 text-xs flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-1">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                  <span>{errorMsg}</span>
+                </div>
+                {lastFailedQuestion && (
+                  <button
+                    onClick={() => handleAskQuestion(lastFailedQuestion)}
+                    disabled={isAsking}
+                    className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-3 py-1 rounded-lg text-xs flex items-center gap-1 transition-all"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isAsking ? "animate-spin" : ""}`} />
+                    Повторить вопрос
+                  </button>
+                )}
               </div>
             )}
           </div>
