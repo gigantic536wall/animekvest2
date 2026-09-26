@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Trophy, CheckCircle2, XCircle, AlertTriangle, Trash2, 
   Sparkles, Eye, Send, RotateCcw, Award, Layers, Flame,
-  SkipForward, Clock, History, AlertCircle
+  SkipForward, Clock, History, AlertCircle, BookOpen
 } from "lucide-react";
 import { 
   BingoCell, 
@@ -11,6 +11,7 @@ import {
   generateTeamBingoCard, 
   evaluateBingoCard 
 } from "../data/bingoData";
+import { BingoRulesModal } from "./BingoRulesModal";
 
 interface BingoRoundViewProps {
   user: any;
@@ -35,6 +36,16 @@ export default function BingoRoundView({
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusNotice, setStatusNotice] = useState<string>("");
   const [dockTab, setDockTab] = useState<"current" | "all">("current");
+  const [showRulesModal, setShowRulesModal] = useState<boolean>(() => {
+    // Auto-show rules when round 8 starts unless closed in current browser session
+    const hasSeen = sessionStorage.getItem("bingo_rules_seen_r8");
+    return !hasSeen;
+  });
+
+  const handleCloseRules = () => {
+    sessionStorage.setItem("bingo_rules_seen_r8", "true");
+    setShowRulesModal(false);
+  };
 
   const bingoState = gameState?.bingo || {};
   const pool32: string[] = bingoState.pool32 || [];
@@ -405,8 +416,17 @@ export default function BingoRoundView({
           </div>
         </div>
 
-        {/* Revealed counter & status */}
-        <div className="flex items-center gap-3">
+        {/* Revealed counter & status & rules button */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setShowRulesModal(true)}
+            className="bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 hover:text-white border border-purple-500/40 px-3.5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all hover:scale-105 active:scale-95 shadow-md shadow-purple-950/40 cursor-pointer"
+            title="Открыть правила раунда 8"
+          >
+            <BookOpen className="w-4 h-4 text-purple-300" />
+            <span>📖 Правила раунда</span>
+          </button>
+
           <div className="bg-black/50 px-4 py-2.5 rounded-2xl border border-white/10 flex items-center gap-2.5">
             <Layers className="w-4 h-4 text-purple-400" />
             <div className="text-right">
@@ -941,6 +961,12 @@ export default function BingoRoundView({
           </div>
         </div>
       </div>
+
+      {/* Round 8 Full Rules Modal */}
+      <BingoRulesModal
+        isOpen={showRulesModal}
+        onClose={handleCloseRules}
+      />
     </div>
   );
 }
