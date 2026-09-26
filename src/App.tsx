@@ -9,6 +9,8 @@ import { Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, Play, Pause, 
 import { AudioPlayer } from './components/AudioPlayer';
 import { AKINATOR_ANIME_LIST } from './data/akinatorAnime';
 import AkinatorRoundView from './components/AkinatorRoundView';
+import BingoRoundView from './components/BingoRoundView';
+import { generateBingoPool32, generateTeamBingoCard } from './data/bingoData';
 
 // ==================== КОНФИГ FIREBASE ====================
 const DB_URL = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
@@ -470,31 +472,14 @@ const roundsData: Round[] = [
     ]
   },
   {
-    type: "mixed_text",
-    name: "Раунд 8: Общие знания (💎 Дабл-раунд)",
-    answerTime: 35,
-    pauseDuration: 10,
+    type: "bingo",
+    name: "Раунд 8: Аниме-Бинго (4×4)",
+    answerTime: 0,
     questions: [
-      { text: "Высшая форма техники Годжо («Синий» + «Красный») в «Магической битве»?", correctAnswer: "Фиолетовый" },
-      { text: "Какой особый тип меча использует Зоро в One Piece, который пожирает Хаки владельца?", correctAnswer: "Энма" },
-      { text: "Как называется древнее запечатанное оружие, которое пробудил Гаара во время экзамена на чунина?", correctAnswer: "Шукаку" },
-      { text: "Навык Наофуми («Герой щита»), который калечит его тело при активации?", correctAnswer: "Кровавая жертва" },
-      { text: "Кто биологический компонент для картриджей в «Созданном в Бездне»?", correctAnswer: "Любящий ребенок" },
-      { text: "Как называется финальный меч Клауда Страйфа, собранный из шести отдельных клинков в «Последняя фантазия VII: Дети пришествия»?", correctAnswer: "Пожиратель Первого Рода" },
-      { text: "Чье имя присвоил себе главный герой «Темного дворецкого»?", correctAnswer: "Сиэль Фантомхайв" },
-      { text: "Каким способом гомункул Зависть погибает в «Стальном алхимике»?", correctAnswer: "Самоубийство" },
-      { text: "Сколько лет примерно Имир лепила титанов из песка в измерении Путей?", correctAnswer: "2000 лет" },
-      { text: "Под каким женским именем Йохан Либерт учился в Мюнхене («Монстр»)?", correctAnswer: "Анна Либерт" },
-      { text: "Точный процент на дивергентометре Окабе для линии «Врата Штейна»?", correctAnswer: "1.048596%" },
-      { text: "Какой цветок на эмблеме 3-го отряда Готей-13 означает «Отчаяние»?", correctAnswer: "Календула" },
-      { text: "Какое кодовое имя носил Лелуш Ламперуж, когда командовал Орденом Черных Рыцарей?", correctAnswer: "Зеро" },
-      { text: "Какое имя носит Истинный Банкай Главнокомандующего Ямамото в аниме «Блич»?", correctAnswer: "Занка но Тачи" },
-      { text: "Как называется техника Сукуны в «Магической битве», разрезающая цель на основе её прочности?", correctAnswer: "Рассечение" },
-      { text: "С каким объект заключил контракт Эмия Широ, чтобы стать Арчером в Fate?", correctAnswer: "Алайя" },
-      { text: "Какая игрушка Цукико породила «Парня с битой» в «Агенте Паранойи»?", correctAnswer: "Мароми" },
-      { text: "Какую часть личности теряет Мелиодас после каждого воскрешения?", correctAnswer: "Эмоции" },
-      { text: "Как называется виртуальный мир-симулятор, в котором заперты персонажи аниме «Кибервиток»?", correctAnswer: "Киберпространство" },
-      { text: "Как звали Спирального Короля, загнавшего людей под землю в «Гуррен-Лаганн»?", correctAnswer: "Лордгеном" }
+      {
+        text: "Бинго-раунд! Ведущий выдает по 2 аниме за клик из 32 случайных тайтлов. Команды заполняют уникальную карточку 4×4. Собрали 4 в ряд (строка или столбец) — отправляйте на проверку админу за 12 баллов (первая линия)! Закрыли всё поле — 24 балла! Ошибка в ячейке карается штрафом -3 балла.",
+        correctAnswer: "Бинго завершено"
+      }
     ]
   },
   {
@@ -704,7 +689,8 @@ export default function App() {
       setTimeLeft(diff);
 
       // Admin handles the transition when time runs out
-      if (user.isAdmin && diff <= 0 && !gameState.revealMode) {
+      const currentRType = roundsData[gameState.currentRound]?.type;
+      if (user.isAdmin && diff <= 0 && !gameState.revealMode && currentRType !== "da_net" && currentRType !== "bingo" && (gameState.endTime > 0)) {
         startPauseBetweenQuestions();
       }
     };
@@ -832,6 +818,15 @@ export default function App() {
       return;
     }
 
+    if (round.type === "bingo") {
+      setGameState((prev: any) => ({ ...prev, currentQuestion: 0 }));
+      await restPatch('gameState', { currentQuestion: 0 });
+      await new Promise(r => setTimeout(r, 8000));
+      await restPatch('gameState', { revealMode: false, active: false, roundFinished: true });
+      isDrivingReveal.current = false;
+      return;
+    }
+
     for (let i = 0; i < round.questions.length; i++) {
       // Update local state immediately to prevent flicker
       setGameState((prev: any) => ({ ...prev, currentQuestion: i }));
@@ -861,6 +856,33 @@ export default function App() {
       newState.currentTeamTurn = 0; // Start with Team 1
       newState.liesLeft = 3;
       newState.endTime = 0; // No timer
+    }
+
+    if (round.type === "bingo") {
+      newState.endTime = 0;
+      newState.timeLeft = 0;
+      const pool = generateBingoPool32();
+      const initialTeams: Record<string, any> = {};
+      for (let t = 0; t < TOTAL_TEAMS; t++) {
+        initialTeams[t] = {
+          teamIdx: t,
+          card: generateTeamBingoCard(t),
+          submittedForReview: false,
+          submissionType: null,
+          submittedAt: null,
+          firstLineApproved: false,
+          fullApproved: false,
+          penaltyTotal: 0,
+          lastPenaltyNotice: null
+        };
+      }
+      newState.bingo = {
+        pool32: pool,
+        revealedCount: 0,
+        lastRevealed: [],
+        teams: initialTeams,
+        roundOver: false
+      };
     }
 
     if (round.type === "akinator") {
@@ -948,7 +970,7 @@ export default function App() {
     try {
       const currentGameState = gameStateRef.current || gameState;
       const round = roundsData[currentGameState.currentRound];
-      if (!round) {
+      if (!round || round.type === "da_net" || round.type === "bingo") {
         isStartingPauseRef.current = false;
         return;
       }
@@ -1580,6 +1602,19 @@ export default function App() {
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+
+            {roundsData[gameState.currentRound]?.type === "bingo" && (
+              <div className="max-w-4xl mx-auto space-y-6 text-center">
+                <div className="bg-white/5 p-8 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md">
+                  <h3 className="text-3xl font-black text-amber-400 mb-3 uppercase tracking-wider">
+                    РАУНД 8: АНИМЕ-БИНГО 4×4
+                  </h3>
+                  <p className="text-base text-gray-300 max-w-2xl mx-auto">
+                    Пул из 32 популярных тайтлов. Команды собирали уникальные линии (+12 баллов) и закрывали всё поле (+24 балла). Проверьте баллы команд в таблице лидеров!
+                  </p>
                 </div>
               </div>
             )}
@@ -2567,6 +2602,17 @@ export default function App() {
                     restPut={restPut}
                   />
                 )}
+
+                {/* Round 8: Bingo */}
+                {round.type === "bingo" && (
+                  <BingoRoundView
+                    user={user}
+                    gameState={gameState}
+                    players={players}
+                    restPatch={restPatch}
+                    restPut={restPut}
+                  />
+                )}
               </div>
             );
           }
@@ -2805,6 +2851,98 @@ export default function App() {
                     {keySavedMsg && (
                       <p className="text-[11px] text-green-400 font-bold">{keySavedMsg}</p>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {roundsData[gameState?.currentRound]?.type === "bingo" && (
+                <div className="mt-8 bg-purple-900/20 p-6 rounded-3xl border border-purple-500/30 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+                    <div>
+                      <h4 className="font-bold text-amber-400 uppercase tracking-widest text-sm flex items-center gap-2">
+                        <span>Управление Бинго (8 Раунд)</span>
+                      </h4>
+                      <p className="text-xs text-gray-400">
+                        Выдача по 2 аниме за нажатие. Пул: 32 случайных тайтла.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-400">Открыто тайтлов:</span>
+                      <span className="bg-purple-600 text-white px-2.5 py-0.5 rounded-full font-black font-mono">
+                        {gameState?.bingo?.revealedCount || 0} / 32
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button 
+                      onClick={async () => {
+                        const pool = gameState?.bingo?.pool32 || [];
+                        const currentCount = gameState?.bingo?.revealedCount || 0;
+                        if (currentCount >= pool.length) {
+                          alert("Все 32 аниме уже открыты!");
+                          return;
+                        }
+                        const nextCount = Math.min(currentCount + 2, pool.length);
+                        const newlyRevealed = pool.slice(currentCount, nextCount);
+                        await restPatch("gameState/bingo", {
+                          revealedCount: nextCount,
+                          lastRevealed: newlyRevealed
+                        });
+                      }}
+                      disabled={(gameState?.bingo?.revealedCount || 0) >= (gameState?.bingo?.pool32?.length || 32)}
+                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 py-4 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-purple-900/30"
+                    >
+                      <SkipForward className="w-5 h-5" />
+                      {(gameState?.bingo?.revealedCount || 0) >= 32
+                        ? "ВСЕ 32 АНИМЕ ОТКРЫТЫ"
+                        : `ВЫДАТЬ СЛЕДУЮЩИЕ 2 АНИМЕ (${(gameState?.bingo?.revealedCount || 0) + 2}/32)`}
+                    </button>
+
+                    <button 
+                      onClick={async () => {
+                        if (!window.confirm("Перегенерировать пул из 32 тайтлов и выдать новые уникальные карточки всем 10 командам?")) return;
+                        const pool = generateBingoPool32();
+                        const initialTeams: Record<string, any> = {};
+                        for (let t = 0; t < TOTAL_TEAMS; t++) {
+                          initialTeams[t] = {
+                            teamIdx: t,
+                            card: generateTeamBingoCard(t),
+                            submittedForReview: false,
+                            submissionType: null,
+                            submittedAt: null,
+                            firstLineApproved: false,
+                            fullApproved: false,
+                            penaltyTotal: 0,
+                            lastPenaltyNotice: null
+                          };
+                        }
+                        await restPatch("gameState/bingo", {
+                          pool32: pool,
+                          revealedCount: 0,
+                          lastRevealed: [],
+                          teams: initialTeams,
+                          roundOver: false
+                        });
+                        alert("Новый пул и карточки сгенерированы!");
+                      }}
+                      className="bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 py-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95"
+                    >
+                      <RotateCcw className="w-4 h-4" /> ПЕРЕГЕНЕРИРОВАТЬ РАУНД
+                    </button>
+                  </div>
+
+                  <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs text-gray-400">
+                    <span>Завершение раунда:</span>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("Завершить раунд Бинго?")) return;
+                        await restPatch("gameState", { roundFinished: true, showAnswer: true });
+                      }}
+                      className="text-xs text-amber-400 hover:text-amber-300 font-bold underline"
+                    >
+                      Завершить раунд Бинго
+                    </button>
                   </div>
                 </div>
               )}
