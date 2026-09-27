@@ -10,6 +10,7 @@ import { AudioPlayer } from './components/AudioPlayer';
 import { AKINATOR_ANIME_LIST } from './data/akinatorAnime';
 import AkinatorRoundView from './components/AkinatorRoundView';
 import BingoRoundView from './components/BingoRoundView';
+import ThreeCharactersReviewCard from './components/ThreeCharactersReviewCard';
 import { generateBingoPool32, generateTeamBingoCard } from './data/bingoData';
 
 // ==================== КОНФИГ FIREBASE ====================
@@ -56,6 +57,7 @@ interface Question {
   correct?: number;
   points?: number;
   images?: string[];
+  characterNames?: string[];
   correctAnswer?: string;
   video?: string;
   character?: string;
@@ -110,20 +112,141 @@ const roundsData: Round[] = [
     ]
   },
   {
-    type: "image_sequence",
-    name: "Раунд 1: Облик истории",
-    answerTime: 36,
+    type: "three_characters",
+    name: "Раунд 1: Угадай аниме по трем персонажам",
+    answerTime: 35,
+    pauseDuration: 10,
     questions: [
-      { images: ["/foto1/image3-1-1-1.png", "/foto1/image3-1-1-2.png", "/foto1/image3-1-1-3.png", "/foto1/image3-1-1-4.png"], correctAnswer: "Атака титанов" },
-      { images: ["/foto1/image3-1-2-1.png", "/foto1/image3-1-2-2.png", "/foto1/image3-1-2-3.png", "/foto1/image3-1-2-4.png"], correctAnswer: "Крутой учитель Онидзука" },
-      { images: ["/foto1/image3-1-3-1.png", "/foto1/image3-1-3-2.png", "/foto1/image3-1-3-3.png", "/foto1/image3-1-3-4.png"], correctAnswer: "Код Гиас" },
-      { images: ["/foto1/image3-1-4-1.png", "/foto1/image3-1-4-2.png", "/foto1/image3-1-4-3.png", "/foto1/image3-1-4-4.png"], correctAnswer: "Берсерк" },
-      { images: ["/foto1/image3-1-5-1.png", "/foto1/image3-1-5-2.png", "/foto1/image3-1-5-3.png", "/foto1/image3-1-5-4.png"], correctAnswer: "Блич" },
-      { images: ["/foto1/image3-1-6-1.png", "/foto1/image3-1-6-2.png", "/foto1/image3-1-6-3.png", "/foto1/image3-1-6-4.png"], correctAnswer: "Звёздное Дитя" },
-      { images: ["/foto1/image3-1-7-1.png", "/foto1/image3-1-7-2.png", "/foto1/image3-1-7-3.png", "/foto1/image3-1-7-4.png"], correctAnswer: "Сага О Винланде" },
-      { images: ["/foto1/image3-1-8-1.png", "/foto1/image3-1-8-2.png", "/foto1/image3-1-8-3.png", "/foto1/image3-1-8-4.png"], correctAnswer: "Твоя Апрельская Ложь" },
-      { images: ["/foto1/image3-1-9-1.png", "/foto1/image3-1-9-2.png", "/foto1/image3-1-9-3.png", "/foto1/image3-1-9-4.png"], correctAnswer: "Рубеж Шангри-Ла" },
-      { images: ["/foto1/image3-1-10-1.png", "/foto1/image3-1-10-2.png", "/foto1/image3-1-10-3.png", "/foto1/image3-1-10-4.png"], correctAnswer: "Шаман Кинг" }
+      {
+        images: [
+          "/chars/q1_c1.jpg",
+          "/chars/q1_c2.jpg",
+          "/chars/q1_c3.png"
+        ],
+        characterNames: [
+          "Сатору Миками (главный герой до перерождения)",
+          "Дриада (Трейни)",
+          "Ультима (Виоле)"
+        ],
+        correctAnswer: "О моём перерождении в слизь"
+      },
+      {
+        images: [
+          "/chars/q2_c1.png",
+          "/chars/q2_c2.png",
+          "/chars/q2_c3.png"
+        ],
+        characterNames: [
+          "Фука Кикути",
+          "Ханаби Нацубаяси",
+          "Такахиро Мидзусава"
+        ],
+        correctAnswer: "Низкоуровневый персонаж Томодзаки"
+      },
+      {
+        images: [
+          "/chars/q3_c1.png",
+          "/chars/q3_c2.png",
+          "/chars/q3_c3.png"
+        ],
+        characterNames: [
+          "Юма Куними",
+          "Нодока Тоёхама",
+          "Каэдэ Адзусагава"
+        ],
+        correctAnswer: "Этот глупый свин не понимает мечту девочки-зайки"
+      },
+      {
+        images: [
+          "/chars/q4_c1.jpg",
+          "/chars/q4_c2.png",
+          "/chars/q4_c3.png"
+        ],
+        characterNames: [
+          "Бишамон",
+          "Кадзума",
+          "Рабо"
+        ],
+        correctAnswer: "Бездомный бог"
+      },
+      {
+        images: [
+          "/chars/q5_c1.png",
+          "/chars/q5_c2.png",
+          "/chars/q5_c3.jpg"
+        ],
+        characterNames: [
+          "Тэцу Тоцумура",
+          "Масахито Карикири",
+          "Токико Хисигата"
+        ],
+        correctAnswer: "Летнее время"
+      },
+      {
+        images: [
+          "/chars/q6_c1.jpg",
+          "/chars/q6_c2.jpg",
+          "/chars/q6_c3.jpg"
+        ],
+        characterNames: [
+          "Ицуки Сумэраги",
+          "Юмэми Юмэмитэ",
+          "Джун Киватари"
+        ],
+        correctAnswer: "Безумный азарт"
+      },
+      {
+        images: [
+          "/chars/q7_c1.png",
+          "/chars/q7_c2.png",
+          "/chars/q7_c3.png"
+        ],
+        characterNames: [
+          "Каэде Акамацу",
+          "Кокичи Ома",
+          "Цумуги Сироганэ"
+        ],
+        correctAnswer: "Danganronpa"
+      },
+      {
+        images: [
+          "/chars/q8_c1.png",
+          "/chars/q8_c2.png",
+          "/chars/q8_c3.png"
+        ],
+        characterNames: [
+          "Ёситэру Дзаимокудза",
+          "Комати Хикигая",
+          "Ироха Иссики"
+        ],
+        correctAnswer: "Как и ожидал, моя школьная романтическая жизнь не превзошла ожиданий"
+      },
+      {
+        images: [
+          "/chars/q9_c1.jpg",
+          "/chars/q9_c2.png",
+          "/chars/q9_c3.png"
+        ],
+        characterNames: [
+          "Амира",
+          "Хацусэ Ино",
+          "Идзуна Хацусэ"
+        ],
+        correctAnswer: "Нет игры, нет жизни"
+      },
+      {
+        images: [
+          "/chars/q10_c1.png",
+          "/chars/q10_c2.png",
+          "/chars/q10_c3.png"
+        ],
+        characterNames: [
+          "Цукино",
+          "Ютори Кокороги",
+          "Сихо Савараги"
+        ],
+        correctAnswer: "Игра друзей"
+      }
     ]
   },
   {
@@ -511,6 +634,7 @@ export default function App() {
   const [showRevealMode, setShowRevealMode] = useState(false);
   const [revealIdx, setRevealIdx] = useState(0);
   const [answerText, setAnswerText] = useState("");
+  const [charGuesses, setCharGuesses] = useState<string[]>(["", "", ""]);
   const [serverOffset, setServerOffset] = useState(0);
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
   const [isSavingKey, setIsSavingKey] = useState(false);
@@ -707,6 +831,7 @@ export default function App() {
     // Clear locally immediately to avoid stale data from previous question while fetching
     setHasAnswered(false);
     setAnswerText("");
+    setCharGuesses(["", "", ""]);
     
     const qIdx = gameState.currentQuestion ?? 0;
     const checkAnswered = async () => {
@@ -715,6 +840,9 @@ export default function App() {
         if (ans?.answered) {
           setHasAnswered(true);
           setAnswerText(ans.answer || "");
+          if (Array.isArray(ans.characters)) {
+            setCharGuesses([ans.characters[0] || "", ans.characters[1] || "", ans.characters[2] || ""]);
+          }
         }
       } catch (e) {
         console.error("Error checking answer:", e);
@@ -1023,8 +1151,15 @@ export default function App() {
 
   const submitAnswer = async (overrideAnswer?: string) => {
     const finalAnswer = typeof overrideAnswer === "string" ? overrideAnswer : answerText;
-    if (hasAnswered || !finalAnswer.trim()) return;
     const round = roundsData[gameState.currentRound];
+    if (hasAnswered) return;
+
+    if (round.type === "three_characters") {
+      if (!finalAnswer.trim() && !charGuesses.some(g => g.trim())) return;
+    } else {
+      if (!finalAnswer.trim()) return;
+    }
+
     let potentialPoints = 2; // Default
     
     if (round.type === "test_round") {
@@ -1069,12 +1204,10 @@ export default function App() {
       potentialPoints = 5;
     }
 
-    if (round.type === "image_sequence") {
-      // 36s total: 36-29 (4), 28-21 (3), 20-13 (2), 12-0 (1)
-      if (timeLeft > 28) potentialPoints = 4;
-      else if (timeLeft > 20) potentialPoints = 3;
-      else if (timeLeft > 12) potentialPoints = 2;
-      else potentialPoints = 1;
+    if (round.type === "three_characters") {
+      potentialPoints = 5; // +2 for anime title + 3x (+1 for each character)
+    } else if (round.type === "image_sequence") {
+      potentialPoints = 2;
     }
 
     const currentQIdx = gameState.currentQuestion ?? 0;
@@ -1088,6 +1221,10 @@ export default function App() {
       potentialPoints,
       isDouble: isDoubleChoice 
     };
+
+    if (round.type === "three_characters") {
+      payload.characters = charGuesses.map(g => g.trim());
+    }
 
     if (round.type === "quiz_six") {
       const isCorrect = currentQuestion.correctAnswer 
@@ -1139,6 +1276,50 @@ export default function App() {
         console.error("Error marking answer:", e);
         alert("Ошибка при сохранении оценки. Попробуйте еще раз.");
       }
+    }
+  };
+
+  const markThreeCharactersAnswer = async (
+    playerId: string,
+    roundIdx: number,
+    qKey: string,
+    details: {
+      animeCorrect: boolean;
+      charsCorrect: boolean[];
+    }
+  ) => {
+    const p = players[playerId];
+    if (!p) return;
+    const scoreKey = `${roundIdx}_${qKey}`;
+    try {
+      const answerData = p.roundAnswers?.[roundIdx]?.[qKey] || {};
+      let basePoints = details.animeCorrect ? 2 : 0;
+      details.charsCorrect.forEach(c => {
+        if (c) basePoints += 1;
+      });
+
+      let finalPoints = basePoints;
+      if (answerData.isDouble) {
+        if (basePoints > 0) {
+          finalPoints = basePoints * 2;
+        } else {
+          finalPoints = -2;
+        }
+      }
+
+      await restPut(`players/${playerId}/scores/${scoreKey}`, finalPoints);
+      await restPatch(`players/${playerId}/roundAnswers/${roundIdx}/${qKey}`, {
+        checked: true,
+        animeApproved: details.animeCorrect,
+        charApproved: details.charsCorrect,
+        awardedPoints: finalPoints
+      });
+
+      const res = await restGet('players');
+      if (res.data) setPlayers(res.data);
+    } catch (e) {
+      console.error("Error marking three characters answer:", e);
+      alert("Ошибка при сохранении оценки. Попробуйте еще раз.");
     }
   };
 
@@ -1407,11 +1588,24 @@ export default function App() {
               </div>
             )}
 
-            {roundsData[gameState.currentRound]?.type === "image_sequence" && (
-              <div className="grid grid-cols-2 gap-4">
-                {roundsData[gameState.currentRound].questions[gameState.currentQuestion].images?.map((img, i) => (
-                  <img key={`${gameState.currentQuestion}-${i}`} src={getAssetPath(img)} className="rounded-xl aspect-video object-cover border-2 border-white/20" />
-                ))}
+            {(roundsData[gameState.currentRound]?.type === "three_characters" || roundsData[gameState.currentRound]?.type === "image_sequence") && (
+              <div className="max-w-4xl mx-auto space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {roundsData[gameState.currentRound].questions[gameState.currentQuestion].images?.map((img, i) => (
+                    <div key={`${gameState.currentQuestion}-${i}`} className="aspect-[3/4] rounded-2xl overflow-hidden border-2 border-white/20 relative shadow-xl bg-black/40 group">
+                      <img
+                        src={getAssetPath(img)}
+                        className="w-full h-full object-cover object-top"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = `https://picsum.photos/seed/char${gameState.currentQuestion}_${i}/400/550`;
+                        }}
+                      />
+                      <div className="absolute top-2 left-2 bg-black/75 backdrop-blur-md px-2.5 py-1 rounded-lg text-xs font-bold text-white border border-white/10 shadow-md">
+                        {roundsData[gameState.currentRound].questions[gameState.currentQuestion].characterNames?.[i] || `Персонаж #${i + 1}`}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -1718,11 +1912,11 @@ export default function App() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Answer Queue during Reveal */}
-                  <div className="bg-white/5 rounded-2xl p-4 border border-white/10 flex flex-col h-48">
+                  <div className="bg-white/5 rounded-2xl p-4 border border-white/10 flex flex-col min-h-[16rem] max-h-96">
                     <h4 className="text-xs font-black text-gray-400 uppercase mb-3 tracking-widest flex items-center gap-2">
                       <Users className="w-3 h-3 text-purple-400" /> Очередь ответов (Раунд {gameState?.currentRound + 1}):
                     </h4>
-                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-2">
+                    <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar space-y-3">
                       {Object.entries(players).flatMap(([id, p]: [string, any]) => {
                         const roundAnswers = p.roundAnswers?.[gameState?.currentRound] || {};
                         return Object.entries(roundAnswers)
@@ -1732,6 +1926,24 @@ export default function App() {
                       .sort((a, b) => (a.ans.timestamp || 0) - (b.ans.timestamp || 0))
                       .map(({ id, p, qKey, ans }) => {
                         const qIdx = parseInt(qKey.replace('q',''));
+                        const currentRType = roundsData[gameState.currentRound]?.type;
+                        if (currentRType === "three_characters") {
+                          const qData = roundsData[gameState.currentRound]?.questions[qIdx];
+                          return (
+                            <ThreeCharactersReviewCard
+                              key={`${id}-${qKey}`}
+                              playerId={id}
+                              player={p}
+                              qKey={qKey}
+                              qIdx={qIdx}
+                              questionData={qData || {}}
+                              answerData={ans}
+                              isCompact={true}
+                              onSave={(details) => markThreeCharactersAnswer(id, gameState.currentRound, qKey, details)}
+                            />
+                          );
+                        }
+
                         const correctAns = roundsData[gameState.currentRound]?.questions[qIdx]?.correctAnswer;
                         
                         return (
@@ -1912,35 +2124,97 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Round 1: Image Sequence */}
-                {round.type === "image_sequence" && (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      {currentQuestion.images?.map((img, idx) => {
-                        // Logic: 36-29 (img 1), 28-21 (img 2), 20-13 (img 3), 12-0 (img 4)
-                        const show = (idx === 0) || 
-                                     (idx === 1 && timeLeft <= 28) || 
-                                     (idx === 2 && timeLeft <= 20) || 
-                                     (idx === 3 && timeLeft <= 12);
-                        
+                {/* Round 1: Guess Anime by 3 Characters */}
+                {(round.type === "three_characters" || round.type === "image_sequence") && (
+                  <div className="space-y-6 max-w-5xl mx-auto">
+                    {/* Header Banner */}
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center shadow-lg">
+                      <p className="text-gray-400 text-xs uppercase tracking-widest font-black mb-1">
+                        Вопрос {currentQIdx + 1} из {round.questions.length} • Правильный ответ: +2 балла
+                      </p>
+                      <h3 className="text-lg md:text-xl font-bold text-white">
+                        Угадайте аниме по трем персонажам:
+                      </h3>
+                    </div>
+
+                    {/* 3 Characters shown simultaneously with name inputs */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+                      {currentQuestion.images?.slice(0, 3).map((img, idx) => {
+                        const charName = currentQuestion.characterNames?.[idx];
                         return (
                           <motion.div 
                             key={`${gameState.currentQuestion}_${idx}`}
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: show ? 1 : 0, scale: show ? 1 : 0.9 }}
-                            className="relative aspect-video overflow-hidden rounded-xl border-2 border-white/10"
+                            initial={{ opacity: 0, y: 15 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3, delay: idx * 0.1 }}
+                            className="glass-dark rounded-3xl overflow-hidden border-2 border-purple-500/30 shadow-2xl relative group flex flex-col"
                           >
-                            {show && (
+                            <div className="aspect-[3/4] w-full overflow-hidden bg-black/40 relative">
                               <img 
                                 key={img}
                                 src={getAssetPath(img)} 
-                                alt={`Hint ${idx + 1}`} 
-                                className="w-full h-full object-cover"
+                                alt={`Персонаж ${idx + 1}`} 
+                                className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-105"
                                 onError={(e) => { 
-                                  console.warn(`Failed to load image: ${img}`);
-                                  (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}_${idx}/400/300`; 
+                                  console.warn(`Failed to load character image: ${img}`);
+                                  (e.target as HTMLImageElement).src = `https://picsum.photos/seed/char${currentQIdx}_${idx}/400/550`; 
                                 }}
                               />
+                              <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-3 py-1 rounded-xl text-xs font-black text-purple-300 border border-purple-500/30 shadow-lg">
+                                Персонаж #{idx + 1}
+                              </div>
+                            </div>
+
+                            {/* Under image: Character Name Guess input (for players) */}
+                            {!user.isAdmin && (
+                              <div className="p-3.5 bg-slate-900/95 border-t border-purple-500/30 space-y-1.5 flex-1 flex flex-col justify-end">
+                                <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider">
+                                  <span className="text-purple-300">Имя персонажа:</span>
+                                  <span className="text-amber-400 font-bold bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20 text-[10px]">
+                                    +1 балл
+                                  </span>
+                                </div>
+                                <input
+                                  type="text"
+                                  placeholder={`Имя героя (+1 б.)...`}
+                                  value={charGuesses[idx] || ""}
+                                  onChange={(e) => {
+                                    const val = e.target.value.slice(0, 40);
+                                    setCharGuesses(prev => {
+                                      const next = [...prev];
+                                      next[idx] = val;
+                                      return next;
+                                    });
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') submitAnswer();
+                                  }}
+                                  disabled={hasAnswered}
+                                  maxLength={40}
+                                  className="w-full bg-black/60 border border-purple-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-400 disabled:opacity-75 disabled:bg-purple-950/20 transition-all font-medium"
+                                />
+                                {hasAnswered && charGuesses[idx] && (
+                                  <div className="text-[10px] text-gray-400 font-medium truncate pt-0.5">
+                                    Ваш вариант: <span className="text-purple-200 font-bold">{charGuesses[idx]}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Character name when showAnswer is enabled */}
+                            {gameState.showAnswer && charName && (
+                              <div className="p-3.5 bg-purple-950/80 border-t border-purple-500/40 text-center">
+                                <p className="text-[10px] text-purple-400 uppercase font-black tracking-wider mb-0.5">Имя персонажа:</p>
+                                <span className="text-sm font-black text-green-300 leading-tight block">{charName}</span>
+                              </div>
+                            )}
+
+                            {/* Character name for Admin during live question */}
+                            {user.isAdmin && !gameState.showAnswer && charName && (
+                              <div className="p-3 bg-purple-950/90 border-t border-purple-500/40 text-center">
+                                <p className="text-[10px] text-purple-300 uppercase font-black tracking-wider mb-0.5">Персонаж #{idx + 1} (+1 б.):</p>
+                                <span className="text-xs font-black text-amber-300 leading-snug block">{charName}</span>
+                              </div>
                             )}
                           </motion.div>
                         );
@@ -1948,26 +2222,98 @@ export default function App() {
                     </div>
                     
                     {!user.isAdmin && (
-                      <div className="flex gap-4">
-                        <input 
-                          type="text"
-                          className="answer-input flex-1"
-                          placeholder="Ваш ответ..."
-                          value={answerText}
-                          onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') submitAnswer();
-                          }}
-                          disabled={hasAnswered}
-                          maxLength={50}
-                        />
-                        <button 
-                          onClick={submitAnswer}
-                          disabled={hasAnswered}
-                          className={`px-8 py-4 rounded-full font-bold transition-all ${hasAnswered ? 'bg-green-600' : 'bg-red-500 hover:bg-red-600'}`}
-                        >
-                          {hasAnswered ? 'ОТПРАВЛЕНО' : 'ОТПРАВИТЬ'}
-                        </button>
+                      <div className="max-w-xl mx-auto space-y-3">
+                        <div className="bg-slate-900/80 p-5 rounded-3xl border border-white/10 shadow-2xl space-y-3">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-black uppercase tracking-wider text-purple-300">
+                              Название аниме:
+                            </label>
+                            <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                              +2 балла
+                            </span>
+                          </div>
+                          <input 
+                            type="text"
+                            className="answer-input w-full"
+                            placeholder="Введите название тайтла (+2 балла)..."
+                            value={answerText}
+                            onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') submitAnswer();
+                            }}
+                            disabled={hasAnswered}
+                            maxLength={50}
+                          />
+                          <button 
+                            onClick={submitAnswer}
+                            disabled={hasAnswered || (!answerText.trim() && !charGuesses.some(g => g.trim()))}
+                            className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition-all shadow-lg ${
+                              hasAnswered 
+                                ? 'bg-green-600/80 text-white cursor-default' 
+                                : 'bg-gradient-to-r from-red-500 via-pink-600 to-purple-600 hover:from-red-600 hover:to-purple-700 active:scale-95 text-white disabled:opacity-40 cursor-pointer'
+                            }`}
+                          >
+                            {hasAnswered ? 'ОТВЕТЫ ПРИНЯТЫ ✅ (ЖДИТЕ ПРОВЕРКИ)' : 'ОТПРАВИТЬ ОТВЕТЫ (+2 б. за аниме, +1 б. за каждого героя)'}
+                          </button>
+
+                          {hasAnswered && timeLeft > 0 && (
+                            <div className="text-center pt-1">
+                              <button
+                                onClick={() => setHasAnswered(false)}
+                                className="text-xs text-purple-300 hover:text-white underline font-bold bg-white/5 hover:bg-white/10 px-3.5 py-1.5 rounded-xl border border-white/10 transition-all cursor-pointer"
+                              >
+                                ✏️ Изменить ответы (осталось {timeLeft} сек)
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Admin Live Answers Review Panel */}
+                    {user.isAdmin && (
+                      <div className="mt-8 bg-slate-900/90 p-5 rounded-3xl border border-purple-500/30 space-y-4 shadow-2xl">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+                          <div>
+                            <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                              <span>📋 Проверка ответов игроков (Вопрос {currentQIdx + 1})</span>
+                              <span className="bg-purple-600 text-white px-2.5 py-0.5 rounded-full text-xs font-mono font-bold">
+                                {Object.values(players).filter((p: any) => p.roundAnswers?.[gameState.currentRound]?.[`q${currentQIdx}`]?.answered).length} отв.
+                              </span>
+                            </h4>
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              Аниме: +2 балла • Каждый персонаж: +1 балл • Максимум: +5 баллов
+                            </p>
+                          </div>
+                          <div className="text-xs text-purple-300 font-bold bg-purple-500/10 px-3 py-1 rounded-xl border border-purple-500/20">
+                            Правильный тайтл: <span className="text-green-400">{currentQuestion.correctAnswer}</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          {Object.entries(players)
+                            .filter(([_, p]: [string, any]) => p.roundAnswers?.[gameState.currentRound]?.[`q${currentQIdx}`]?.answered)
+                            .map(([pId, p]: [string, any]) => {
+                              const ansData = p.roundAnswers[gameState.currentRound][`q${currentQIdx}`];
+                              return (
+                                <ThreeCharactersReviewCard
+                                  key={pId}
+                                  playerId={pId}
+                                  player={p}
+                                  qKey={`q${currentQIdx}`}
+                                  qIdx={currentQIdx}
+                                  questionData={currentQuestion}
+                                  answerData={ansData}
+                                  onSave={(details) => markThreeCharactersAnswer(pId, gameState.currentRound, `q${currentQIdx}`, details)}
+                                />
+                              );
+                            })}
+                          {Object.values(players).every((p: any) => !p.roundAnswers?.[gameState.currentRound]?.[`q${currentQIdx}`]?.answered) && (
+                            <p className="text-xs text-gray-400 italic py-6 text-center">
+                              Игроки пока не отправили ответы на этот вопрос. Как только ответ будет отправлен, он мгновенно появится здесь для проверки.
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -1975,10 +2321,15 @@ export default function App() {
                       <motion.div 
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="bg-green-500/20 p-4 rounded-2xl border border-green-500/50 text-center"
+                        className="bg-green-500/20 p-5 rounded-2xl border border-green-500/50 text-center max-w-xl mx-auto shadow-xl"
                       >
-                        <p className="text-gray-400 text-sm uppercase mb-1">Правильный ответ:</p>
-                        <h3 className="text-2xl font-bold text-green-400">{currentQuestion.correctAnswer}</h3>
+                        <p className="text-gray-400 text-xs uppercase tracking-widest font-black mb-1">Правильный ответ (+2 балла):</p>
+                        <h3 className="text-2xl md:text-3xl font-black text-green-400">{currentQuestion.correctAnswer}</h3>
+                        {currentQuestion.characterNames && (
+                          <p className="text-xs text-green-200/80 mt-2 font-medium">
+                            Персонажи: {currentQuestion.characterNames.join(" • ")}
+                          </p>
+                        )}
                       </motion.div>
                     )}
                   </div>
@@ -3109,6 +3460,24 @@ export default function App() {
                   .sort((a, b) => (a.ans.timestamp || 0) - (b.ans.timestamp || 0))
                   .map(({ id, p, qKey, ans }) => {
                     const qIdx = parseInt(qKey.replace('q',''));
+                    const currentRType = roundsData[gameState.currentRound]?.type;
+                    if (currentRType === "three_characters") {
+                      const qData = roundsData[gameState.currentRound]?.questions[qIdx];
+                      return (
+                        <ThreeCharactersReviewCard
+                          key={`${id}-${qKey}`}
+                          playerId={id}
+                          player={p}
+                          qKey={qKey}
+                          qIdx={qIdx}
+                          questionData={qData || {}}
+                          answerData={ans}
+                          isCompact={true}
+                          onSave={(details) => markThreeCharactersAnswer(id, gameState.currentRound, qKey, details)}
+                        />
+                      );
+                    }
+
                     const qData = roundsData[gameState.currentRound]?.questions[qIdx];
                     let correctAns = qData?.correctAnswer;
                     if (!correctAns && qData?.character) {
