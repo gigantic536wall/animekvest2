@@ -86,6 +86,7 @@ interface Round {
   questions: Question[];
   pauseDuration?: number;
   answerTime?: number;
+  points?: number;
 }
 
 // ==================== ДАННЫЕ ИГРЫ ====================
@@ -380,57 +381,58 @@ const roundsData: Round[] = [
   {
     type: "audio_guess",
     name: "Раунд 3: Что это за звук?",
-    answerTime: 35,
+    answerTime: 50,
+    points: 2,
     pauseDuration: 10,
     questions: [
       {
         text: "Звук 1: Музыка первых серий",
-        audio: "/audio4/r3-1.mp3",
+        audio: "/audio3/sound3_1.mp3",
         correctAnswer: "Реинкарнация безработного"
       },
       {
         text: "Звук 2: Отчаянный крик персонажа",
-        audio: "/audio4/r3-2.mp3",
+        audio: "/audio3/sound3_2.mp3",
         correctAnswer: "Охотник х Охотник (Крик Гона)"
       },
       {
         text: "Звук 3: Саундтрек битвы (с 24 секунды)",
-        audio: "/audio4/r3-3.mp3",
+        audio: "/audio3/sound3_3.mp3",
         correctAnswer: "Блич (Bleach — On the Precipice of Defeat)"
       },
       {
         text: "Звук 4: Культовая способность / фраза",
-        audio: "/audio4/r3-4.mp3",
+        audio: "/audio3/sound3_4.mp3",
         correctAnswer: "Невероятные приключения ДжоДжо (The World / Za Warudo)"
       },
       {
         text: "Звук 5: Коронная фраза на английском",
-        audio: "/audio4/r3-5.mp3",
+        audio: "/audio3/sound3_5.mp3",
         correctAnswer: "Восхождение в тени (I am Atomic)"
       },
       {
         text: "Звук 6: Взрывное заклинание волшебницы",
-        audio: "/audio4/r3-6.mp3",
+        audio: "/audio3/sound3_6.mp3",
         correctAnswer: "Этот замечательный мир! / Коносуба (Взрыв Мегумин)"
       },
       {
         text: "Звук 7: Опенинг аниме",
-        audio: "/audio4/r3-7.mp3",
+        audio: "/audio3/sound3_7.mp3",
         correctAnswer: "Хоримия"
       },
       {
         text: "Звук 8: Расширение территории",
-        audio: "/audio4/r3-8.mp3",
+        audio: "/audio3/sound3_8.mp3",
         correctAnswer: "Магическая битва (Расширение территории Сатору Годзё)"
       },
       {
         text: "Звук 9: Музыка / саундтрек",
-        audio: "/audio4/r3-9.mp3",
+        audio: "/audio3/sound3_9.mp3",
         correctAnswer: "Киберпанк: Бегущие по краю (Cyberpunk: Edgerunners)"
       },
       {
         text: "Звук 10: Звуки битвы",
-        audio: "/audio4/r3-10.mp3",
+        audio: "/audio3/sound3_10.mp3",
         correctAnswer: "Человек-бензопила"
       }
     ]
@@ -441,7 +443,7 @@ const roundsData: Round[] = [
     answerTime: 40,
     pauseDuration: 10,
     questions: [
-      { audio: "/audio4/r3-1.mp3", correctAnswer: "Аля иногда кокетничает со мной по-русски" },
+      { audio: "/audio4/aly.mp3", correctAnswer: "Аля иногда кокетничает со мной по-русски" },
       { audio: "/audio4/basketbol.mp3", correctAnswer: "Баскетбол Куроко" },
       { audio: "/audio4/bleach.mp3", correctAnswer: "Блич" },
       { audio: "/audio4/ditz.mp3", correctAnswer: "Звёздное Дитя" },
@@ -1185,18 +1187,16 @@ export default function App() {
       if (!finalAnswer.trim()) return;
     }
 
-    let potentialPoints = 2; // Default
+    let potentialPoints = round.points !== undefined ? round.points : 2; // Default
     
-    if (round.type === "test_round") {
+    if (round.points !== undefined) {
+      potentialPoints = round.points;
+    } else if (round.type === "test_round") {
       potentialPoints = 2;
-    }
-
-    if (round.type === "anime_info") {
+    } else if (round.type === "anime_info") {
       potentialPoints = 3;
-    }
-
-    if (round.type === "audio_guess") {
-      potentialPoints = 3;
+    } else if (round.type === "audio_guess") {
+      potentialPoints = gameState.currentRound === 3 ? 2 : 3;
     }
 
     if (round.type === "quiz_six") {
@@ -1244,7 +1244,7 @@ export default function App() {
       answer: finalAnswer, 
       timestamp: Date.now(),
       potentialPoints,
-      isDouble: isDoubleChoice 
+      isDouble: gameState.currentRound === 3 ? false : isDoubleChoice 
     };
 
     if (round.type === "three_characters") {
@@ -1282,7 +1282,9 @@ export default function App() {
         const answerData = p.roundAnswers?.[roundIdx]?.[qKey] || {};
         let finalPoints = basePoints;
 
-        if (answerData.isDouble) {
+        if (roundIdx === 3) {
+          finalPoints = basePoints > 0 ? 2 : 0;
+        } else if (answerData.isDouble) {
           if (basePoints > 0) {
             finalPoints = basePoints * 2;
           } else {
@@ -1975,6 +1977,11 @@ export default function App() {
                         }
 
                         const correctAns = roundsData[gameState.currentRound]?.questions[qIdx]?.correctAnswer;
+                        const isRound3 = gameState.currentRound === 3;
+                        const hasDouble = !isRound3 && !!ans.isDouble;
+                        const basePts = isRound3 
+                          ? 2 
+                          : (roundsData[gameState.currentRound]?.points ?? ans.potentialPoints ?? 2);
                         
                         return (
                           <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-xl flex justify-between items-center border-l-4 border-purple-500">
@@ -1983,24 +1990,24 @@ export default function App() {
                                 <span className="font-bold text-xs">{p.nickname}</span>
                                 <span className="text-[8px] bg-white/10 px-1.5 py-0.5 rounded uppercase">К{p.team + 1}</span>
                                 <span className="text-[8px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-black">В{qIdx + 1}</span>
-                                {ans.isDouble && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-black animate-pulse">💎 ДАБЛ</span>}
+                                {hasDouble && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-black animate-pulse">💎 ДАБЛ</span>}
                               </div>
                               <p className="text-xs text-purple-200 mt-1">Ответ: <span className="font-bold">{ans.answer}</span></p>
                             </div>
                             <div className="flex gap-1 ml-2">
                               <button 
-                                onClick={() => markAnswer(id, gameState.currentRound, qKey, ans.potentialPoints || 2)} 
+                                onClick={() => markAnswer(id, gameState.currentRound, qKey, basePts)} 
                                 className="p-1.5 hover:bg-green-500 rounded-lg text-green-400 hover:text-white transition-all flex flex-col items-center"
                               >
                                 <CheckCircle2 className="w-4 h-4" />
-                                <span className="text-[8px] font-bold">+{ans.isDouble ? (ans.potentialPoints || 2) * 2 : (ans.potentialPoints || 2)}</span>
+                                <span className="text-[8px] font-bold">+{hasDouble ? basePts * 2 : basePts}</span>
                               </button>
                               <button 
                                 onClick={() => markAnswer(id, gameState.currentRound, qKey, 0)} 
                                 className="p-1.5 hover:bg-red-500 rounded-lg text-red-400 hover:text-white transition-all flex flex-col items-center"
                               >
                                 <XCircle className="w-4 h-4" />
-                                <span className="text-[8px] font-bold">{ans.isDouble ? -2 : 0}</span>
+                                <span className="text-[8px] font-bold">{hasDouble ? -2 : 0}</span>
                               </button>
                             </div>
                           </div>
@@ -3522,6 +3529,12 @@ export default function App() {
                       correctAns = qData.options[qData.correct];
                     }
                     
+                    const isRound3 = gameState.currentRound === 3;
+                    const hasDouble = !isRound3 && !!ans.isDouble;
+                    const basePts = isRound3 
+                      ? 2 
+                      : (roundsData[gameState.currentRound]?.points ?? ans.potentialPoints ?? 2);
+
                     return (
                       <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-lg flex justify-between items-center border-l-4 border-blue-500">
                         <div className="flex-1">
@@ -3535,18 +3548,18 @@ export default function App() {
                         </div>
                         <div className="flex gap-2 ml-4">
                           <button 
-                            onClick={() => markAnswer(id, gameState.currentRound, qKey, ans.potentialPoints || 2)} 
+                            onClick={() => markAnswer(id, gameState.currentRound, qKey, basePts)} 
                             className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
                           >
                             <CheckCircle2 className="text-green-500 w-5 h-5" />
-                            <span className="text-[10px] font-bold">+{ans.isDouble ? (ans.potentialPoints || 2) * 2 : (ans.potentialPoints || 2)}</span>
+                            <span className="text-[10px] font-bold">+{hasDouble ? basePts * 2 : basePts}</span>
                           </button>
                           <button 
                             onClick={() => markAnswer(id, gameState.currentRound, qKey, 0)} 
                             className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
                           >
                             <XCircle className="text-red-500 w-5 h-5" />
-                            <span className="text-[10px] font-bold">{ans.isDouble ? -2 : 0}</span>
+                            <span className="text-[10px] font-bold">{hasDouble ? -2 : 0}</span>
                           </button>
                         </div>
                       </div>
