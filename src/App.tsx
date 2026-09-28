@@ -298,22 +298,22 @@ const roundsData: Round[] = [
           "Драка с хулиганами, столкнувшими его в воду",
           "Он оступился, пытаясь поймать унесённую ветром шляпу Линды",
           "Удар молнии в металлическую конструкцию опоры моста",
-          "Его сбил проезжавший мимо скутер , когда он ждал Линду",
+          "Его сбил проезжавший мимо скутер (мотороллер), когда он ждал Линду",
           "Лобовое столкновение с велосипедистом на высокой скорости"
         ],
-        correctAnswer: "Его сбил проезжавший мимо скутер , когда он ждал Линду"
+        correctAnswer: "Его сбил проезжавший мимо скутер (мотороллер), когда он ждал Линду"
       },
       {
         text: "«Мастер Меча Онлайн» (Сложный вопрос): Какое легендарное блюдо приготовила Асуна на 22-м этаже из редчайшего мяса Рагу-кролика S-ранга, добытого Кирито?",
         options: [
           "Мясной пирог по древнему рецепту лесных эльфов Айнкрада",
           "Жареный стейк на углях с горчичной заправкой из трав 19-го этажа",
-          "Изысканное тушёное рагу с соевым соусом и майонезом",
+          "Изысканное тушёное рагу с соевым соусом и майонезом, воссозданными кулинарным навыком",
           "Запечённую вырезку под брусничным соусом из ягод лунного дерева",
           "Традиционное японское карри с корнеплодами 20-го этажа",
           "Копчёные ребрышки в глазури из дикого мёда пустошей"
         ],
-        correctAnswer: "Изысканное тушёное рагу с соевым соусом и майонезом"
+        correctAnswer: "Изысканное тушёное рагу с соевым соусом и майонезом, воссозданными кулинарным навыком"
       },
       {
         text: "«Кланнад» (Сложный вопрос): Кем на самом деле является собранная из металлолома кукла-робот, сопровождающая маленькую девочку в пустынном Иллюзорном мире?",
@@ -343,25 +343,25 @@ const roundsData: Round[] = [
         text: "«Хоть я и бездарная злодейка»: По какой неожиданной причине хрупкая Корин Хуан искренне обрадовалась, когда завистливая Кэйгэцу Цзинь магией переселила её в своё тело?",
         options: [
           "Она мгновенно получила доступ к тайным императорским архивам",
-          "Всю жизнь страдая от слабого здоровья и удушья, она наконец обрела сильное, выносливое тело ",
+          "Всю жизнь страдая от слабого здоровья и удушья, она наконец обрела сильное, выносливое тело и перестала задыхаться",
           "Новое тело обладало врождённым абсолютным иммунитетом ко всем дворцовым ядам",
           "Она смогла тайком покинуть Запретный город под видом простой служанки",
           "Наследный принц сразу же обратил на неё внимание из-за боевых навыков",
           "Она избавилась от многомиллионных карточных долгов своей благородной семьи"
         ],
-        correctAnswer: "Всю жизнь страдая от слабого здоровья и удушья, она наконец обрела сильное, выносливое тело "
+        correctAnswer: "Всю жизнь страдая от слабого здоровья и удушья, она наконец обрела сильное, выносливое тело и перестала задыхаться"
       },
       {
         text: "«Аля иногда кокетничает со мной по-русски» (Сложный вопрос): По какой подлинной причине Масатика Кудзэ с раннего детства свободно понимает русский язык, скрывая это от Али?",
         options: [
           "Его отец дипломат несколько лет работал в консульстве в Санкт-Петербурге",
           "Он углублённо учил язык в спецшколе международных отношений",
-          "В детстве в парке он подружился с русской девочкой Машей и выучил русский язык, чтобы общаться с ней",
+          "В детстве в парке он подружился с русской девочкой Машей («Марией») и выучил русский язык, чтобы общаться с ней",
           "Его бабушка по материнской линии была русской дворянкой-эмигранткой",
           "Он самостоятельно изучил язык по старым советским мультфильмам и фильмам о космосе",
           "Он зубрил язык, чтобы читать редкие оригинальные романы русской классики"
         ],
-        correctAnswer: "В детстве в парке он подружился с русской девочкой Машей и выучил русский язык, чтобы общаться с ней"
+        correctAnswer: "В детстве в парке он подружился с русской девочкой Машей («Марией») и выучил русский язык, чтобы общаться с ней"
       },
       {
         text: "«Твоё имя» (Сложный вопрос): Какая именно временная разница разделяла жизни Таки Татибаны в Токио и Мицухи Миямидзу в Итомори во время их обмена телами?",
@@ -378,16 +378,61 @@ const roundsData: Round[] = [
     ]
   },
   {
-    type: "video",
-    name: "Раунд 3: Видео раунд",
-    answerTime: 25,
+    type: "audio_guess",
+    name: "Раунд 3: Что это за звук?",
+    answerTime: 35,
     pauseDuration: 10,
     questions: [
-      { text: "Вопрос по видео ", video: "/video3/vidio3-3-1-1.mp4", correctAnswer: "Ответ 1" },
-      { text: "Вопрос по видео ", video: "/video3/vidio3-3-2-2.mp4.mp4", correctAnswer: "Ответ 2" },
-      { text: "Вопрос по видео ", video: "/video3/vidio3-3-3-3.mp4.mp4", correctAnswer: "Ответ 3" },
-      { text: "Вопрос по видео ", video: "/video3/vidio3-3-4-4.mp4", correctAnswer: "Ответ 4" },
-      { text: "Вопрос по видео ", video: "/video3/vidio3-3-5-5.mp4.mp4", correctAnswer: "Ответ 5" }
+      {
+        text: "Звук 1: Музыка первых серий",
+        audio: "/audio3/sound3_1.mp3",
+        correctAnswer: "Реинкарнация безработного"
+      },
+      {
+        text: "Звук 2: Отчаянный крик персонажа",
+        audio: "/audio3/sound3_2.mp3",
+        correctAnswer: "Охотник х Охотник (Крик Гона)"
+      },
+      {
+        text: "Звук 3: Саундтрек битвы (с 24 секунды)",
+        audio: "/audio3/sound3_3.mp3",
+        correctAnswer: "Блич (Bleach — On the Precipice of Defeat)"
+      },
+      {
+        text: "Звук 4: Культовая способность / фраза",
+        audio: "/audio3/sound3_4.mp3",
+        correctAnswer: "Невероятные приключения ДжоДжо (The World / Za Warudo)"
+      },
+      {
+        text: "Звук 5: Коронная фраза на английском",
+        audio: "/audio3/sound3_5.mp3",
+        correctAnswer: "Восхождение в тени (I am Atomic)"
+      },
+      {
+        text: "Звук 6: Взрывное заклинание волшебницы",
+        audio: "/audio3/sound3_6.mp3",
+        correctAnswer: "Этот замечательный мир! / Коносуба (Взрыв Мегумин)"
+      },
+      {
+        text: "Звук 7: Опенинг аниме",
+        audio: "/audio3/sound3_7.mp3",
+        correctAnswer: "Хоримия"
+      },
+      {
+        text: "Звук 8: Расширение территории",
+        audio: "/audio3/sound3_8.mp3",
+        correctAnswer: "Магическая битва (Расширение территории Сатору Годзё)"
+      },
+      {
+        text: "Звук 9: Музыка / саундтрек",
+        audio: "/audio3/sound3_9.mp3",
+        correctAnswer: "Киберпанк: Бегущие по краю (Cyberpunk: Edgerunners)"
+      },
+      {
+        text: "Звук 10: Звуки битвы",
+        audio: "/audio3/sound3_10.mp3",
+        correctAnswer: "Человек-бензопила"
+      }
     ]
   },
   {
@@ -616,9 +661,6 @@ export default function App() {
   const [answerText, setAnswerText] = useState("");
   const [charGuesses, setCharGuesses] = useState<string[]>(["", "", ""]);
   const [serverOffset, setServerOffset] = useState(0);
-  const [geminiKeyInput, setGeminiKeyInput] = useState("");
-  const [isSavingKey, setIsSavingKey] = useState(false);
-  const [keySavedMsg, setKeySavedMsg] = useState("");
   const isDrivingReveal = useRef(false);
   const prevQKeyRef = useRef<string | null>(null);
   const localStartTimeRef = useRef<number | null>(null);
@@ -692,13 +734,12 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const [resState, resPause, resReview, resGPause, resPlayers, resKey] = await Promise.all([
+        const [resState, resPause, resReview, resGPause, resPlayers] = await Promise.all([
           restGet('gameState'),
           restGet('gameState/pause'),
           restGet('gameState/answersReview'),
           restGet('gameState/globalPause'),
-          restGet('players'),
-          restGet('appConfig/geminiApiKey')
+          restGet('players')
         ]);
 
         const state = resState.data || {};
@@ -707,10 +748,6 @@ export default function App() {
         const gPause = resGPause.data;
         const allPlayers = resPlayers.data;
         const serverTime = resState.serverTime;
-        const remoteApiKey = resKey?.data;
-        if (remoteApiKey && typeof remoteApiKey === "string") {
-          state.geminiApiKey = remoteApiKey;
-        }
 
         if (serverTime) {
           setServerOffset(serverTime - Date.now());
@@ -1733,6 +1770,11 @@ export default function App() {
 
             {roundsData[gameState.currentRound]?.type === "audio_guess" && (
               <div className="max-w-xl mx-auto space-y-6">
+                {roundsData[gameState.currentRound].questions[gameState.currentQuestion]?.text && (
+                  <h3 className="text-xl md:text-2xl font-bold text-white text-center bg-white/5 py-3 px-6 rounded-2xl border border-white/10 backdrop-blur-md">
+                    {roundsData[gameState.currentRound].questions[gameState.currentQuestion].text}
+                  </h3>
+                )}
                 <AudioPlayer 
                   src={getAssetPath(roundsData[gameState.currentRound].questions[gameState.currentQuestion].audio || "")}
                   isMuted={isMuted}
@@ -2876,9 +2918,14 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Round 4: Audio Guess */}
+                {/* Audio Guess */}
                 {round.type === "audio_guess" && (
                   <div className="space-y-8 max-w-xl mx-auto text-center">
+                    {currentQuestion.text && (
+                      <h3 className="text-xl md:text-2xl font-bold text-white bg-white/5 py-3 px-6 rounded-2xl border border-white/10 backdrop-blur-md">
+                        {currentQuestion.text}
+                      </h3>
+                    )}
                     <AudioPlayer 
                       src={getAssetPath(currentQuestion.audio || "")}
                       isMuted={isMuted}
@@ -3113,18 +3160,18 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Akinator Key & Reset Controls */}
+                  {/* Akinator Reset Controls */}
                   <div className="pt-3 border-t border-purple-500/20 space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
                         <div className="text-xs font-bold text-white flex items-center gap-2">
-                          <span>🤖 Gemini API Ключ для ИИ:</span>
+                          <span>🤖 ИИ Акинатор (Сервер):</span>
                           <span className="bg-green-500/20 text-green-400 text-[10px] px-2 py-0.5 rounded-full border border-green-500/30">
-                            {gameState?.geminiApiKey ? "✓ Подключен (из базы)" : "✓ Подключен (активен)"}
+                            ✓ Активен (безопасный бэкенд)
                           </span>
                         </div>
                         <p className="text-[10px] text-gray-400">
-                          ИИ автоматически подключен и отвечает на вопросы. При желании здесь можно сохранить свой личный ключ.
+                          ИИ отвечает через серверные эндпоинты. Ключи защищены переменными окружения сервера.
                         </p>
                       </div>
 
@@ -3146,42 +3193,6 @@ export default function App() {
                         🗑️ Очистить вопросы всех 10 команд
                       </button>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="password"
-                        value={geminiKeyInput}
-                        onChange={(e) => setGeminiKeyInput(e.target.value)}
-                        placeholder="Заменить Gemini API Key (AIzaSy...)"
-                        className="flex-1 bg-black/40 border border-purple-500/30 rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-400"
-                      />
-                      <button
-                        onClick={async () => {
-                          const k = geminiKeyInput.trim();
-                          if (!k) return;
-                          setIsSavingKey(true);
-                          try {
-                            await restPut("appConfig/geminiApiKey", k);
-                            await restPut("gameState/geminiApiKey", k);
-                            try { localStorage.setItem("gemini_api_key", k); } catch {}
-                            setKeySavedMsg("Ключ успешно сохранен в базе!");
-                            setGeminiKeyInput("");
-                            setTimeout(() => setKeySavedMsg(""), 4000);
-                          } catch (e: any) {
-                            setKeySavedMsg("Ошибка сохранения ключа");
-                          } finally {
-                            setIsSavingKey(false);
-                          }
-                        }}
-                        disabled={isSavingKey || !geminiKeyInput.trim()}
-                        className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold text-xs px-4 py-1.5 rounded-xl transition-all shadow-md shrink-0"
-                      >
-                        {isSavingKey ? "Сохранение..." : "Сохранить ключ"}
-                      </button>
-                    </div>
-                    {keySavedMsg && (
-                      <p className="text-[11px] text-green-400 font-bold">{keySavedMsg}</p>
-                    )}
                   </div>
                 </div>
               )}
