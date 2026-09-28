@@ -11,30 +11,37 @@ const PORT = 3000;
 
 app.use(express.json());
 
-// CORS configuration restricted to same origin, localhost, and deployed domains
+// CORS configuration so external static deployments (like GitHub Pages) can use this API
 app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  const host = req.headers.host;
-
-  // Allow same-origin, localhost, or deployment domains (*.run.app)
-  const isAllowed =
-    !origin ||
-    (host && origin.includes(host)) ||
-    origin.endsWith(".run.app") ||
-    origin.includes("localhost") ||
-    origin.includes("127.0.0.1");
-
-  if (isAllowed && origin) {
-    res.header("Access-Control-Allow-Origin", origin);
-    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  }
-
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") {
-    return res.sendStatus(isAllowed ? 200 : 403);
+    return res.sendStatus(200);
   }
   next();
 });
+
+// Auto-sync GEMINI_API_KEY into Firebase gameState so static clients (GitHub Pages) can also access it
+const FIREBASE_DB = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
+async function autoSyncKeyToFirebase() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") return;
+  try {
+    const existing = await fetch(`${FIREBASE_DB}/gameState/geminiApiKey.json`).then(r => r.json()).catch(() => null);
+    if (!existing) {
+      await fetch(`${FIREBASE_DB}/gameState/geminiApiKey.json`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(apiKey),
+      });
+      console.log("[Server] Synced GEMINI_API_KEY to Firebase gameState/geminiApiKey for GitHub Pages");
+    }
+  } catch (err) {
+    console.warn("[Server] Firebase key auto-sync warning:", err);
+  }
+}
+autoSyncKeyToFirebase();
 
 // Shared Gemini client utility
 let aiClient: GoogleGenAI | null = null;
@@ -256,6 +263,12 @@ app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"],
 });
 
 async function startServer() {
+  const publicDir = path.join(process.cwd(), "public");
+  app.use("/chars", express.static(path.join(publicDir, "chars")));
+  app.use("/animekvest2/chars", express.static(path.join(publicDir, "chars")));
+  app.use(express.static(publicDir));
+  app.use("/animekvest2", express.static(publicDir));
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
