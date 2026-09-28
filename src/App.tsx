@@ -119,9 +119,9 @@ const roundsData: Round[] = [
     questions: [
       {
         images: [
-          "/chars/q1_c1.jpg",
-          "/chars/q1_c2.jpg",
-          "/chars/q1_c3.png"
+          "https://iili.io/n7PxWKB.jpg",
+          "https://iili.io/n7PxiRn.jpg",
+          "https://iili.io/n7PxLDG.png"
         ],
         characterNames: [
           "Сатору Миками (главный герой до перерождения)",
@@ -132,9 +132,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "/chars/q2_c1.png",
-          "/chars/q2_c2.png",
-          "/chars/q2_c3.png"
+          "https://iili.io/n7PxZxf.png",
+          "https://iili.io/n7Pxmf2.png",
+          "https://iili.io/n7PxplS.png"
         ],
         characterNames: [
           "Фука Кикути",
@@ -145,9 +145,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "/chars/q3_c1.png",
-          "/chars/q3_c2.png",
-          "/chars/q3_c3.png"
+          "https://iili.io/n7PzHJ9.png",
+          "https://iili.io/n7PzJRe.png",
+          "https://iili.io/n7Pz2Db.png"
         ],
         characterNames: [
           "Юма Куними",
@@ -158,9 +158,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "/chars/q4_c1.jpg",
-          "/chars/q4_c2.png",
-          "/chars/q4_c3.png"
+          "https://iili.io/n7PzfiQ.jpg",
+          "https://iili.io/n7PzC0B.png",
+          "https://iili.io/n7PznUP.png"
         ],
         characterNames: [
           "Бишамон",
@@ -171,9 +171,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "/chars/q5_c1.png",
-          "/chars/q5_c2.png",
-          "/chars/q5_c3.jpg"
+          "https://iili.io/n7Pzz5F.png",
+          "https://iili.io/n7PzIOg.png",
+          "https://iili.io/n7PzAzJ.jpg"
         ],
         characterNames: [
           "Тэцу Тоцумура",
@@ -184,9 +184,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "/chars/q6_c1.jpg",
-          "/chars/q6_c2.jpg",
-          "/chars/q6_c3.jpg"
+          "https://iili.io/n7PzRWv.jpg",
+          "https://iili.io/n7Pza0N.jpg",
+          "https://iili.io/n7Pz0Jt.jpg"
         ],
         characterNames: [
           "Ицуки Сумэраги",
@@ -197,9 +197,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "/chars/q7_c1.png",
-          "/chars/q7_c2.png",
-          "/chars/q7_c3.png"
+          "https://iili.io/n7PzVzG.png",
+          "https://iili.io/n7PzXs4.png",
+          "https://iili.io/n7Pzw12.png"
         ],
         characterNames: [
           "Каэде Акамацу",
@@ -210,9 +210,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "/chars/q8_c1.png",
-          "/chars/q8_c2.png",
-          "/chars/q8_c3.png"
+          "https://iili.io/n7Pzed7.png",
+          "https://iili.io/n7Pzvee.png",
+          "https://iili.io/n7PzgXj.png"
         ],
         characterNames: [
           "Ёситэру Дзаимокудза",
@@ -223,9 +223,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "/chars/q9_c1.jpg",
-          "/chars/q9_c2.png",
-          "/chars/q9_c3.png"
+          "https://iili.io/n7Pz6qQ.jpg",
+          "https://iili.io/n7PzP1V.png",
+          "https://iili.io/n7PzQ71.png"
         ],
         characterNames: [
           "Амира",
@@ -236,9 +236,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "/chars/q10_c1.png",
-          "/chars/q10_c2.png",
-          "/chars/q10_c3.png"
+          "https://iili.io/n7PxSPp.png",
+          "https://iili.io/n7PxgKN.png",
+          "https://iili.io/n7Px4St.png"
         ],
         characterNames: [
           "Цукино",
