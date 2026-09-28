@@ -135,11 +135,9 @@ export default function AkinatorRoundView({
     setIsAsking(true);
 
     try {
-      const geminiKey = gameState?.geminiApiKey || gameState?.config?.geminiApiKey;
       const res = await askAkinator({
         animeTitle: currentTeamData.animeTitle,
         question: qText,
-        geminiKey,
       });
 
       if (!res.success) {
@@ -179,12 +177,10 @@ export default function AkinatorRoundView({
     setIsGuessing(true);
 
     try {
-      const geminiKey = gameState?.geminiApiKey || gameState?.config?.geminiApiKey;
       const isCorrect = await checkAkinatorGuess({
         animeTitle: currentTeamData.animeTitle,
         originalOrEn: currentTeamData.originalOrEn,
         guess: gText,
-        geminiKey,
       });
 
       if (isCorrect) {
