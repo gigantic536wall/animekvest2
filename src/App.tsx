@@ -661,6 +661,9 @@ export default function App() {
   const [answerText, setAnswerText] = useState("");
   const [charGuesses, setCharGuesses] = useState<string[]>(["", "", ""]);
   const [serverOffset, setServerOffset] = useState(0);
+  const [geminiKeyInput, setGeminiKeyInput] = useState("");
+  const [isSavingKey, setIsSavingKey] = useState(false);
+  const [keySavedMsg, setKeySavedMsg] = useState("");
   const isDrivingReveal = useRef(false);
   const prevQKeyRef = useRef<string | null>(null);
   const localStartTimeRef = useRef<number | null>(null);
@@ -734,12 +737,13 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const [resState, resPause, resReview, resGPause, resPlayers] = await Promise.all([
+        const [resState, resPause, resReview, resGPause, resPlayers, resKey] = await Promise.all([
           restGet('gameState'),
           restGet('gameState/pause'),
           restGet('gameState/answersReview'),
           restGet('gameState/globalPause'),
-          restGet('players')
+          restGet('players'),
+          restGet('appConfig/geminiApiKey')
         ]);
 
         const state = resState.data || {};
@@ -748,6 +752,10 @@ export default function App() {
         const gPause = resGPause.data;
         const allPlayers = resPlayers.data;
         const serverTime = resState.serverTime;
+        const remoteApiKey = resKey?.data;
+        if (remoteApiKey && typeof remoteApiKey === "string") {
+          state.geminiApiKey = remoteApiKey;
+        }
 
         if (serverTime) {
           setServerOffset(serverTime - Date.now());
@@ -3160,18 +3168,18 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Akinator Reset Controls */}
+                  {/* Akinator Key & Reset Controls */}
                   <div className="pt-3 border-t border-purple-500/20 space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
                         <div className="text-xs font-bold text-white flex items-center gap-2">
-                          <span>🤖 ИИ Акинатор (Сервер):</span>
+                          <span>🤖 Gemini API Ключ для ИИ:</span>
                           <span className="bg-green-500/20 text-green-400 text-[10px] px-2 py-0.5 rounded-full border border-green-500/30">
-                            ✓ Активен (безопасный бэкенд)
+                            {gameState?.geminiApiKey ? "✓ Подключен (из базы)" : "✓ Подключен (активен)"}
                           </span>
                         </div>
                         <p className="text-[10px] text-gray-400">
-                          ИИ отвечает через серверные эндпоинты. Ключи защищены переменными окружения сервера.
+                          ИИ автоматически подключен и отвечает на вопросы. При желании здесь можно сохранить свой личный ключ.
                         </p>
                       </div>
 
@@ -3193,6 +3201,42 @@ export default function App() {
                         🗑️ Очистить вопросы всех 10 команд
                       </button>
                     </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="password"
+                        value={geminiKeyInput}
+                        onChange={(e) => setGeminiKeyInput(e.target.value)}
+                        placeholder="Заменить Gemini API Key (AIzaSy...)"
+                        className="flex-1 bg-black/40 border border-purple-500/30 rounded-xl px-3 py-1.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-400"
+                      />
+                      <button
+                        onClick={async () => {
+                          const k = geminiKeyInput.trim();
+                          if (!k) return;
+                          setIsSavingKey(true);
+                          try {
+                            await restPut("appConfig/geminiApiKey", k);
+                            await restPut("gameState/geminiApiKey", k);
+                            try { localStorage.setItem("gemini_api_key", k); } catch {}
+                            setKeySavedMsg("Ключ успешно сохранен в базе!");
+                            setGeminiKeyInput("");
+                            setTimeout(() => setKeySavedMsg(""), 4000);
+                          } catch (e: any) {
+                            setKeySavedMsg("Ошибка сохранения ключа");
+                          } finally {
+                            setIsSavingKey(false);
+                          }
+                        }}
+                        disabled={isSavingKey || !geminiKeyInput.trim()}
+                        className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold text-xs px-4 py-1.5 rounded-xl transition-all shadow-md shrink-0"
+                      >
+                        {isSavingKey ? "Сохранение..." : "Сохранить ключ"}
+                      </button>
+                    </div>
+                    {keySavedMsg && (
+                      <p className="text-[11px] text-green-400 font-bold">{keySavedMsg}</p>
+                    )}
                   </div>
                 </div>
               )}
