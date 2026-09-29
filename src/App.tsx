@@ -13,6 +13,7 @@ import BingoRoundView from './components/BingoRoundView';
 import MemoryItemsRoundView from './components/MemoryItemsRoundView';
 import ThreeCharactersReviewCard from './components/ThreeCharactersReviewCard';
 import { generateBingoPool32, generateTeamBingoCard } from './data/bingoData';
+import { ROUND4_STAGES } from './data/round4Data';
 
 // ==================== КОНФИГ FIREBASE ====================
 const DB_URL = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
@@ -710,7 +711,7 @@ export default function App() {
   }, [gameState?.revealMode, gameState?.currentQuestion, gameState?.active]);
   const [hasAnswered, setHasAnswered] = useState(false);
   const [isChangingTeam, setIsChangingTeam] = useState(false);
-  const [isDoubleChoice, setIsDoubleChoice] = useState(false); // To toggle double points
+  const [isDoubleChoice, setIsDoubleChoice] = useState(false);
   const [preloaderStatus, setPreloaderStatus] = useState("");
 
   const timerRef = useRef<any>(null);
@@ -773,7 +774,6 @@ export default function App() {
         }
 
         if (user?.isAdmin && isDrivingReveal.current) {
-          // Don't overwrite currentQuestion/currentRound while we are in the middle of a reveal loop
           setGameState((prev: any) => ({
             ...state,
             currentQuestion: prev?.currentQuestion,
@@ -826,12 +826,10 @@ export default function App() {
     }
 
     if (globalPause?.active || pauseState?.active) {
-      // If paused, we show the frozen timeLeft from the database
       if (gameState.timeLeft !== undefined) setTimeLeft(gameState.timeLeft);
       return;
     }
 
-    // Calculate time based on local elapsed or fallback to endTime
     const updateTimer = () => {
       let diff = 0;
       if (isFreshTransitionRef.current && localStartTimeRef.current) {
@@ -848,7 +846,6 @@ export default function App() {
       
       setTimeLeft(diff);
 
-      // Admin handles the transition when time runs out
       const currentRType = roundsData[gameState.currentRound]?.type;
       if (user.isAdmin && diff <= 0 && !gameState.revealMode && currentRType !== "da_net" && currentRType !== "bingo" && (gameState.endTime > 0)) {
         startPauseBetweenQuestions();
@@ -856,7 +853,7 @@ export default function App() {
     };
 
     updateTimer();
-    const interval = setInterval(updateTimer, 200); // 200ms for extra precision
+    const interval = setInterval(updateTimer, 200);
     return () => clearInterval(interval);
   }, [gameState?.active, gameState?.currentRound, gameState?.currentQuestion, gameState?.endTime, gameState?.timeLeft, globalPause?.active, pauseState?.active, gameState?.roundFinished, user?.isAdmin]);
 
@@ -864,7 +861,6 @@ export default function App() {
   useEffect(() => {
     if (!gameState?.active || !user || user.isAdmin) return;
     
-    // Clear locally immediately to avoid stale data from previous question while fetching
     setHasAnswered(false);
     setAnswerText("");
     setCharGuesses(["", "", ""]);
@@ -886,6 +882,7 @@ export default function App() {
     };
     checkAnswered();
   }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin]);
+
   // ==================== HELPERS ====================
   const getAssetPath = (path: string) => {
     if (!path) return "";
@@ -898,14 +895,12 @@ export default function App() {
 
   const preloadAssets = () => {
     setPreloaderStatus("🚀 Загрузка ресурсов...");
-    // Simple preloader logic
     setTimeout(() => setPreloaderStatus("✅ Ресурсы готовы"), 2000);
   };
 
   const handleJoin = async () => {
     if (!nickname) { setError("Введите никнейм"); return; }
     
-    // If we are changing team, use same ID
     const id = isChangingTeam && user ? user.id : `${nickname}_${Date.now()}`;
     const newUser = { nickname, team: selectedTeam, isAdmin: false, id };
     
@@ -930,7 +925,6 @@ export default function App() {
   const resetGame = async () => {
     if (!confirm("Вы уверены, что хотите полностью сбросить игру? Все баллы и ответы будут удалены!")) return;
     
-    // Reset scores and answers for all players
     const resetPlayers = { ...players };
     Object.keys(resetPlayers).forEach(id => {
       resetPlayers[id].score = 0;
@@ -940,7 +934,6 @@ export default function App() {
     
     await restPut('players', resetPlayers);
     
-    // Reset game state and trigger a global reset for clients
     await restPut('gameState', {
       active: false,
       currentRound: 0,
@@ -948,15 +941,13 @@ export default function App() {
       roundFinished: false,
       revealMode: false,
       showLeaderboard: false,
-      reset: true // Trigger client-side reload
+      reset: true
     });
     
-    // Clear queue and other states
     await restDelete('gameState/pause');
     await restDelete('gameState/answersReview');
     await restDelete('gameState/globalPause');
 
-    // Turn off reset flag after a short delay
     setTimeout(async () => {
       await restPatch('gameState', { reset: false });
     }, 2000);
@@ -992,7 +983,6 @@ export default function App() {
     }
 
     for (let i = 0; i < round.questions.length; i++) {
-      // Update local state immediately to prevent flicker
       setGameState((prev: any) => ({ ...prev, currentQuestion: i }));
       await restPatch('gameState', { currentQuestion: i });
       const duration = round.type === "video" ? 19000 : 14000;
@@ -1017,9 +1007,9 @@ export default function App() {
     };
 
     if (round.type === "da_net") {
-      newState.currentTeamTurn = 0; // Start with Team 1
+      newState.currentTeamTurn = 0;
       newState.liesLeft = 3;
-      newState.endTime = 0; // No timer
+      newState.endTime = 0;
     }
 
     if (round.type === "bingo") {
@@ -1082,6 +1072,7 @@ export default function App() {
       newState.memorySubQuestion = 0;
       newState.memoryPhase = "memorize";
       newState.memoryEndTime = Date.now() + 15 * 1000;
+      newState.memoryTimeLeft = 15;
       newState.timeLeft = 15;
       newState.endTime = Date.now() + 15 * 1000;
     }
@@ -1100,7 +1091,6 @@ export default function App() {
     const currentTeam = gameState.currentTeamTurn || 0;
     let nextTeam = (currentTeam + 1) % TOTAL_TEAMS;
     
-    // Find next team with players
     let attempts = 0;
     const teamHasPlayers = (tIdx: number) => Object.values(players).some((p: any) => p.team === tIdx);
     
@@ -1137,7 +1127,7 @@ export default function App() {
   };
 
   const startPauseBetweenQuestions = async () => {
-    if (isStartingPauseRef.current || pauseState?.active) return; // Prevent double trigger
+    if (isStartingPauseRef.current || pauseState?.active) return;
     isStartingPauseRef.current = true;
 
     try {
@@ -1163,7 +1153,6 @@ export default function App() {
           const latestGameState = gameStateRef.current || gameState;
           if (p.skip || (Date.now() + serverOffset) >= p.endTime) {
             clearInterval(checkPause);
-            // Delete the pause document first from DB to prevent double executing by parallel timers
             await restDelete('gameState/pause');
             isStartingPauseRef.current = false;
 
@@ -1174,7 +1163,7 @@ export default function App() {
                 currentQuestion: nextQ, 
                 timeLeft: qDuration,
                 endTime: Date.now() + qDuration * 1000,
-                pause: null // Atomic removal of the pause state
+                pause: null
               };
               if (round.type === "akinator" && latestGameState.akinator?.[`q${nextQ}`]?.teams) {
                 updateData["akinator/teams"] = latestGameState.akinator[`q${nextQ}`].teams;
@@ -1205,7 +1194,7 @@ export default function App() {
       if (!finalAnswer.trim()) return;
     }
 
-    let potentialPoints = round.points !== undefined ? round.points : 2; // Default
+    let potentialPoints = round.points !== undefined ? round.points : 2;
     
     if (round.points !== undefined) {
       potentialPoints = round.points;
@@ -1248,7 +1237,7 @@ export default function App() {
     }
 
     if (round.type === "three_characters") {
-      potentialPoints = 5; // +2 for anime title + 3x (+1 for each character)
+      potentialPoints = 5;
     } else if (round.type === "image_sequence") {
       potentialPoints = 2;
     }
@@ -1284,7 +1273,7 @@ export default function App() {
 
     await restPut(path, payload);
     setHasAnswered(true);
-    setIsDoubleChoice(false); // Reset for next question
+    setIsDoubleChoice(false);
   };
 
   const toggleShowAnswer = async () => {
@@ -1294,8 +1283,7 @@ export default function App() {
   const markAnswer = async (playerId: string, roundIdx: number, qKey: string, basePoints: number) => {
     const p = players[playerId];
     if (p) {
-      // Use a sub-path for each question to avoid race conditions on the total score
-      const scoreKey = `${roundIdx}_${qKey}`;
+      const scoreKey = qKey.startsWith("stage") ? `round4_${qKey}` : `${roundIdx}_${qKey}`;
       try {
         const answerData = p.roundAnswers?.[roundIdx]?.[qKey] || {};
         let finalPoints = basePoints;
@@ -1311,10 +1299,11 @@ export default function App() {
         }
 
         await restPut(`players/${playerId}/scores/${scoreKey}`, finalPoints);
-        // Mark as checked instead of deleting to keep history
-        await restPatch(`players/${playerId}/roundAnswers/${roundIdx}/${qKey}`, { checked: true });
+        await restPatch(`players/${playerId}/roundAnswers/${roundIdx}/${qKey}`, { 
+          checked: true,
+          pointsAwarded: finalPoints
+        });
         
-        // Force an immediate refresh of the players list in local state for the admin
         const res = await restGet('players');
         if (res.data) setPlayers(res.data);
       } catch (e) {
@@ -1596,7 +1585,6 @@ export default function App() {
       {/* Reveal Mode Overlay */}
       {gameState?.revealMode && (
         <div className={`fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-8 ${user?.isAdmin ? 'pb-80' : ''}`}>
-          {/* Volume Control for Reveal Mode */}
           <div className="absolute top-8 right-8 z-[110] flex items-center gap-4 glass px-6 py-3 rounded-full border border-white/10">
             <div onClick={() => setIsMuted(!isMuted)} className="cursor-pointer hover:scale-110 transition-transform">
               {isMuted || volume === 0 ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5 text-purple-400" />}
@@ -1994,12 +1982,26 @@ export default function App() {
                           );
                         }
 
-                        const correctAns = roundsData[gameState.currentRound]?.questions[qIdx]?.correctAnswer;
+                        let questionBadge = `В${qIdx + 1}`;
+                        let correctAns = roundsData[gameState.currentRound]?.questions[qIdx]?.correctAnswer;
+                        if (qKey.startsWith("stage")) {
+                          const match = qKey.match(/stage(\d+)_q(\d+)/);
+                          if (match) {
+                            const sIdx = parseInt(match[1]);
+                            const sqIdx = parseInt(match[2]);
+                            questionBadge = `Фото ${sIdx + 1} • В${sqIdx + 1}`;
+                            const subQ = ROUND4_STAGES[sIdx]?.subQuestions[sqIdx];
+                            if (subQ) {
+                              correctAns = subQ.correctAnswer;
+                            }
+                          }
+                        }
+
                         const isRound3 = gameState.currentRound === 3;
                         const hasDouble = !isRound3 && !!ans.isDouble;
                         const basePts = isRound3 
                           ? 2 
-                          : (roundsData[gameState.currentRound]?.points ?? ans.potentialPoints ?? 2);
+                          : (currentRType === "memory_items" ? 5 : (roundsData[gameState.currentRound]?.points ?? ans.potentialPoints ?? 2));
                         
                         return (
                           <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-xl flex justify-between items-center border-l-4 border-purple-500">
@@ -2007,22 +2009,25 @@ export default function App() {
                               <div className="flex items-center gap-2">
                                 <span className="font-bold text-xs">{p.nickname}</span>
                                 <span className="text-[8px] bg-white/10 px-1.5 py-0.5 rounded uppercase">К{p.team + 1}</span>
-                                <span className="text-[8px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-black">В{qIdx + 1}</span>
+                                <span className="text-[8px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-black">{questionBadge}</span>
                                 {hasDouble && <span className="text-[10px] bg-red-600 text-white px-2 py-0.5 rounded-full font-black animate-pulse">💎 ДАБЛ</span>}
                               </div>
                               <p className="text-xs text-purple-200 mt-1">Ответ: <span className="font-bold">{ans.answer}</span></p>
+                              <p className="text-[10px] text-green-400 mt-0.5 uppercase tracking-wider">
+                                Правильный: <span className="font-bold">{correctAns || "—"}</span>
+                              </p>
                             </div>
                             <div className="flex gap-1 ml-2">
                               <button 
                                 onClick={() => markAnswer(id, gameState.currentRound, qKey, basePts)} 
-                                className="p-1.5 hover:bg-green-500 rounded-lg text-green-400 hover:text-white transition-all flex flex-col items-center"
+                                className="p-1.5 hover:bg-green-500 rounded-lg text-green-400 hover:text-white transition-all flex flex-col items-center cursor-pointer"
                               >
                                 <CheckCircle2 className="w-4 h-4" />
                                 <span className="text-[8px] font-bold">+{hasDouble ? basePts * 2 : basePts}</span>
                               </button>
                               <button 
                                 onClick={() => markAnswer(id, gameState.currentRound, qKey, 0)} 
-                                className="p-1.5 hover:bg-red-500 rounded-lg text-red-400 hover:text-white transition-all flex flex-col items-center"
+                                className="p-1.5 hover:bg-red-500 rounded-lg text-red-400 hover:text-white transition-all flex flex-col items-center cursor-pointer"
                               >
                                 <XCircle className="w-4 h-4" />
                                 <span className="text-[8px] font-bold">{hasDouble ? -2 : 0}</span>
@@ -2066,7 +2071,6 @@ export default function App() {
             return (
               <div className="bg-black/50 p-8 rounded-3xl">
                 <h2 className="text-2xl font-bold mb-4">Разбор ответов: {roundsData[reviewState.roundIndex].name}</h2>
-                {/* Review content would go here */}
                 <p className="text-xl">Слайд {reviewState.currentSlide + 1} из {reviewState.totalSlides}</p>
               </div>
             );
@@ -2083,7 +2087,7 @@ export default function App() {
                 {user.isAdmin && (
                   <button 
                     onClick={() => restPatch('gameState/pause', { skip: true })}
-                    className="mt-8 bg-green-500 hover:bg-green-600 px-6 py-2 rounded-full flex items-center gap-2"
+                    className="mt-8 bg-green-500 hover:bg-green-600 px-6 py-2 rounded-full flex items-center gap-2 cursor-pointer"
                   >
                     <SkipForward className="w-5 h-5" /> Пропустить
                   </button>
@@ -2119,7 +2123,6 @@ export default function App() {
                     </div>
                     
                     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                      {/* Video Section */}
                       <div className="lg:col-span-8 glass-dark rounded-[2.5rem] overflow-hidden border-2 border-white/10 aspect-video flex items-center justify-center relative shadow-2xl">
                         {currentQuestion.video ? (
                           <video 
@@ -2138,7 +2141,6 @@ export default function App() {
                         <div className="absolute top-6 left-6 glass px-4 py-2 rounded-full text-xs font-black text-white uppercase tracking-widest">Тест видео</div>
                       </div>
 
-                      {/* Images Grid Section */}
                       <div className="lg:col-span-4 grid grid-cols-2 gap-4">
                         {currentQuestion.images?.map((img, idx) => (
                           <div key={`${gameState.currentQuestion}_${idx}`} className="aspect-video rounded-3xl overflow-hidden border border-white/10 glass-dark relative group">
@@ -2184,7 +2186,6 @@ export default function App() {
                 {/* Round 1: Guess Anime by 3 Characters */}
                 {(round.type === "three_characters" || round.type === "image_sequence") && (
                   <div className="space-y-6 max-w-5xl mx-auto">
-                    {/* Header Banner */}
                     <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center shadow-lg">
                       <p className="text-gray-400 text-xs uppercase tracking-widest font-black mb-1">
                         Вопрос {currentQIdx + 1} из {round.questions.length} • Правильный ответ: +2 балла
@@ -2194,7 +2195,6 @@ export default function App() {
                       </h3>
                     </div>
 
-                    {/* 3 Characters shown simultaneously with name inputs */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
                       {currentQuestion.images?.slice(0, 3).map((img, idx) => {
                         const charName = currentQuestion.characterNames?.[idx];
@@ -2222,7 +2222,6 @@ export default function App() {
                               </div>
                             </div>
 
-                            {/* Under image: Character Name Guess input (for players) */}
                             {!user.isAdmin && (
                               <div className="p-3.5 bg-slate-900/95 border-t border-purple-500/30 space-y-1.5 flex-1 flex flex-col justify-end">
                                 <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider">
@@ -2258,7 +2257,6 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Character name when showAnswer is enabled */}
                             {gameState.showAnswer && charName && (
                               <div className="p-3.5 bg-purple-950/80 border-t border-purple-500/40 text-center">
                                 <p className="text-[10px] text-purple-400 uppercase font-black tracking-wider mb-0.5">Имя персонажа:</p>
@@ -2266,7 +2264,6 @@ export default function App() {
                               </div>
                             )}
 
-                            {/* Character name for Admin during live question */}
                             {user.isAdmin && !gameState.showAnswer && charName && (
                               <div className="p-3 bg-purple-950/90 border-t border-purple-500/40 text-center">
                                 <p className="text-[10px] text-purple-300 uppercase font-black tracking-wider mb-0.5">Персонаж #{idx + 1} (+1 б.):</p>
@@ -2316,7 +2313,6 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Admin Live Answers Review Panel */}
                     {user.isAdmin && (
                       <div className="mt-8 bg-slate-900/90 p-5 rounded-3xl border border-purple-500/30 space-y-4 shadow-2xl">
                         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
@@ -2560,6 +2556,7 @@ export default function App() {
                     </div>
                     <div className="max-w-3xl mx-auto">
                       <img 
+                        key={gameState.currentQuestion}
                         src={getAssetPath(currentQuestion.image || "")} 
                         alt="Rebus" 
                         className="w-full h-auto rounded-2xl shadow-2xl border-4 border-white/10"
@@ -2833,7 +2830,6 @@ export default function App() {
                 {round.type === "anime_info" && (
                   <div className="space-y-8 max-w-5xl mx-auto">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
-                      {/* Left Column: Technical and Production Details */}
                       <div className="space-y-4 bg-slate-900/60 p-6 rounded-3xl border border-white/10 shadow-xl backdrop-blur-md">
                         <h4 className="text-sm font-black text-purple-400 uppercase tracking-wider mb-4 border-b border-white/10 pb-2 flex items-center gap-2">📂 <span>Производство</span></h4>
                         
@@ -2870,7 +2866,6 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Right Column: Release details and Plot description */}
                       <div className="space-y-6 flex flex-col justify-between">
                         <div className="space-y-4 bg-slate-900/60 p-6 rounded-3xl border border-white/10 shadow-xl backdrop-blur-md">
                           <h4 className="text-sm font-black text-purple-400 uppercase tracking-wider mb-4 border-b border-white/10 pb-2 flex items-center gap-2">📺 <span>Выпуск</span></h4>
@@ -2898,7 +2893,6 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* General description */}
                         <div className="flex-1 bg-gradient-to-br from-purple-900/40 to-indigo-900/40 p-6 rounded-3xl border border-purple-500/30 shadow-[0_0_20px_rgba(168,85,247,0.1)] flex flex-col justify-center">
                           <p className="text-xs text-purple-300 uppercase font-bold tracking-widest mb-2">💡 Описание аниме:</p>
                           <p className="text-lg md:text-xl font-medium text-white italic leading-relaxed">
@@ -3003,6 +2997,7 @@ export default function App() {
                     restPatch={restPatch}
                     restPut={restPut}
                     serverOffset={serverOffset}
+                    globalPause={globalPause}
                   />
                 )}
 
@@ -3093,50 +3088,57 @@ export default function App() {
                 </button>
                 <button 
                   onClick={async () => {
-                    const active = !globalPause?.active;
-                    if (active) {
-                      // Resuming: set new endTime based on remaining timeLeft
-                      const newEndTime = Date.now() + (gameState.timeLeft || 0) * 1000;
-                      await restPatch('gameState', { endTime: newEndTime });
+                    const isCurrentlyPaused = !!globalPause?.active;
+                    const currentRType = roundsData[gameState?.currentRound]?.type;
+                    const now = Date.now() + serverOffset;
+
+                    if (!isCurrentlyPaused) {
+                      const updateData: any = { timeLeft: timeLeft };
+                      if (currentRType === "memory_items") {
+                        const remMem = gameState.memoryEndTime 
+                          ? Math.max(0, Math.ceil((gameState.memoryEndTime - now) / 1000)) 
+                          : (gameState.memoryTimeLeft || 15);
+                        updateData.memoryTimeLeft = remMem;
+                        updateData.timeLeft = remMem;
+                      }
+                      await restPatch('gameState', updateData);
+                      await restPut('gameState/globalPause', { active: true });
                     } else {
-                      // Pausing: save current timeLeft to DB
-                      await restPatch('gameState', { timeLeft: timeLeft });
+                      const remSec = (gameState.timeLeft !== undefined ? gameState.timeLeft : timeLeft) || 0;
+                      const updateData: any = { endTime: Date.now() + remSec * 1000 };
+                      if (currentRType === "memory_items") {
+                        const remMem = gameState.memoryTimeLeft !== undefined ? gameState.memoryTimeLeft : remSec;
+                        updateData.memoryEndTime = Date.now() + remMem * 1000;
+                      }
+                      await restPatch('gameState', updateData);
+                      await restPut('gameState/globalPause', { active: false });
                     }
-                    await restPut('gameState/globalPause', { active });
                   }}
-                  className="bg-yellow-600 hover:bg-yellow-700 px-6 py-3 rounded-full font-bold flex items-center gap-2"
+                  className="bg-yellow-600 hover:bg-yellow-700 px-6 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer"
                 >
                   {globalPause?.active ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
                   {globalPause?.active ? 'ПРОДОЛЖИТЬ' : 'ПАУЗА'}
                 </button>
                 <button 
                   onClick={skipQuestion}
-                  className="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-full font-bold flex items-center gap-2"
+                  className="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer"
                 >
                   <SkipForward className="w-4 h-4" /> ПРОПУСТИТЬ ВОПРОС
                 </button>
                 <button 
                   onClick={async () => {
                     if (confirm("Сбросить игру?")) {
-                      // 1. Wipe everything from database
-                      // Using restPut on 'gameState' clears all its sub-nodes (pause, globalPause, etc.)
                       await Promise.all([
                         restPut('gameState', { reset: true, active: false }),
                         restDelete('players')
                       ]);
-                      
-                      // 2. Wait to ensure all clients' pollers catch the 'reset: true' signal
                       await new Promise(r => setTimeout(r, 1500));
-                      
-                      // 3. Clear the reset flag so the next session can start fresh
                       await restPatch('gameState', { reset: false });
-                      
-                      // 4. Local cleanup and reload
                       localStorage.removeItem('quizUser');
                       window.location.reload();
                     }
                   }}
-                  className="bg-gray-700 hover:bg-gray-800 px-6 py-3 rounded-full font-bold flex items-center gap-2"
+                  className="bg-gray-700 hover:bg-gray-800 px-6 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" /> СБРОС
                 </button>
@@ -3196,7 +3198,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Akinator Key & Reset Controls */}
                   <div className="pt-3 border-t border-purple-500/20 space-y-3">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div>
@@ -3224,7 +3225,7 @@ export default function App() {
                           }
                           alert("История вопросов всех команд очищена!");
                         }}
-                        className="text-[11px] text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 px-3 py-1.5 rounded-xl font-bold transition-all shrink-0"
+                        className="text-[11px] text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 px-3 py-1.5 rounded-xl font-bold transition-all shrink-0 cursor-pointer"
                       >
                         🗑️ Очистить вопросы всех 10 команд
                       </button>
@@ -3257,7 +3258,7 @@ export default function App() {
                           }
                         }}
                         disabled={isSavingKey || !geminiKeyInput.trim()}
-                        className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold text-xs px-4 py-1.5 rounded-xl transition-all shadow-md shrink-0"
+                        className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-bold text-xs px-4 py-1.5 rounded-xl transition-all shadow-md shrink-0 cursor-pointer"
                       >
                         {isSavingKey ? "Сохранение..." : "Сохранить ключ"}
                       </button>
@@ -3305,7 +3306,7 @@ export default function App() {
                         });
                       }}
                       disabled={(gameState?.bingo?.revealedCount || 0) >= (gameState?.bingo?.pool32?.length || 32)}
-                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 py-4 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-purple-900/30"
+                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 py-4 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-purple-900/30 cursor-pointer"
                     >
                       <SkipForward className="w-5 h-5" />
                       {(gameState?.bingo?.revealedCount || 0) >= 32
@@ -3340,7 +3341,7 @@ export default function App() {
                         });
                         alert("Новый пул и карточки сгенерированы!");
                       }}
-                      className="bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 py-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95"
+                      className="bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 py-4 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
                     >
                       <RotateCcw className="w-4 h-4" /> ПЕРЕГЕНЕРИРОВАТЬ РАУНД
                     </button>
@@ -3353,7 +3354,7 @@ export default function App() {
                         if (!window.confirm("Завершить раунд Бинго?")) return;
                         await restPatch("gameState", { roundFinished: true, showAnswer: true });
                       }}
-                      className="text-xs text-amber-400 hover:text-amber-300 font-bold underline"
+                      className="text-xs text-amber-400 hover:text-amber-300 font-bold underline cursor-pointer"
                     >
                       Завершить раунд Бинго
                     </button>
@@ -3373,14 +3374,14 @@ export default function App() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button 
                       onClick={nextRound9Team}
-                      className="bg-purple-600 hover:bg-purple-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-purple-900/30"
+                      className="bg-purple-600 hover:bg-purple-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-purple-900/30 cursor-pointer"
                     >
                       <SkipForward className="w-5 h-5" /> СЛЕД. КОМАНДА
                     </button>
                     <button 
                       onClick={useRound9Lie}
                       disabled={(gameState?.liesLeft || 0) <= 0}
-                      className="bg-red-600 hover:bg-red-700 disabled:opacity-30 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-red-900/30"
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-30 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-red-900/30 cursor-pointer"
                     >
                       <Bell className="w-5 h-5" /> УЧЕСТЬ ЛОЖЬ
                     </button>
@@ -3395,7 +3396,7 @@ export default function App() {
                           <button 
                             key={i}
                             onClick={() => markRound9Correct(i)}
-                            className="bg-green-600 hover:bg-green-700 py-2 rounded-xl text-xs font-black shadow-lg shadow-green-900/20 transition-all active:scale-95"
+                            className="bg-green-600 hover:bg-green-700 py-2 rounded-xl text-xs font-black shadow-lg shadow-green-900/20 transition-all active:scale-95 cursor-pointer"
                           >
                             КОМАНДА {i + 1}
                           </button>
@@ -3444,7 +3445,7 @@ export default function App() {
                       key={idx}
                       onClick={() => startRevealMode(idx)}
                       disabled={gameState?.active}
-                      className="glass hover:bg-white/10 disabled:opacity-30 py-4 px-6 rounded-2xl font-black flex items-center justify-between gap-4 border border-white/10 transition-all active:scale-95 group"
+                      className="glass hover:bg-white/10 disabled:opacity-30 py-4 px-6 rounded-2xl font-black flex items-center justify-between gap-4 border border-white/10 transition-all active:scale-95 group cursor-pointer"
                     >
                       <div className="flex items-center gap-4">
                         <span className="bg-gradient-to-br from-purple-500 to-pink-500 text-white w-8 h-8 rounded-lg flex items-center justify-center text-xs font-black shadow-lg shadow-purple-500/20">{idx + 1}</span>
@@ -3463,13 +3464,13 @@ export default function App() {
               <div className="mt-8 grid grid-cols-2 gap-4">
                 <button 
                   onClick={toggleLeaderboard}
-                  className="bg-blue-600 hover:bg-blue-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20"
+                  className="bg-blue-600 hover:bg-blue-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-900/20 cursor-pointer"
                 >
                   <Crown className="w-5 h-5" /> ТАБЛИЦА ЛИДЕРОВ
                 </button>
                 <button 
                   onClick={resetGame}
-                  className="bg-red-600 hover:bg-red-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-900/20"
+                  className="bg-red-600 hover:bg-red-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-900/20 cursor-pointer"
                 >
                   <RotateCcw className="w-5 h-5" /> СБРОСИТЬ ИГРУ
                 </button>
@@ -3483,7 +3484,6 @@ export default function App() {
                       const res = await restGet('players');
                       const allPlayers = res.data || {};
                       
-                      // Calculate team scores for verification
                       const teamTotals: Record<number, number> = {};
                       for (let i = 0; i < TOTAL_TEAMS; i++) teamTotals[i] = 0;
                       
@@ -3506,11 +3506,13 @@ export default function App() {
                       setPreloaderStatus("❌ Ошибка синхронизации");
                     }
                   }}
-                  className="w-full bg-white/5 hover:bg-white/10 py-3 rounded-xl font-bold text-xs uppercase tracking-widest border border-white/10 transition-all flex items-center justify-center gap-2"
+                  className="w-full bg-white/5 hover:bg-white/10 py-3 rounded-xl font-bold text-xs uppercase tracking-widest border border-white/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4 text-green-400" /> Проверить и синхронизировать баллы
                 </button>
               </div>
+
+              {/* Main Answers Queue */}
               <div className="mt-8">
                 <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">Очередь ответов (Раунд {gameState?.currentRound + 1}):</h4>
                 <div className="max-h-80 overflow-y-auto space-y-2">
@@ -3549,12 +3551,27 @@ export default function App() {
                     if (!correctAns && qData?.options && qData?.correct !== undefined) {
                       correctAns = qData.options[qData.correct];
                     }
+
+                    // Для 4-го раунда
+                    let questionBadge = `Вопрос ${qIdx + 1}`;
+                    if (qKey.startsWith("stage")) {
+                      const match = qKey.match(/stage(\d+)_q(\d+)/);
+                      if (match) {
+                        const sIdx = parseInt(match[1]);
+                        const sqIdx = parseInt(match[2]);
+                        questionBadge = `Фото ${sIdx + 1} • В${sqIdx + 1}`;
+                        const subQ = ROUND4_STAGES[sIdx]?.subQuestions[sqIdx];
+                        if (subQ) {
+                          correctAns = subQ.correctAnswer;
+                        }
+                      }
+                    }
                     
                     const isRound3 = gameState.currentRound === 3;
                     const hasDouble = !isRound3 && !!ans.isDouble;
                     const basePts = isRound3 
                       ? 2 
-                      : (roundsData[gameState.currentRound]?.points ?? ans.potentialPoints ?? 2);
+                      : (currentRType === "memory_items" ? 5 : (roundsData[gameState.currentRound]?.points ?? ans.potentialPoints ?? 2));
 
                     return (
                       <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-lg flex justify-between items-center border-l-4 border-blue-500">
@@ -3562,22 +3579,26 @@ export default function App() {
                           <div className="flex items-center gap-2">
                             <span className="font-bold">{p.nickname}</span>
                             <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded">К{p.team + 1}</span>
-                            <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-mono">Вопрос {qIdx + 1}</span>
+                            <span className="text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-mono font-bold">
+                              {questionBadge}
+                            </span>
                           </div>
                           <p className="text-sm text-blue-300 mt-1">Ответ игрока: <span className="font-bold">{ans.answer}</span></p>
-                          <p className="text-[10px] text-green-400 mt-1 uppercase tracking-wider">Правильный: {correctAns}</p>
+                          <p className="text-[10px] text-green-400 mt-1 uppercase tracking-wider">
+                            Правильный: <span className="font-bold">{correctAns || "—"}</span>
+                          </p>
                         </div>
                         <div className="flex gap-2 ml-4">
                           <button 
                             onClick={() => markAnswer(id, gameState.currentRound, qKey, basePts)} 
-                            className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
+                            className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px] cursor-pointer"
                           >
                             <CheckCircle2 className="text-green-500 w-5 h-5" />
                             <span className="text-[10px] font-bold">+{hasDouble ? basePts * 2 : basePts}</span>
                           </button>
                           <button 
                             onClick={() => markAnswer(id, gameState.currentRound, qKey, 0)} 
-                            className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px]"
+                            className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px] cursor-pointer"
                           >
                             <XCircle className="text-red-500 w-5 h-5" />
                             <span className="text-[10px] font-bold">{hasDouble ? -2 : 0}</span>
@@ -3598,5 +3619,4 @@ export default function App() {
       </div>
     </div>
   );
-  
 }
