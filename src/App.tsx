@@ -2079,7 +2079,7 @@ export default function App() {
           if (pauseState?.active) {
             return (
               <div className="flex flex-col items-center justify-center py-20">
-                <div className="text-6xl font-bold text-yellow-500 mb-4 animate-pulse">⏸️ ПАУЗА</div>
+                <div className="text-6xl font-bold text-yellow-500 mb-4 animate-pulse">⏸️️ ПАУЗА</div>
                 <div className="text-4xl font-mono bg-black/40 px-8 py-4 rounded-2xl">
                   {Math.max(0, Math.ceil((pauseState.endTime - (Date.now() + serverOffset)) / 1000))}
                 </div>
@@ -3009,6 +3009,8 @@ export default function App() {
                     players={players}
                     restPatch={restPatch}
                     restPut={restPut}
+                    timeLeft={timeLeft}
+                    globalPause={globalPause}
                   />
                 )}
 
@@ -3472,7 +3474,7 @@ export default function App() {
                   onClick={resetGame}
                   className="bg-red-600 hover:bg-red-700 py-4 rounded-xl font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-900/20 cursor-pointer"
                 >
-                  <RotateCcw className="w-5 h-5" /> СБРОСИТЬ ИГРУ
+                  <RotateCcw className="w-4 h-4" /> СБРОСИТЬ ИГРУ
                 </button>
               </div>
 
@@ -3552,7 +3554,6 @@ export default function App() {
                       correctAns = qData.options[qData.correct];
                     }
 
-                    // Для 4-го раунда
                     let questionBadge = `Вопрос ${qIdx + 1}`;
                     if (qKey.startsWith("stage")) {
                       const match = qKey.match(/stage(\d+)_q(\d+)/);
