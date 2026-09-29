@@ -158,8 +158,8 @@ export async function askAkinator({
     const controller = new AbortController();
     const tId = setTimeout(() => controller.abort(), 6000);
 
-    // ЖЕСТКО ЗАДАННАЯ, ВСЕГДА ДОСТУПНАЯ МОДЕЛЬ В v1beta
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey.trim()}`;
+    // Модель обновлена на gemini-3.8-flash, как того требует API
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
     
     const res = await fetch(url, {
       method: "POST",
@@ -231,7 +231,8 @@ export async function checkAkinatorGuess({
       const controller = new AbortController();
       const tId = setTimeout(() => controller.abort(), 5000);
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey.trim()}`;
+      // Модель обновлена на gemini-3.8-flash
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
