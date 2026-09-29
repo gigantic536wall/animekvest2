@@ -31,8 +31,8 @@ export default function MemoryItemsRoundView({
   const currentSubQIdx: number = gameState.memorySubQuestion ?? 0;
   const currentQuestion: MemorySubQuestion = stageData.subQuestions[currentSubQIdx] || stageData.subQuestions[0];
 
-  // Phase: 'memorize' (picture visible for 15s) | 'question' (picture hidden, answering for 15s) | 'reveal' (showing answer)
-  const currentPhase: "memorize" | "question" | "reveal" = gameState.memoryPhase || "memorize";
+  // Phase: 'memorize' (picture visible for 15s) | 'question' (picture hidden, answering for 15s) | 'stage_finished' (waiting for admin to start next stage)
+  const currentPhase: "memorize" | "question" | "stage_finished" = gameState.memoryPhase || "memorize";
 
   // Local state
   const [answerInput, setAnswerInput] = useState("");
@@ -45,13 +45,18 @@ export default function MemoryItemsRoundView({
   // Synchronized timer
   const [localSecondsLeft, setLocalSecondsLeft] = useState<number>(15);
   const prevPhaseKeyRef = useRef<string>("");
+  const lastQuestionKeyRef = useRef<string>("");
 
   // Storage key for user answer in Firebase:
   // players/${user.id}/roundAnswers/3/stage${currentStageIdx}_q${currentSubQIdx}
   const answerStoragePath = `players/${user.id}/roundAnswers/${gameState.currentRound || 3}/stage${currentStageIdx}_q${currentSubQIdx}`;
   const scoreKey = `round4_stage${currentStageIdx}_q${currentSubQIdx}`;
 
+  // Unique key identifying the current question
+  const currentQKey = `${currentStageIdx}_${currentSubQIdx}`;
+
   // Check if player has already submitted for this specific question
+  // BUG FIX: Do NOT include `players` whole object in deps, and do NOT clear input if still on same question!
   useEffect(() => {
     const existingAns = players[user.id]?.roundAnswers?.[gameState.currentRound || 3]?.[`stage${currentStageIdx}_q${currentSubQIdx}`];
     if (existingAns?.answered) {
@@ -59,9 +64,17 @@ export default function MemoryItemsRoundView({
       setAnswerInput(existingAns.answer || "");
     } else {
       setHasSubmitted(false);
-      setAnswerInput("");
+      // ONLY clear user input if navigating to a different question!
+      if (lastQuestionKeyRef.current !== currentQKey) {
+        setAnswerInput("");
+      }
     }
-  }, [currentStageIdx, currentSubQIdx, currentPhase, user.id, players, gameState.currentRound]);
+    lastQuestionKeyRef.current = currentQKey;
+  }, [
+    currentQKey, 
+    user.id, 
+    players?.[user.id]?.roundAnswers?.[gameState.currentRound || 3]?.[`stage${currentStageIdx}_q${currentSubQIdx}`]?.answered
+  ]);
 
   // Timer countdown hook
   useEffect(() => {
@@ -77,14 +90,25 @@ export default function MemoryItemsRoundView({
       const remainingSec = Math.ceil(remainingMs / 1000);
       setLocalSecondsLeft(remainingSec);
 
-      // Auto-advance by Admin if time expires in memorize phase
+      // Auto-advance by Admin:
+      // 1. Memorize phase (15s) -> automatically goes to Question 1
+      // 2. Question phase (15s) -> automatically goes to next Question (Q1 -> Q2 -> Q3 -> Q4)
+      // 3. Question 4 ends -> STOP and wait for Admin to switch to next Picture!
       if (remainingMs <= 0 && user.isAdmin) {
         const phaseKey = `${currentStageIdx}-${currentSubQIdx}-${currentPhase}`;
         if (prevPhaseKeyRef.current !== phaseKey) {
           prevPhaseKeyRef.current = phaseKey;
           if (currentPhase === "memorize") {
-            // Automatically switch from memorize to question 1
+            // Automatically switch from memorize (15s) to question 1 (15s)
             startQuestionPhase(currentStageIdx, 0);
+          } else if (currentPhase === "question") {
+            if (currentSubQIdx < 3) {
+              // Automatically advance to the next question in this stage!
+              startQuestionPhase(currentStageIdx, currentSubQIdx + 1);
+            } else {
+              // Finished all 4 questions: transition to stage_finished and wait for Admin!
+              finishStagePhase(currentStageIdx);
+            }
           }
         }
       }
@@ -166,24 +190,24 @@ export default function MemoryItemsRoundView({
     });
   };
 
+  const finishStagePhase = async (stageIdx: number) => {
+    if (!user.isAdmin) return;
+    await restPatch("gameState", {
+      memoryStage: stageIdx,
+      memoryPhase: "stage_finished",
+      memoryEndTime: 0,
+      showAnswer: false,
+    });
+  };
+
   const nextSubQuestion = async () => {
     if (!user.isAdmin) return;
     const nextQ = currentSubQIdx + 1;
     if (nextQ < stageData.subQuestions.length) {
       await startQuestionPhase(currentStageIdx, nextQ);
     } else {
-      // Finished all 4 questions for this stage!
-      const nextStage = currentStageIdx + 1;
-      if (nextStage < ROUND4_STAGES.length) {
-        await startMemorizePhase(nextStage);
-      } else {
-        // Round completely finished
-        await restPatch("gameState", {
-          roundFinished: true,
-          active: false,
-          showAnswer: true,
-        });
-      }
+      // Finished all 4 questions for this stage! Enter stage_finished and wait for Admin
+      await finishStagePhase(currentStageIdx);
     }
   };
 
@@ -297,6 +321,10 @@ export default function MemoryItemsRoundView({
                 <span className="text-amber-400 text-sm font-bold animate-pulse">
                   (Запоминание предметов)
                 </span>
+              ) : currentPhase === "stage_finished" ? (
+                <span className="text-emerald-400 text-sm font-bold">
+                  (Вопросы завершены)
+                </span>
               ) : (
                 <span className="text-purple-300 text-sm font-bold">
                   (Вопрос {currentSubQIdx + 1} из 4)
@@ -309,14 +337,16 @@ export default function MemoryItemsRoundView({
           <div className="flex items-center gap-3">
             <div className="relative flex items-center justify-center">
               <div className={`px-5 py-2.5 rounded-2xl border font-mono font-black text-2xl sm:text-3xl shadow-lg flex items-center gap-2 transition-all ${
-                localSecondsLeft <= 5 
-                  ? "bg-red-950/80 border-red-500 text-red-300 animate-pulse" 
-                  : currentPhase === "memorize" 
-                    ? "bg-amber-950/80 border-amber-500 text-amber-300"
-                    : "bg-purple-950/80 border-purple-500 text-purple-200"
+                currentPhase === "stage_finished"
+                  ? "bg-slate-900 border-white/20 text-gray-300 text-base sm:text-lg"
+                  : localSecondsLeft <= 5 
+                    ? "bg-red-950/80 border-red-500 text-red-300 animate-pulse" 
+                    : currentPhase === "memorize" 
+                      ? "bg-amber-950/80 border-amber-500 text-amber-300"
+                      : "bg-purple-950/80 border-purple-500 text-purple-200"
               }`}>
                 <Clock className="w-6 h-6 shrink-0" />
-                <span>{localSecondsLeft}s</span>
+                <span>{currentPhase === "stage_finished" ? "Ожидание" : `${localSecondsLeft}s`}</span>
               </div>
             </div>
 
@@ -406,7 +436,7 @@ export default function MemoryItemsRoundView({
       )}
 
       {/* PHASE 2: QUESTIONS (PICTURE IS HIDDEN, 15 SECONDS PER QUESTION) */}
-      {currentPhase !== "memorize" && (
+      {currentPhase === "question" && (
         <motion.div 
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
@@ -513,6 +543,58 @@ export default function MemoryItemsRoundView({
         </motion.div>
       )}
 
+      {/* PHASE 3: STAGE FINISHED (WAITING FOR ADMIN TO MOVE TO NEXT PICTURE) */}
+      {currentPhase === "stage_finished" && (
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-slate-900/90 border-2 border-purple-500/40 rounded-3xl p-6 sm:p-10 shadow-2xl text-center space-y-5 backdrop-blur-xl"
+        >
+          <div className="w-16 h-16 bg-purple-600/30 border border-purple-500/50 rounded-2xl flex items-center justify-center text-3xl mx-auto shadow-lg">
+            🏁
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="text-xl sm:text-2xl font-black text-white">
+              Вопросы по {stageData.title} завершены!
+            </h3>
+            <p className="text-sm text-purple-200/80 max-w-lg mx-auto">
+              {currentStageIdx < 2 
+                ? `Все 4 вопроса к этой картинке отвечены. Ожидайте, пока ведущий проверит ответы и откроет Картинку ${currentStageIdx + 2}.`
+                : "Все 3 картинки и все 12 вопросов 4-го раунда завершены! Ведущий подводит итоги раунда."
+              }
+            </p>
+          </div>
+
+          {/* Admin transition button directly inside the view */}
+          {user.isAdmin && (
+            <div className="pt-2 flex justify-center">
+              {currentStageIdx < 2 ? (
+                <button
+                  onClick={() => startMemorizePhase(currentStageIdx + 1)}
+                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm sm:text-base px-8 py-4 rounded-2xl transition-all shadow-xl flex items-center gap-3 cursor-pointer active:scale-95 animate-pulse"
+                >
+                  <span>Перейти к Картинке {currentStageIdx + 2} (15 сек) ➔</span>
+                  <ArrowRight className="w-5 h-5" />
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    await restPatch("gameState", {
+                      roundFinished: true,
+                      active: false,
+                      showAnswer: true,
+                    });
+                  }}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-sm sm:text-base px-8 py-4 rounded-2xl transition-all shadow-xl flex items-center gap-3 cursor-pointer active:scale-95"
+                >
+                  <span>Завершить 4-й раунд 🏆</span>
+                </button>
+              )}
+            </div>
+          )}
+        </motion.div>
+      )}
+
       {/* ==================== ADMIN HOST CONTROL PANEL ==================== */}
       {user.isAdmin && (
         <div className="bg-slate-900/95 p-6 rounded-3xl border border-purple-500/30 space-y-6 shadow-2xl">
@@ -586,13 +668,36 @@ export default function MemoryItemsRoundView({
               <span>{gameState.showAnswer ? "Скрыть ответ" : "Показать ответ"}</span>
             </button>
 
-            <button
-              onClick={nextSubQuestion}
-              className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs px-5 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-2 ml-auto cursor-pointer"
-            >
-              <span>{currentSubQIdx < 3 ? "Следующий вопрос ➔" : "Следующая картинка ➔"}</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            {currentSubQIdx < 3 && currentPhase !== "stage_finished" ? (
+              <button
+                onClick={nextSubQuestion}
+                className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs px-5 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-2 ml-auto cursor-pointer"
+              >
+                <span>Следующий вопрос ({currentSubQIdx + 2}/4) ➔</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : currentStageIdx < 2 ? (
+              <button
+                onClick={() => startMemorizePhase(currentStageIdx + 1)}
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs px-6 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-2 ml-auto cursor-pointer animate-pulse"
+              >
+                <span>Перейти к Картинке {currentStageIdx + 2} (15 сек) ➔</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <button
+                onClick={async () => {
+                  await restPatch("gameState", {
+                    roundFinished: true,
+                    active: false,
+                    showAnswer: true,
+                  });
+                }}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-xs px-6 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-2 ml-auto cursor-pointer"
+              >
+                <span>Завершить 4-й раунд 🏁</span>
+              </button>
+            )}
           </div>
 
           {/* Player Answers Review Grid */}
