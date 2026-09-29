@@ -41,7 +41,7 @@ export function normalizeAkinatorAnswer(rawText: string): string {
   return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
 }
 
-const DEFAULT_GEMINI_KEY = "AQ.Ab8RN6Lsasb57qDqpjIiVVSdZFYMBwnaSva0NKEqT_CBo5DiaA";
+const DEFAULT_GEMINI_KEY = "";
 let inMemoryKey = "";
 
 export async function resolveGeminiKey(providedKey?: string): Promise<string> {
@@ -115,14 +115,8 @@ export async function askAkinator({
   question: string;
   geminiKey?: string;
 }): Promise<{ success: boolean; answer: string; error?: string }> {
-  // Strategy 1: Attempt to call Express backend (works on Cloud Run / dev server / GitHub Pages)
-  const apiUrls = [
-    "/api/akinator/ask",
-    "./api/akinator/ask",
-    "/animekvest2/api/akinator/ask",
-    "https://ais-dev-vnqrezpcneyat6p4ffst2x-771128805537.europe-west2.run.app/api/akinator/ask",
-    "https://ais-pre-vnqrezpcneyat6p4ffst2x-771128805537.europe-west2.run.app/api/akinator/ask"
-  ];
+  // Strategy 1: Attempt to call Express backend (works on Cloud Run / dev server)
+  const apiUrls = ["/api/akinator/ask", "./api/akinator/ask", "/animekvest2/api/akinator/ask"];
   
   for (const endpoint of apiUrls) {
     try {
@@ -234,13 +228,7 @@ export async function checkAkinatorGuess({
   }
 
   // Try Express backend
-  const apiUrls = [
-    "/api/akinator/check-guess",
-    "./api/akinator/check-guess",
-    "/animekvest2/api/akinator/check-guess",
-    "https://ais-dev-vnqrezpcneyat6p4ffst2x-771128805537.europe-west2.run.app/api/akinator/check-guess",
-    "https://ais-pre-vnqrezpcneyat6p4ffst2x-771128805537.europe-west2.run.app/api/akinator/check-guess"
-  ];
+  const apiUrls = ["/api/akinator/check-guess", "./api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"];
   for (const endpoint of apiUrls) {
     try {
       const res = await fetch(endpoint, {
