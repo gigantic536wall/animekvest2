@@ -1,4 +1,3 @@
-
 export interface MemorySubQuestion {
   id: number;
   questionNumber: number; // 1, 2, 3, 4
