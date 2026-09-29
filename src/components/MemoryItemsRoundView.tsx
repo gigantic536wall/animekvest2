@@ -13,6 +13,7 @@ interface MemoryItemsRoundViewProps {
   restPatch: (path: string, data: any) => Promise<any>;
   restPut: (path: string, data: any) => Promise<any>;
   serverOffset?: number;
+  globalPause?: any;
 }
 
 export default function MemoryItemsRoundView({
@@ -22,6 +23,7 @@ export default function MemoryItemsRoundView({
   restPatch,
   restPut,
   serverOffset = 0,
+  globalPause,
 }: MemoryItemsRoundViewProps) {
   // Current stage (0, 1, 2)
   const currentStageIdx: number = gameState.memoryStage ?? 0;
@@ -56,7 +58,6 @@ export default function MemoryItemsRoundView({
   }, [currentStageIdx]);
 
   // Storage key for user answer in Firebase:
-  // players/${user.id}/roundAnswers/3/stage${currentStageIdx}_q${currentSubQIdx}
   const answerStoragePath = `players/${user.id}/roundAnswers/${gameState.currentRound || 3}/stage${currentStageIdx}_q${currentSubQIdx}`;
   const scoreKey = `round4_stage${currentStageIdx}_q${currentSubQIdx}`;
 
@@ -64,7 +65,6 @@ export default function MemoryItemsRoundView({
   const currentQKey = `${currentStageIdx}_${currentSubQIdx}`;
 
   // Check if player has already submitted for this specific question
-  // BUG FIX: Do NOT include `players` whole object in deps, and do NOT clear input if still on same question!
   useEffect(() => {
     const existingAns = players[user.id]?.roundAnswers?.[gameState.currentRound || 3]?.[`stage${currentStageIdx}_q${currentSubQIdx}`];
     if (existingAns?.answered) {
@@ -72,7 +72,6 @@ export default function MemoryItemsRoundView({
       setAnswerInput(existingAns.answer || "");
     } else {
       setHasSubmitted(false);
-      // ONLY clear user input if navigating to a different question!
       if (lastQuestionKeyRef.current !== currentQKey) {
         setAnswerInput("");
       }
@@ -84,10 +83,21 @@ export default function MemoryItemsRoundView({
     players?.[user.id]?.roundAnswers?.[gameState.currentRound || 3]?.[`stage${currentStageIdx}_q${currentSubQIdx}`]?.answered
   ]);
 
-  // Timer countdown hook
+  // Timer countdown hook with pause support
   useEffect(() => {
     const updateCountdown = () => {
       if (!gameState.active || gameState.roundFinished) return;
+
+      const isPaused = globalPause?.active || gameState.globalPause?.active;
+      if (isPaused) {
+        if (gameState.memoryTimeLeft !== undefined) {
+          setLocalSecondsLeft(gameState.memoryTimeLeft);
+        } else if (gameState.timeLeft !== undefined) {
+          setLocalSecondsLeft(gameState.timeLeft);
+        }
+        return;
+      }
+
       const targetEnd = gameState.memoryEndTime;
       if (!targetEnd) {
         setLocalSecondsLeft(currentPhase === "memorize" ? 15 : currentQuestion.answerTime);
@@ -98,23 +108,17 @@ export default function MemoryItemsRoundView({
       const remainingSec = Math.ceil(remainingMs / 1000);
       setLocalSecondsLeft(remainingSec);
 
-      // Auto-advance by Admin:
-      // 1. Memorize phase (15s) -> automatically goes to Question 1
-      // 2. Question phase (15s) -> automatically goes to next Question (Q1 -> Q2 -> Q3 -> Q4)
-      // 3. Question 4 ends -> STOP and wait for Admin to switch to next Picture!
-      if (remainingMs <= 0 && user.isAdmin) {
+      // Auto-advance by Admin (только если не на паузе):
+      if (remainingMs <= 0 && user.isAdmin && !isPaused) {
         const phaseKey = `${currentStageIdx}-${currentSubQIdx}-${currentPhase}`;
         if (prevPhaseKeyRef.current !== phaseKey) {
           prevPhaseKeyRef.current = phaseKey;
           if (currentPhase === "memorize") {
-            // Automatically switch from memorize (15s) to question 1 (15s)
             startQuestionPhase(currentStageIdx, 0);
           } else if (currentPhase === "question") {
             if (currentSubQIdx < 3) {
-              // Automatically advance to the next question in this stage!
               startQuestionPhase(currentStageIdx, currentSubQIdx + 1);
             } else {
-              // Finished all 4 questions: transition to stage_finished and wait for Admin!
               finishStagePhase(currentStageIdx);
             }
           }
@@ -125,7 +129,19 @@ export default function MemoryItemsRoundView({
     updateCountdown();
     const interval = setInterval(updateCountdown, 250);
     return () => clearInterval(interval);
-  }, [gameState.memoryEndTime, gameState.active, currentPhase, currentStageIdx, currentSubQIdx, serverOffset, user.isAdmin]);
+  }, [
+    gameState.memoryEndTime, 
+    gameState.active, 
+    currentPhase, 
+    currentStageIdx, 
+    currentSubQIdx, 
+    serverOffset, 
+    user.isAdmin,
+    globalPause?.active,
+    gameState.globalPause?.active,
+    gameState.memoryTimeLeft,
+    gameState.timeLeft
+  ]);
 
   // Image source resolution with GitHub Pages basePath support and auto-fallbacks
   const customUploadedImage = gameState.round4Images?.[currentStageIdx];
@@ -174,6 +190,8 @@ export default function MemoryItemsRoundView({
       memorySubQuestion: 0,
       memoryPhase: "memorize",
       memoryEndTime: Date.now() + duration * 1000,
+      memoryTimeLeft: duration,
+      timeLeft: duration,
       showAnswer: false,
     });
   };
@@ -187,6 +205,8 @@ export default function MemoryItemsRoundView({
       memorySubQuestion: subQIdx,
       memoryPhase: "question",
       memoryEndTime: Date.now() + duration * 1000,
+      memoryTimeLeft: duration,
+      timeLeft: duration,
       showAnswer: false,
     });
   };
@@ -204,6 +224,8 @@ export default function MemoryItemsRoundView({
       memoryStage: stageIdx,
       memoryPhase: "stage_finished",
       memoryEndTime: 0,
+      memoryTimeLeft: 0,
+      timeLeft: 0,
       showAnswer: false,
     });
   };
@@ -214,21 +236,11 @@ export default function MemoryItemsRoundView({
     if (nextQ < stageData.subQuestions.length) {
       await startQuestionPhase(currentStageIdx, nextQ);
     } else {
-      // Finished all 4 questions for this stage! Enter stage_finished and wait for Admin
       await finishStagePhase(currentStageIdx);
     }
   };
 
-  const prevSubQuestion = async () => {
-    if (!user.isAdmin) return;
-    if (currentSubQIdx > 0) {
-      await startQuestionPhase(currentStageIdx, currentSubQIdx - 1);
-    } else if (currentStageIdx > 0) {
-      await startQuestionPhase(currentStageIdx - 1, 3);
-    }
-  };
-
-  // Point award handler (+5 or 0) - supports specifying subQIdx so admin can grade any question
+  // Point award handler (+5 or 0)
   const awardPoints = async (playerId: string, points: number, targetSubQ: number = currentSubQIdx) => {
     if (!user.isAdmin) return;
     const targetScoreKey = `round4_stage${currentStageIdx}_q${targetSubQ}`;
@@ -239,7 +251,6 @@ export default function MemoryItemsRoundView({
     });
   };
 
-  // Bulk award +5 to all players whose answer matches acceptable answers for a specific question
   const autoAcceptCorrectAnswers = async (targetSubQ: number = currentSubQIdx) => {
     if (!user.isAdmin) return;
     const qData = stageData.subQuestions[targetSubQ];
@@ -257,7 +268,6 @@ export default function MemoryItemsRoundView({
     }
   };
 
-  // Bulk award for ALL 4 questions of the current stage
   const autoAcceptAllStageAnswers = async () => {
     if (!user.isAdmin) return;
     for (let q = 0; q < 4; q++) {
@@ -265,7 +275,6 @@ export default function MemoryItemsRoundView({
     }
   };
 
-  // Image file upload handler (for host to drop or pick the picture)
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, stageIdx: number) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -295,7 +304,6 @@ export default function MemoryItemsRoundView({
 
     setIsSubmitting(true);
     try {
-      // Check if matches acceptable answers for auto-flagging
       const clean = text.toLowerCase();
       const isAutoCorrect = currentQuestion.acceptableAnswers.some(acc => clean.includes(acc.toLowerCase()));
 
@@ -356,16 +364,24 @@ export default function MemoryItemsRoundView({
           <div className="flex items-center gap-3">
             <div className="relative flex items-center justify-center">
               <div className={`px-5 py-2.5 rounded-2xl border font-mono font-black text-2xl sm:text-3xl shadow-lg flex items-center gap-2 transition-all ${
-                currentPhase === "stage_finished"
-                  ? "bg-slate-900 border-white/20 text-gray-300 text-base sm:text-lg"
-                  : localSecondsLeft <= 5 
-                    ? "bg-red-950/80 border-red-500 text-red-300 animate-pulse" 
-                    : currentPhase === "memorize" 
-                      ? "bg-amber-950/80 border-amber-500 text-amber-300"
-                      : "bg-purple-950/80 border-purple-500 text-purple-200"
+                globalPause?.active || gameState.globalPause?.active
+                  ? "bg-amber-950/90 border-amber-400 text-amber-300 animate-pulse"
+                  : currentPhase === "stage_finished"
+                    ? "bg-slate-900 border-white/20 text-gray-300 text-base sm:text-lg"
+                    : localSecondsLeft <= 5 
+                      ? "bg-red-950/80 border-red-500 text-red-300 animate-pulse" 
+                      : currentPhase === "memorize" 
+                        ? "bg-amber-950/80 border-amber-500 text-amber-300"
+                        : "bg-purple-950/80 border-purple-500 text-purple-200"
               }`}>
                 <Clock className="w-6 h-6 shrink-0" />
-                <span>{currentPhase === "stage_finished" ? "Ожидание" : `${localSecondsLeft}s`}</span>
+                <span>
+                  {globalPause?.active || gameState.globalPause?.active
+                    ? `⏸️ ${localSecondsLeft}s`
+                    : currentPhase === "stage_finished" 
+                      ? "Ожидание" 
+                      : `${localSecondsLeft}s`}
+                </span>
               </div>
             </div>
 
@@ -436,9 +452,7 @@ export default function MemoryItemsRoundView({
                 onError={handleImgError}
               />
             ) : (
-              <div 
-                className="flex flex-col items-center justify-center text-center p-8 space-y-4 max-w-md"
-              >
+              <div className="flex flex-col items-center justify-center text-center p-8 space-y-4 max-w-md">
                 <div className="w-16 h-16 rounded-2xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-2xl">
                   🖼️
                 </div>
@@ -484,7 +498,7 @@ export default function MemoryItemsRoundView({
               {currentQuestion.text}
             </h3>
 
-            {/* Dedicated Admin Banner with the Correct Answer (prominently visible during question) */}
+            {/* Dedicated Admin Banner with the Correct Answer */}
             {user.isAdmin && (
               <div className="mb-6 p-4 sm:p-5 bg-gradient-to-r from-emerald-950/90 via-emerald-900/60 to-slate-900/90 border-2 border-emerald-500 rounded-2xl shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="space-y-1">
@@ -564,7 +578,7 @@ export default function MemoryItemsRoundView({
               </div>
             )}
 
-            {/* Answer Reveal (when host enables it or round finished) */}
+            {/* Answer Reveal */}
             {(gameState.showAnswer || gameState.roundFinished) && (
               <motion.div 
                 initial={{ opacity: 0, height: 0 }}
@@ -584,7 +598,7 @@ export default function MemoryItemsRoundView({
         </motion.div>
       )}
 
-      {/* PHASE 3: STAGE FINISHED (WAITING FOR ADMIN TO MOVE TO NEXT PICTURE) */}
+      {/* PHASE 3: STAGE FINISHED */}
       {currentPhase === "stage_finished" && (
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
@@ -606,7 +620,6 @@ export default function MemoryItemsRoundView({
             </p>
           </div>
 
-          {/* Admin transition button directly inside the view */}
           {user.isAdmin && (
             <div className="pt-2 flex justify-center">
               {currentStageIdx < 2 ? (
@@ -652,7 +665,6 @@ export default function MemoryItemsRoundView({
               </p>
             </div>
 
-            {/* Host Peek Image button */}
             <button
               onClick={() => setAdminPeekImage(!adminPeekImage)}
               className="bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 text-xs font-bold px-3.5 py-2 rounded-xl flex items-center gap-2 transition-all cursor-pointer"
@@ -662,7 +674,6 @@ export default function MemoryItemsRoundView({
             </button>
           </div>
 
-          {/* Admin Image Peek View */}
           {adminPeekImage && (
             <motion.div 
               initial={{ opacity: 0, height: 0 }}
@@ -741,7 +752,7 @@ export default function MemoryItemsRoundView({
             )}
           </div>
 
-          {/* Player Answers Review Grid with Question Tabs so previous answers never disappear */}
+          {/* Player Answers Review Grid */}
           <div className="space-y-4 pt-2">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -922,7 +933,7 @@ export default function MemoryItemsRoundView({
               );
             })()}
 
-            {/* If 'all' Tab Selected: Summary Matrix of all 4 Questions for every player */}
+            {/* If 'all' Tab Selected */}
             {adminTabSubQ === "all" && (
               <div className="space-y-3 max-h-[460px] overflow-y-auto pr-1">
                 {Object.entries(players).map(([pId, pData]: [string, any]) => {
