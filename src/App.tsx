@@ -2292,17 +2292,6 @@ export default function App() {
                           >
                             {hasAnswered ? 'ОТВЕТЫ ПРИНЯТЫ ✅ (ЖДИТЕ ПРОВЕРКИ)' : 'ОТПРАВИТЬ ОТВЕТЫ (+2 б. за аниме, +1 б. за каждого героя)'}
                           </button>
-
-                          {hasAnswered && timeLeft > 0 && (
-                            <div className="text-center pt-1">
-                              <button
-                                onClick={() => setHasAnswered(false)}
-                                className="text-xs text-purple-300 hover:text-white underline font-bold bg-white/5 hover:bg-white/10 px-3.5 py-1.5 rounded-xl border border-white/10 transition-all cursor-pointer"
-                              >
-                                ✏️ Изменить ответы (осталось {timeLeft} сек)
-                              </button>
-                            </div>
-                          )}
                         </div>
                       </div>
                     )}
