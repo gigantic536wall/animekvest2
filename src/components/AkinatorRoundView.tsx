@@ -47,7 +47,6 @@ export default function AkinatorRoundView({
   const teamBasePath = hasQKey ? `gameState/akinator/${qKey}/teams/${teamIdx}` : `gameState/akinator/teams/${teamIdx}`;
   const allTeamsBasePath = hasQKey ? `gameState/akinator/${qKey}/teams` : `gameState/akinator/teams`;
 
-  // Автоматически сохраняем ключ в localStorage игрока, как только он загрузился из gameState
   useEffect(() => {
     const k = gameState?.geminiApiKey || gameState?.config?.geminiApiKey;
     if (k && typeof k === "string" && k.length > 10) {
@@ -65,7 +64,6 @@ export default function AkinatorRoundView({
     setWrongGuessAlert("");
   }, [gameState?.currentQuestion]);
 
-  // Auto-recovery
   useEffect(() => {
     if (!currentTeamData?.animeTitle && user?.isAdmin) {
       const picked = AKINATOR_ANIME_LIST[Math.floor(Math.random() * AKINATOR_ANIME_LIST.length)];
@@ -364,7 +362,6 @@ export default function AkinatorRoundView({
                 </span>
               </div>
 
-              {/* Title display */}
               {user.isAdmin ? (
                 <div className="mt-1">
                   <h3 className="text-2xl font-black text-white flex items-center gap-2">
@@ -396,9 +393,7 @@ export default function AkinatorRoundView({
             </div>
           </div>
 
-          {/* Right Badges: Timer + Scoring */}
           <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
-            {/* Countdown Timer Badge */}
             <div className={`px-5 py-3 rounded-2xl border font-mono font-black text-2xl shadow-lg flex items-center gap-2 transition-all ${
               isPaused 
                 ? "bg-amber-950/80 border-amber-400 text-amber-300 animate-pulse" 
@@ -422,7 +417,6 @@ export default function AkinatorRoundView({
         </div>
       </div>
 
-      {/* Victory Banner if already guessed */}
       {currentTeamData?.guessed && (
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
@@ -468,7 +462,6 @@ export default function AkinatorRoundView({
           </div>
         </div>
 
-        {/* Questions list */}
         <div className="space-y-4 max-h-[480px] overflow-y-auto pr-2 custom-scrollbar">
           {(!currentTeamData.questions || currentTeamData.questions.length === 0) ? (
             <div className="text-center py-16 space-y-3">
@@ -501,7 +494,6 @@ export default function AkinatorRoundView({
           )}
         </div>
 
-        {/* Quick Suggestion Chips */}
         {!currentTeamData.guessed && (
           <div className="pt-2 border-t border-white/5">
             <div className="text-[11px] font-black uppercase tracking-wider text-gray-400 mb-2.5 flex items-center gap-1.5">
@@ -522,7 +514,6 @@ export default function AkinatorRoundView({
           </div>
         )}
 
-        {/* Question Input Form */}
         {!currentTeamData.guessed && (
           <div className="pt-2 space-y-3">
             <div className="flex gap-3">
@@ -581,7 +572,6 @@ export default function AkinatorRoundView({
         )}
       </div>
 
-      {/* Guess Attempt Section */}
       {!currentTeamData.guessed && (
         <div className="glass-dark p-6 md:p-8 rounded-[2.5rem] border-2 border-purple-500/30 shadow-2xl space-y-4">
           <div className="flex items-center gap-3">
@@ -641,7 +631,6 @@ export default function AkinatorRoundView({
             )}
           </AnimatePresence>
 
-          {/* Past wrong attempts */}
           {currentTeamData.attempts && currentTeamData.attempts.length > 0 && (
             <div className="pt-2">
               <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mr-2">
