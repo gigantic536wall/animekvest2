@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Bot, Send, HelpCircle, CheckCircle2, XCircle, 
-  Sparkles, Loader2, Trophy, MessageSquare, AlertCircle, RefreshCw, Eye, Trash2
+  Sparkles, Loader2, Trophy, MessageSquare, AlertCircle, RefreshCw, Eye, Trash2, Clock
 } from "lucide-react";
 import { AKINATOR_ANIME_LIST } from "../data/akinatorAnime";
 import { askAkinator, checkAkinatorGuess } from "../utils/akinatorClient";
@@ -13,6 +13,8 @@ interface AkinatorRoundViewProps {
   players: any;
   restPatch: (path: string, data: any) => Promise<any>;
   restPut: (path: string, data: any) => Promise<any>;
+  timeLeft?: number;
+  globalPause?: any;
 }
 
 export default function AkinatorRoundView({
@@ -21,6 +23,8 @@ export default function AkinatorRoundView({
   players,
   restPatch,
   restPut,
+  timeLeft = 90,
+  globalPause,
 }: AkinatorRoundViewProps) {
   const [questionInput, setQuestionInput] = useState("");
   const [guessInput, setGuessInput] = useState("");
@@ -43,6 +47,16 @@ export default function AkinatorRoundView({
   const teamBasePath = hasQKey ? `gameState/akinator/${qKey}/teams/${teamIdx}` : `gameState/akinator/teams/${teamIdx}`;
   const allTeamsBasePath = hasQKey ? `gameState/akinator/${qKey}/teams` : `gameState/akinator/teams`;
 
+  // Автоматически сохраняем ключ в localStorage игрока, как только он загрузился из gameState
+  useEffect(() => {
+    const k = gameState?.geminiApiKey || gameState?.config?.geminiApiKey;
+    if (k && typeof k === "string" && k.length > 10) {
+      try {
+        localStorage.setItem("gemini_api_key", k);
+      } catch {}
+    }
+  }, [gameState?.geminiApiKey, gameState?.config?.geminiApiKey]);
+
   useEffect(() => {
     setQuestionInput("");
     setGuessInput("");
@@ -51,7 +65,7 @@ export default function AkinatorRoundView({
     setWrongGuessAlert("");
   }, [gameState?.currentQuestion]);
 
-  // Auto-recovery: if team has no secret anime assigned yet, host or player automatically assigns one
+  // Auto-recovery
   useEffect(() => {
     if (!currentTeamData?.animeTitle && user?.isAdmin) {
       const picked = AKINATOR_ANIME_LIST[Math.floor(Math.random() * AKINATOR_ANIME_LIST.length)];
@@ -77,7 +91,6 @@ export default function AkinatorRoundView({
     "Это сёнэн?",
   ];
 
-  // Helper to re-roll anime for a team or all teams for current question
   const reassignAnime = async (forTeam?: number) => {
     const shuffled = [...AKINATOR_ANIME_LIST].sort(() => 0.5 - Math.random());
     if (forTeam !== undefined) {
@@ -188,14 +201,12 @@ export default function AkinatorRoundView({
       });
 
       if (isCorrect) {
-        // Calculate points: 1-5 questions: 10pts, 6-10: 8pts, 11-15: 6pts, 16+: 4pts
         const qCount = (currentTeamData.questions || []).length;
         let points = 10;
         if (qCount > 15) points = 4;
         else if (qCount > 10) points = 6;
         else if (qCount > 5) points = 8;
 
-        // Award points to all players in this team for this question
         const scoreKey = `akinator_win_q${qIdx}`;
         const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
         for (const [pId] of teamPlayers) {
@@ -223,7 +234,6 @@ export default function AkinatorRoundView({
       }
     } catch (err: any) {
       console.error("Guess check error:", err);
-      // Fallback local match on error
       const clean = (s: string) => (s || "").toLowerCase().replace(/[^a-zа-я0-9]/gi, "").trim();
       const isMatch = clean(gText) === clean(currentTeamData.animeTitle);
       if (isMatch) {
@@ -258,7 +268,6 @@ export default function AkinatorRoundView({
     }
   };
 
-  // If no teams data exists yet (first time launching the round)
   if (!currentTeamData) {
     return (
       <div className="glass p-12 rounded-[2.5rem] border border-white/10 text-center max-w-xl mx-auto space-y-6">
@@ -270,7 +279,7 @@ export default function AkinatorRoundView({
         {user.isAdmin && (
           <button
             onClick={() => reassignAnime()}
-            className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-6 py-3 rounded-2xl flex items-center gap-2 mx-auto transition-all"
+            className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-6 py-3 rounded-2xl flex items-center gap-2 mx-auto transition-all cursor-pointer"
           >
             <RefreshCw className="w-4 h-4" /> Раздать аниме командам
           </button>
@@ -278,6 +287,8 @@ export default function AkinatorRoundView({
       </div>
     );
   }
+
+  const isPaused = !!globalPause?.active || !!gameState?.globalPause?.active;
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto">
@@ -290,7 +301,7 @@ export default function AkinatorRoundView({
             </span>
             <button
               onClick={() => reassignAnime()}
-              className="bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all"
+              className="bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" /> Перераздать всем командам
             </button>
@@ -303,7 +314,7 @@ export default function AkinatorRoundView({
                 <button
                   key={idx}
                   onClick={() => setAdminViewTeam(idx)}
-                  className={`p-2.5 rounded-xl text-left border transition-all ${
+                  className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
                     isSelected
                       ? "bg-purple-600 border-purple-400 text-white shadow-lg shadow-purple-900/40"
                       : "bg-white/5 border-white/10 hover:bg-white/10 text-gray-300"
@@ -329,7 +340,7 @@ export default function AkinatorRoundView({
         </div>
       )}
 
-      {/* Secret Card Header */}
+      {/* Secret Card Header with Integrated Countdown Timer */}
       <div className="glass-dark p-6 md:p-8 rounded-[2rem] border border-white/10 shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-purple-600/10 rounded-full blur-3xl pointer-events-none" />
         
@@ -385,13 +396,27 @@ export default function AkinatorRoundView({
             </div>
           </div>
 
-          {/* Scoring badge */}
-          <div className="glass px-5 py-3 rounded-2xl border border-white/10 text-center shrink-0">
-            <div className="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-0.5">
-              Награда за скорость
+          {/* Right Badges: Timer + Scoring */}
+          <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+            {/* Countdown Timer Badge */}
+            <div className={`px-5 py-3 rounded-2xl border font-mono font-black text-2xl shadow-lg flex items-center gap-2 transition-all ${
+              isPaused 
+                ? "bg-amber-950/80 border-amber-400 text-amber-300 animate-pulse" 
+                : timeLeft <= 15 
+                  ? "bg-red-950/80 border-red-500 text-red-300 animate-pulse" 
+                  : "bg-purple-950/80 border-purple-500/40 text-purple-200"
+            }`}>
+              <Clock className="w-6 h-6 shrink-0 text-amber-400" />
+              <span>{isPaused ? `⏸️ ${timeLeft}s` : `${timeLeft}s`}</span>
             </div>
-            <div className="text-lg font-black text-purple-300">
-              1-5 вопр: 10б • 6-10: 8б • 11-15: 6б
+
+            <div className="glass px-5 py-3 rounded-2xl border border-white/10 text-center">
+              <div className="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-0.5">
+                Награда за скорость
+              </div>
+              <div className="text-sm font-black text-purple-300">
+                1-5 вопр: 10б • 6-10: 8б • 11-15: 6б
+              </div>
             </div>
           </div>
         </div>
@@ -434,7 +459,7 @@ export default function AkinatorRoundView({
             {(user.isAdmin || (currentTeamData?.questions?.length || 0) > 0) && (
               <button
                 onClick={handleClearQuestions}
-                className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 hover:bg-red-500/10 px-2.5 py-1 rounded-lg transition-all border border-red-500/20"
+                className="text-xs text-red-400 hover:text-red-300 flex items-center gap-1 hover:bg-red-500/10 px-2.5 py-1 rounded-lg transition-all border border-red-500/20 cursor-pointer"
                 title="Очистить историю вопросов этой команды"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Очистить
@@ -476,7 +501,7 @@ export default function AkinatorRoundView({
           )}
         </div>
 
-        {/* Quick Suggestion Chips (for players only) */}
+        {/* Quick Suggestion Chips */}
         {!currentTeamData.guessed && (
           <div className="pt-2 border-t border-white/5">
             <div className="text-[11px] font-black uppercase tracking-wider text-gray-400 mb-2.5 flex items-center gap-1.5">
@@ -488,7 +513,7 @@ export default function AkinatorRoundView({
                   key={i}
                   onClick={() => handleAskQuestion(chip)}
                   disabled={isAsking}
-                  className="bg-white/5 hover:bg-purple-600/20 hover:border-purple-500/40 border border-white/10 text-gray-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-medium transition-all text-left disabled:opacity-40"
+                  className="bg-white/5 hover:bg-purple-600/20 hover:border-purple-500/40 border border-white/10 text-gray-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-medium transition-all text-left disabled:opacity-40 cursor-pointer"
                 >
                   {chip}
                 </button>
@@ -518,7 +543,7 @@ export default function AkinatorRoundView({
               <button
                 onClick={() => handleAskQuestion()}
                 disabled={isAsking || !questionInput.trim()}
-                className="bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-black px-6 md:px-8 rounded-2xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-purple-900/30"
+                className="bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-black px-6 md:px-8 rounded-2xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-purple-900/30 cursor-pointer"
               >
                 {isAsking ? (
                   <>
@@ -544,7 +569,7 @@ export default function AkinatorRoundView({
                   <button
                     onClick={() => handleAskQuestion(lastFailedQuestion)}
                     disabled={isAsking}
-                    className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-3 py-1 rounded-lg text-xs flex items-center gap-1 transition-all"
+                    className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white font-bold px-3 py-1 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer"
                   >
                     <RefreshCw className={`w-3 h-3 ${isAsking ? "animate-spin" : ""}`} />
                     Повторить вопрос
@@ -587,7 +612,7 @@ export default function AkinatorRoundView({
             <button
               onClick={handleMakeGuess}
               disabled={isGuessing || !guessInput.trim()}
-              className="bg-yellow-500 hover:bg-yellow-600 disabled:opacity-40 text-black font-black px-6 md:px-8 rounded-2xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-yellow-500/20"
+              className="bg-yellow-500 hover:bg-yellow-600 disabled:opacity-40 text-black font-black px-6 md:px-8 rounded-2xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-yellow-500/20 cursor-pointer"
             >
               {isGuessing ? (
                 <>
