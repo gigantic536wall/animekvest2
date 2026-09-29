@@ -76,17 +76,14 @@ app.get(["/api/health", "/animekvest2/api/health"], (_req, res) => {
 function normalizeAkinatorAnswer(rawText: string): string {
   if (!rawText) return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
   
-  // 1. Remove markdown symbols, quotes, punctuation
   let cleaned = rawText
     .replace(/[*_#~`"'«»“”]/g, " ")
     .replace(/[.,!?;:()\[\]{}]/g, " ")
     .trim()
     .toUpperCase();
 
-  // 2. Remove common prefixes
   cleaned = cleaned.replace(/^(ОТВЕТ|ANSWER|ВЕРДИКТ|ИТОГ)\s+/i, "").trim();
 
-  // 3. Multi-word phrases
   if (cleaned.includes("СКОРЕЕ ДА") || cleaned.includes("PROBABLY YES") || cleaned.includes("ВЕРОЯТНО ДА")) {
     return "СКОРЕЕ ДА";
   }
@@ -100,7 +97,6 @@ function normalizeAkinatorAnswer(rawText: string): string {
     return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
   }
 
-  // 4. Tokenize by whitespace
   const tokens = cleaned.split(/\s+/).filter(Boolean);
   if (tokens.length > 0) {
     const first = tokens[0];
@@ -108,42 +104,10 @@ function normalizeAkinatorAnswer(rawText: string): string {
     if (first === "НЕТ" || first === "NO") return "НЕТ";
   }
 
-  // 5. Look for standalone tokens
   if (tokens.includes("ДА") || tokens.includes("YES")) return "ДА";
   if (tokens.includes("НЕТ") || tokens.includes("NO")) return "НЕТ";
 
   return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
-}
-
-// Supported Gemini models with fallbacks in case of high demand / 503 errors
-const GEMINI_MODELS = [
-  "gemini-3.8-flash",
-];
-
-async function generateWithFallback(
-  ai: GoogleGenAI,
-  contents: string,
-  config: any
-): Promise<string> {
-  let lastErr: any = null;
-  for (const model of GEMINI_MODELS) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents,
-        config,
-      });
-      if (response && response.text) {
-        return response.text;
-      }
-    } catch (err: any) {
-      console.warn(`[Gemini] Model ${model} encountered an issue, trying next candidate:`, err?.message || err);
-      lastErr = err;
-      // Brief pause before trying next fallback model
-      await new Promise((r) => setTimeout(r, 250));
-    }
-  }
-  throw lastErr || new Error("All Gemini models failed to respond");
 }
 
 // API: Ask Akinator a question about the assigned anime
@@ -155,7 +119,6 @@ app.post(["/api/akinator/ask", "/animekvest2/api/akinator/ask"], async (req, res
     }
 
     if (!process.env.GEMINI_API_KEY) {
-      // Return a simulated fallback if no API key is set yet
       return res.json({ 
         answer: "НЕ ЗНАЮ (Требуется GEMINI_API_KEY)",
         warning: "GEMINI_API_KEY is not configured in Settings > Secrets." 
@@ -184,17 +147,29 @@ app.post(["/api/akinator/ask", "/animekvest2/api/akinator/ask"], async (req, res
 
     let rawAnswer = "";
     try {
-      rawAnswer = await generateWithFallback(
-        ai,
-        `Вопрос игрока: "${question}"`,
-        {
+      // Прямой вызов стабильной модели без циклов перебора, экономим квоту!
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: `Вопрос игрока: "${question}"`,
+        config: {
           systemInstruction: systemPrompt,
           temperature: 0.1,
         }
-      );
+      });
+      
+      if (response && response.text) {
+        rawAnswer = response.text;
+      } else {
+        throw new Error("Empty response from AI");
+      }
     } catch (genErr: any) {
-      console.error("All Gemini models failed for /api/akinator/ask:", genErr);
-      // Soft fallback so the game is not disrupted
+      console.error("Gemini failed for /api/akinator/ask:", genErr);
+      
+      // Если это ошибка квоты - отправляем специальный статус 429
+      if (genErr?.status === 429 || genErr?.message?.includes("Quota")) {
+        return res.status(429).json({ error: "Квота исчерпана. Подождите 1 минуту." });
+      }
+      
       return res.json({
         answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
         warning: "ИИ временно перегружен, ответ по умолчанию: НЕ ЗНАЮ"
@@ -228,12 +203,10 @@ app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"],
     const cleanGuess = clean(guess);
     const cleanTitle = clean(animeTitle);
 
-    // Fast exact or substring match
     if (cleanGuess === cleanTitle || (cleanGuess.length >= 4 && cleanTitle.includes(cleanGuess))) {
       return res.json({ correct: true });
     }
 
-    // AI check for alternate names, English/Romaji titles, minor typos
     if (!process.env.GEMINI_API_KEY) {
       return res.json({ correct: cleanGuess === cleanTitle });
     }
@@ -247,8 +220,13 @@ app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"],
 Является ли вариант игрока тем же самым аниме (с учетом официального перевода на русский, английский, японский романдзи, небольших опечаток или сокращений вроде "АоТ" / "Тетрадка смерти" / "Клинки")?
 Ответь строго ОДНИМ словом: ДА или НЕТ.`;
 
-      const rawText = await generateWithFallback(ai, prompt, { temperature: 0.0 });
-      const text = rawText.trim().toUpperCase();
+      const response = await ai.models.generateContent({
+        model: "gemini-1.5-flash",
+        contents: prompt,
+        config: { temperature: 0.0 }
+      });
+      
+      const text = (response?.text || "").trim().toUpperCase();
       correct = text.startsWith("ДА") || text === "ДА";
     } catch (aiErr) {
       console.warn("AI check-guess fallback to basic string match:", aiErr);
@@ -258,7 +236,6 @@ app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"],
     return res.json({ correct });
   } catch (err: any) {
     console.error("Akinator check guess error:", err);
-    // Fallback to basic string comparison
     const clean = (s: string) => s.toLowerCase().replace(/[^a-zа-я0-9]/gi, "").trim();
     return res.json({ correct: clean(req.body.guess) === clean(req.body.animeTitle) });
   }
