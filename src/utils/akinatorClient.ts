@@ -37,7 +37,7 @@ export function normalizeAkinatorAnswer(rawText: string): string {
 }
 
 let inMemoryKey = "";
-let cachedWorkingModel = "gemini-2.0-flash";
+let cachedWorkingModel = "";
 
 export async function resolveGeminiKey(providedKey?: string): Promise<string> {
   if (providedKey && providedKey.trim().length > 10) {
@@ -93,11 +93,55 @@ export async function resolveGeminiKey(providedKey?: string): Promise<string> {
   return inMemoryKey;
 }
 
-// Официальные быстрые модели Gemini
-const GEMINI_MODELS = [
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
-];
+// Автоматический поиск актуальной рабочей Flash-модели через ListModels
+async function getActiveGeminiModel(apiKey: string): Promise<string> {
+  if (cachedWorkingModel) return cachedWorkingModel;
+
+  if (typeof window !== "undefined") {
+    const saved = localStorage.getItem("gemini_working_model");
+    if (saved) {
+      cachedWorkingModel = saved;
+      return cachedWorkingModel;
+    }
+  }
+
+  try {
+    const controller = new AbortController();
+    const tId = setTimeout(() => controller.abort(), 3500);
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.trim()}`, {
+      signal: controller.signal,
+    });
+    clearTimeout(tId);
+
+    if (res.ok) {
+      const data = await res.json();
+      const models: Array<{ name: string; supportedGenerationMethods?: string[] }> = data?.models || [];
+      
+      const contentModels = models.filter(m => 
+        m.supportedGenerationMethods?.includes("generateContent")
+      );
+
+      // Ищем самую быструю актуальную Flash модель
+      const best = contentModels.find(m => m.name.includes("flash") && !m.name.includes("preview") && !m.name.includes("thinking"))
+        || contentModels.find(m => m.name.includes("flash"))
+        || contentModels.find(m => m.name.includes("gemini"))
+        || contentModels[0];
+
+      if (best) {
+        const cleanName = best.name.replace(/^models\//, "");
+        cachedWorkingModel = cleanName;
+        if (typeof window !== "undefined") {
+          try { localStorage.setItem("gemini_working_model", cleanName); } catch {}
+        }
+        return cleanName;
+      }
+    }
+  } catch {}
+
+  // Запасные варианты на случай сетевого сбоя ListModels
+  cachedWorkingModel = "gemini-2.5-flash";
+  return cachedWorkingModel;
+}
 
 export async function askAkinator({
   animeTitle,
@@ -159,10 +203,8 @@ export async function askAkinator({
 
 Ответ:`;
 
-  const modelsToTry = [
-    cachedWorkingModel,
-    ...GEMINI_MODELS.filter((m) => m !== cachedWorkingModel),
-  ];
+  const activeModel = await getActiveGeminiModel(apiKey);
+  const modelsToTry = Array.from(new Set([activeModel, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]));
 
   let lastApiError = "";
 
@@ -191,6 +233,9 @@ export async function askAkinator({
         const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
         const normalized = normalizeAkinatorAnswer(rawText);
         cachedWorkingModel = model;
+        if (typeof window !== "undefined") {
+          try { localStorage.setItem("gemini_working_model", model); } catch {}
+        }
         return { success: true, answer: normalized };
       } else {
         const errJson = await res.json().catch(() => null);
@@ -241,10 +286,8 @@ export async function checkAkinatorGuess({
 Вариант игрока: "${guess}".
 Имел ли игрок в виду это аниме (учитывая опечатки или перевод)?`;
 
-    const modelsToTry = [
-      cachedWorkingModel,
-      ...GEMINI_MODELS.filter((m) => m !== cachedWorkingModel),
-    ];
+    const activeModel = await getActiveGeminiModel(apiKey);
+    const modelsToTry = Array.from(new Set([activeModel, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]));
 
     for (const model of modelsToTry) {
       try {
@@ -259,6 +302,7 @@ export async function checkAkinatorGuess({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { temperature: 0.0, maxOutputTokens: 10 },
           }),
+          signal: controller.signal,
         });
         clearTimeout(tId);
 
