@@ -1,5 +1,6 @@
 /**
- * Utility for querying Akinator AI
+ * Utility for querying Akinator AI both in Fullstack (Cloud Run/Express)
+ * and Static Hosting (GitHub Pages) environments.
  */
 
 export function normalizeAkinatorAnswer(rawText: string): string {
@@ -41,13 +42,9 @@ let inMemoryKey = "";
 export async function resolveGeminiKey(providedKey?: string): Promise<string> {
   if (providedKey && providedKey.trim().length > 10) {
     inMemoryKey = providedKey.trim();
-    if (typeof window !== "undefined") {
-      try { localStorage.setItem("gemini_api_key", inMemoryKey); } catch {}
-    }
     return inMemoryKey;
   }
-
-  if (inMemoryKey && inMemoryKey.length > 10) return inMemoryKey;
+  if (inMemoryKey) return inMemoryKey;
 
   if (typeof window !== "undefined") {
     const local = localStorage.getItem("gemini_api_key");
@@ -66,31 +63,32 @@ export async function resolveGeminiKey(providedKey?: string): Promise<string> {
 
   try {
     const urls = [
-      "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/appConfig/geminiApiKey.json",
-      "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/gameState/geminiApiKey.json"
+      "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/gameState/geminiApiKey.json",
+      "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/appConfig/geminiApiKey.json"
     ];
     for (const u of urls) {
-      try {
-        const controller = new AbortController();
-        const tId = setTimeout(() => controller.abort(), 2000);
-        const res = await fetch(u, { signal: controller.signal });
-        clearTimeout(tId);
-        if (res.ok) {
-          const val = await res.json();
-          if (typeof val === "string" && val.trim().length > 10) {
-            inMemoryKey = val.trim();
-            if (typeof window !== "undefined") {
-              try { localStorage.setItem("gemini_api_key", inMemoryKey); } catch {}
-            }
-            return inMemoryKey;
-          }
+      const controller = new AbortController();
+      const tId = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(u, { signal: controller.signal });
+      clearTimeout(tId);
+      if (res.ok) {
+        const val = await res.json();
+        if (typeof val === "string" && val.trim().length > 10) {
+          inMemoryKey = val.trim();
+          return inMemoryKey;
         }
-      } catch {}
+      }
     }
   } catch {}
 
   return inMemoryKey;
 }
+
+const FALLBACK_MODELS = [
+  "gemini-3.1-flash-lite",
+  "gemini-flash-latest",
+  "gemini-3.8-flash",
+];
 
 export async function askAkinator({
   animeTitle,
@@ -101,17 +99,13 @@ export async function askAkinator({
   question: string;
   geminiKey?: string;
 }): Promise<{ success: boolean; answer: string; error?: string }> {
-  const isStaticHosting = typeof window !== "undefined" && (
-    window.location.hostname.includes("github.io") ||
-    window.location.hostname.endsWith(".pages.dev") ||
-    window.location.protocol === "file:"
-  );
-
-  if (!isStaticHosting) {
+  const apiUrls = ["/api/akinator/ask", "./api/akinator/ask", "/animekvest2/api/akinator/ask"];
+  
+  for (const endpoint of apiUrls) {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-      const res = await fetch("/api/akinator/ask", {
+      const timeoutId = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ animeTitle, question }),
@@ -124,27 +118,18 @@ export async function askAkinator({
         if (data && data.answer) {
           return { success: true, answer: data.answer };
         }
-      } else if (res.status === 429) {
-        return { success: false, answer: "НЕ ЗНАЮ", error: "⏳ Лимит запросов. Подождите 1 минуту." };
       }
     } catch {}
   }
 
   const apiKey = await resolveGeminiKey(geminiKey);
 
-  if (!apiKey || apiKey.trim().length <= 10) {
-    return {
-      success: false,
-      answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
-      error: "Gemini API ключ не найден. Сохраните ключ в Панели Ведущего.",
-    };
-  }
+  if (apiKey && apiKey.trim().length > 10) {
+    const systemPrompt = `Ты — неподкупный ведущий Акинатор в аниме-викторине.
+Твое секретное аниме, которое загадано: "${animeTitle}".
+Игрок задает тебе вопрос на "Да/Нет", чтобы угадать это аниме.
 
-  const promptText = `Ты — ведущий Акинатор в аниме-викторине.
-Загаданное аниме: "${animeTitle}".
-Игрок задает вопрос: "${question}".
-
-Ответь строго ОДНИМ из 6 вариантов без кавычек и точек:
+ОТВЕТЬ СТРОГО ОДНИМ ИЗ 6 ВАРИАНТОВ:
 - ДА
 - НЕТ
 - СКОРЕЕ ДА
@@ -152,49 +137,46 @@ export async function askAkinator({
 - ЧАСТИЧНО
 - НЕ ЗНАЮ / НЕПРИМЕНИМО
 
-Ответ:`;
+СТРОГИЕ ПРАВИЛА:
+1. Запрещено писать любые вступительные слова, пояснения, рассуждения или знаки препинания. Ответ — ТОЛЬКО одно выбранное словосочетание из списка выше.
+2. Никогда не называй само аниме и не подсказывай прямо.
+3. Отвечай честно и точно по канону сюжета, персонажей, авторов, жанров и фактов об аниме "${animeTitle}".
+4. Если вопрос бессмысленный, не по теме или на него невозможно ответить в таком формате, отвечай "НЕ ЗНАЮ / НЕПРИМЕНИМО".
+5. Выведи ТОЛЬКО чистый текст ответа без звездочек (**), без кавычек и без точек.`;
 
-  try {
-    const controller = new AbortController();
-    const tId = setTimeout(() => controller.abort(), 6000);
+    for (const model of FALLBACK_MODELS) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemPrompt }] },
+            contents: [{ parts: [{ text: `Вопрос игрока: "${question}"` }] }],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 30,
+            },
+          }),
+        });
 
-    // Возвращаем модель gemini-3.8-flash, которая привязана к твоему проекту
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
-    
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: promptText }] }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 20,
-        },
-      }),
-      signal: controller.signal,
-    });
-    clearTimeout(tId);
-
-    if (res.ok) {
-      const data = await res.json();
-      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-      const normalized = normalizeAkinatorAnswer(rawText);
-      return { success: true, answer: normalized };
-    } else {
-      const errJson = await res.json().catch(() => null);
-      if (res.status === 429 || errJson?.error?.message?.toLowerCase().includes("quota")) {
-        throw new Error("⏳ Лимит запросов ИИ исчерпан! Подождите ровно 1 минуту.");
+        if (res.ok) {
+          const data = await res.json();
+          const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+          const normalized = normalizeAkinatorAnswer(rawText);
+          return { success: true, answer: normalized };
+        }
+      } catch (err) {
+        console.warn(`Direct Gemini model ${model} failed:`, err);
       }
-      throw new Error(errJson?.error?.message || `Ошибка Google API (${res.status})`);
     }
-  } catch (err: any) {
-    const isFriendlyError = err?.message?.includes("⏳");
-    return {
-      success: false,
-      answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
-      error: isFriendlyError ? err.message : `Ошибка соединения с ИИ: ${err?.message || "Таймаут"}`,
-    };
   }
+
+  return {
+    success: false,
+    answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
+    error: "Не удалось связаться с ИИ. Проверьте соединение или API ключ.",
+  };
 }
 
 export async function checkAkinatorGuess({
@@ -222,36 +204,49 @@ export async function checkAkinatorGuess({
     return true;
   }
 
+  const apiUrls = ["/api/akinator/check-guess", "./api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"];
+  for (const endpoint of apiUrls) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ animeTitle, guess }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && typeof data.correct === "boolean") {
+          return data.correct;
+        }
+      }
+    } catch {}
+  }
+
   const apiKey = await resolveGeminiKey(geminiKey);
 
   if (apiKey && apiKey.trim().length > 10) {
     const prompt = `Ответь СТРОГО 'ДА' или 'НЕТ'.
-Загаданное аниме: "${animeTitle}" (${originalOrEn || ""}).
-Вариант игрока: "${guess}".
-Имел ли игрок в виду это аниме (учитывая опечатки или перевод)?`;
+Загаданное аниме: "${animeTitle}" (также может быть известно как "${originalOrEn || ""}").
+Вариант ответа игрока: "${guess}".
+Имел ли игрок в виду именно это аниме? (Учитывай опечатки, русские и английские названия, синонимы).`;
 
-    try {
-      const controller = new AbortController();
-      const tId = setTimeout(() => controller.abort(), 5000);
-
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { temperature: 0.0, maxOutputTokens: 10 },
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(tId);
-
-      if (res.ok) {
-        const data = await res.json();
-        const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").toUpperCase();
-        return text.includes("ДА") || text.includes("YES");
-      }
-    } catch {}
+    for (const model of FALLBACK_MODELS) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { temperature: 0.0, maxOutputTokens: 10 },
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").toUpperCase();
+          return text.includes("ДА") || text.includes("YES");
+        }
+      } catch {}
+    }
   }
 
   return false;
