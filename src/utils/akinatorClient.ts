@@ -1,5 +1,5 @@
 /**
- * Utility for querying Akinator AI
+ * Utility for querying Akinator AI (Stable v1 API)
  */
 
 export function normalizeAkinatorAnswer(rawText: string): string {
@@ -107,7 +107,7 @@ export async function askAkinator({
     window.location.protocol === "file:"
   );
 
-  // Сначала пробуем локальный бэкенд (если не на GitHub Pages)
+  // Сначала пробуем локальный бэкенд
   if (!isStaticHosting) {
     try {
       const controller = new AbortController();
@@ -125,11 +125,13 @@ export async function askAkinator({
         if (data && data.answer) {
           return { success: true, answer: data.answer };
         }
+      } else if (res.status === 429) {
+        return { success: false, answer: "НЕ ЗНАЮ", error: "⏳ Лимит API. Подождите 1 минуту." };
       }
     } catch {}
   }
 
-  // Если бэкенда нет (GitHub Pages) — обращаемся напрямую к Gemini REST API
+  // Напрямую обращаемся к стабильной v1 ветке Gemini
   const apiKey = await resolveGeminiKey(geminiKey);
 
   if (!apiKey || apiKey.trim().length <= 10) {
@@ -158,8 +160,8 @@ export async function askAkinator({
     const controller = new AbortController();
     const tId = setTimeout(() => controller.abort(), 6000);
 
-    // Модель обновлена на gemini-3.8-flash, как того требует API
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
+    // Стабильный, всегда рабочий эндпоинт v1
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
     
     const res = await fetch(url, {
       method: "POST",
@@ -182,6 +184,9 @@ export async function askAkinator({
       return { success: true, answer: normalized };
     } else {
       const errJson = await res.json().catch(() => null);
+      if (res.status === 429) {
+        throw new Error("⏳ Квота исчерпана. Подождите ровно 1 минуту перед новым вопросом.");
+      }
       const msg = errJson?.error?.message || `Ошибка Google API (${res.status})`;
       throw new Error(msg);
     }
@@ -189,7 +194,7 @@ export async function askAkinator({
     return {
       success: false,
       answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
-      error: `Ошибка сети/ИИ: ${err?.message || "Таймаут"}`,
+      error: err?.message || "Таймаут соединения с Google.",
     };
   }
 }
@@ -231,8 +236,8 @@ export async function checkAkinatorGuess({
       const controller = new AbortController();
       const tId = setTimeout(() => controller.abort(), 5000);
 
-      // Модель обновлена на gemini-3.8-flash
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
+      // Стабильный, всегда рабочий эндпоинт v1
+      const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
