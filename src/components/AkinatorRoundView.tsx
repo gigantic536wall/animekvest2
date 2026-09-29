@@ -48,15 +48,6 @@ export default function AkinatorRoundView({
   const allTeamsBasePath = hasQKey ? `gameState/akinator/${qKey}/teams` : `gameState/akinator/teams`;
 
   useEffect(() => {
-    const k = gameState?.geminiApiKey || gameState?.config?.geminiApiKey;
-    if (k && typeof k === "string" && k.length > 10) {
-      try {
-        localStorage.setItem("gemini_api_key", k);
-      } catch {}
-    }
-  }, [gameState?.geminiApiKey, gameState?.config?.geminiApiKey]);
-
-  useEffect(() => {
     setQuestionInput("");
     setGuessInput("");
     setErrorMsg("");
@@ -64,6 +55,7 @@ export default function AkinatorRoundView({
     setWrongGuessAlert("");
   }, [gameState?.currentQuestion]);
 
+  // Auto-recovery: if team has no secret anime assigned yet, host or player automatically assigns one
   useEffect(() => {
     if (!currentTeamData?.animeTitle && user?.isAdmin) {
       const picked = AKINATOR_ANIME_LIST[Math.floor(Math.random() * AKINATOR_ANIME_LIST.length)];
@@ -89,6 +81,7 @@ export default function AkinatorRoundView({
     "Это сёнэн?",
   ];
 
+  // Helper to re-roll anime for a team or all teams for current question
   const reassignAnime = async (forTeam?: number) => {
     const shuffled = [...AKINATOR_ANIME_LIST].sort(() => 0.5 - Math.random());
     if (forTeam !== undefined) {
@@ -199,12 +192,14 @@ export default function AkinatorRoundView({
       });
 
       if (isCorrect) {
+        // Calculate points: 1-5 questions: 10pts, 6-10: 8pts, 11-15: 6pts, 16+: 4pts
         const qCount = (currentTeamData.questions || []).length;
         let points = 10;
         if (qCount > 15) points = 4;
         else if (qCount > 10) points = 6;
         else if (qCount > 5) points = 8;
 
+        // Award points to all players in this team for this question
         const scoreKey = `akinator_win_q${qIdx}`;
         const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
         for (const [pId] of teamPlayers) {
@@ -362,6 +357,7 @@ export default function AkinatorRoundView({
                 </span>
               </div>
 
+              {/* Title display */}
               {user.isAdmin ? (
                 <div className="mt-1">
                   <h3 className="text-2xl font-black text-white flex items-center gap-2">
@@ -393,6 +389,7 @@ export default function AkinatorRoundView({
             </div>
           </div>
 
+          {/* Timer Badge + Scoring */}
           <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
             <div className={`px-5 py-3 rounded-2xl border font-mono font-black text-2xl shadow-lg flex items-center gap-2 transition-all ${
               isPaused 
@@ -417,6 +414,7 @@ export default function AkinatorRoundView({
         </div>
       </div>
 
+      {/* Victory Banner if already guessed */}
       {currentTeamData?.guessed && (
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
@@ -462,6 +460,7 @@ export default function AkinatorRoundView({
           </div>
         </div>
 
+        {/* Questions list */}
         <div className="space-y-4 max-h-[480px] overflow-y-auto pr-2 custom-scrollbar">
           {(!currentTeamData.questions || currentTeamData.questions.length === 0) ? (
             <div className="text-center py-16 space-y-3">
@@ -494,6 +493,7 @@ export default function AkinatorRoundView({
           )}
         </div>
 
+        {/* Quick Suggestion Chips */}
         {!currentTeamData.guessed && (
           <div className="pt-2 border-t border-white/5">
             <div className="text-[11px] font-black uppercase tracking-wider text-gray-400 mb-2.5 flex items-center gap-1.5">
@@ -514,6 +514,7 @@ export default function AkinatorRoundView({
           </div>
         )}
 
+        {/* Question Input Form */}
         {!currentTeamData.guessed && (
           <div className="pt-2 space-y-3">
             <div className="flex gap-3">
@@ -572,6 +573,7 @@ export default function AkinatorRoundView({
         )}
       </div>
 
+      {/* Guess Attempt Section */}
       {!currentTeamData.guessed && (
         <div className="glass-dark p-6 md:p-8 rounded-[2.5rem] border-2 border-purple-500/30 shadow-2xl space-y-4">
           <div className="flex items-center gap-3">
