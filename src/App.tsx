@@ -10,6 +10,7 @@ import { AudioPlayer } from './components/AudioPlayer';
 import { AKINATOR_ANIME_LIST } from './data/akinatorAnime';
 import AkinatorRoundView from './components/AkinatorRoundView';
 import BingoRoundView from './components/BingoRoundView';
+import MemoryItemsRoundView from './components/MemoryItemsRoundView';
 import ThreeCharactersReviewCard from './components/ThreeCharactersReviewCard';
 import { generateBingoPool32, generateTeamBingoCard } from './data/bingoData';
 
@@ -87,6 +88,7 @@ interface Round {
   pauseDuration?: number;
   answerTime?: number;
   points?: number;
+  memorizeDuration?: number;
 }
 
 // ==================== ДАННЫЕ ИГРЫ ====================
@@ -438,21 +440,28 @@ const roundsData: Round[] = [
     ]
   },
   {
-    type: "audio_guess",
-    name: "Раунд 4: Музыкальный раунд",
-    answerTime: 40,
+    type: "memory_items",
+    name: "Раунд 4: Запоминание предметов (Фото-память)",
+    memorizeDuration: 15,
+    answerTime: 15,
     pauseDuration: 10,
+    points: 5,
     questions: [
-      { audio: "/audio4/aly.mp3", correctAnswer: "Аля иногда кокетничает со мной по-русски" },
-      { audio: "/audio4/basketbol.mp3", correctAnswer: "Баскетбол Куроко" },
-      { audio: "/audio4/bleach.mp3", correctAnswer: "Блич" },
-      { audio: "/audio4/ditz.mp3", correctAnswer: "Звёздное Дитя" },
-      { audio: "/audio4/goul.mp3", correctAnswer: "Токийский гуль" },
-      { audio: "/audio4/hanter.mp3", correctAnswer: "Охотник х Охотник" },
-      { audio: "/audio4/kaguy.mp3", correctAnswer: "Госпожа Кагуя" },
-      { audio: "/audio4/mily.mp3", correctAnswer: "Милый во Франксе" },
-      { audio: "/audio4/nadzuna.mp3", correctAnswer: "Песнь ночных сов" },
-      { audio: "/audio4/ten.mp3", correctAnswer: "Тетрадь Смерти" }
+      { 
+        text: "Картинка 1: 4 вопроса по памяти (15 сек на запоминание, +5 баллов за вопрос)", 
+        correctAnswer: "Картинка 1",
+        answerTime: 15 
+      },
+      { 
+        text: "Картинка 2: 4 вопроса по памяти (15 сек на запоминание, +5 баллов за вопрос)", 
+        correctAnswer: "Картинка 2",
+        answerTime: 15 
+      },
+      { 
+        text: "Картинка 3: 4 вопроса по памяти (15 сек на запоминание, +5 баллов за вопрос)", 
+        correctAnswer: "Картинка 3",
+        answerTime: 15 
+      }
     ]
   },
   {
@@ -1068,6 +1077,15 @@ export default function App() {
       newState.akinator = akinatorState;
     }
 
+    if (round.type === "memory_items") {
+      newState.memoryStage = 0;
+      newState.memorySubQuestion = 0;
+      newState.memoryPhase = "memorize";
+      newState.memoryEndTime = Date.now() + 15 * 1000;
+      newState.timeLeft = 15;
+      newState.endTime = Date.now() + 15 * 1000;
+    }
+
     await restPatch('gameState', newState);
   };
 
@@ -1125,7 +1143,7 @@ export default function App() {
     try {
       const currentGameState = gameStateRef.current || gameState;
       const round = roundsData[currentGameState.currentRound];
-      if (!round || round.type === "da_net" || round.type === "bingo") {
+      if (!round || round.type === "da_net" || round.type === "bingo" || round.type === "memory_items") {
         isStartingPauseRef.current = false;
         return;
       }
@@ -2084,12 +2102,14 @@ export default function App() {
 
             return (
               <div className="bg-black/40 p-6 rounded-3xl">
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-xl font-bold text-red-400">{round.name}</h2>
-                  <div className="text-3xl font-mono text-yellow-500 bg-black/50 px-4 py-2 rounded-xl">
-                    {timeLeft}s
+                {round.type !== "memory_items" && round.type !== "akinator" && round.type !== "bingo" && (
+                  <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-bold text-red-400">{round.name}</h2>
+                    <div className="text-3xl font-mono text-yellow-500 bg-black/50 px-4 py-2 rounded-xl">
+                      {timeLeft}s
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* Test Round */}
                 {round.type === "test_round" && (
@@ -2972,6 +2992,18 @@ export default function App() {
                       </motion.div>
                     )}
                   </div>
+                )}
+
+                {/* Round 4: Memory Items */}
+                {round.type === "memory_items" && (
+                  <MemoryItemsRoundView
+                    user={user}
+                    gameState={gameState}
+                    players={players}
+                    restPatch={restPatch}
+                    restPut={restPut}
+                    serverOffset={serverOffset}
+                  />
                 )}
 
                 {/* Round 7: Akinator (AI) */}
