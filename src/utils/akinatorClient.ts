@@ -1,5 +1,5 @@
 /**
- * Utility for querying Akinator AI (Stable v1 API)
+ * Utility for querying Akinator AI
  */
 
 export function normalizeAkinatorAnswer(rawText: string): string {
@@ -107,7 +107,6 @@ export async function askAkinator({
     window.location.protocol === "file:"
   );
 
-  // Сначала пробуем локальный бэкенд
   if (!isStaticHosting) {
     try {
       const controller = new AbortController();
@@ -126,12 +125,11 @@ export async function askAkinator({
           return { success: true, answer: data.answer };
         }
       } else if (res.status === 429) {
-        return { success: false, answer: "НЕ ЗНАЮ", error: "⏳ Лимит API. Подождите 1 минуту." };
+        return { success: false, answer: "НЕ ЗНАЮ", error: "⏳ Лимит запросов. Подождите 1 минуту." };
       }
     } catch {}
   }
 
-  // Напрямую обращаемся к стабильной v1 ветке Gemini
   const apiKey = await resolveGeminiKey(geminiKey);
 
   if (!apiKey || apiKey.trim().length <= 10) {
@@ -160,8 +158,8 @@ export async function askAkinator({
     const controller = new AbortController();
     const tId = setTimeout(() => controller.abort(), 6000);
 
-    // Стабильный, всегда рабочий эндпоинт v1
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+    // Возвращаем модель gemini-3.8-flash, которая привязана к твоему проекту
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
     
     const res = await fetch(url, {
       method: "POST",
@@ -184,17 +182,17 @@ export async function askAkinator({
       return { success: true, answer: normalized };
     } else {
       const errJson = await res.json().catch(() => null);
-      if (res.status === 429) {
-        throw new Error("⏳ Квота исчерпана. Подождите ровно 1 минуту перед новым вопросом.");
+      if (res.status === 429 || errJson?.error?.message?.toLowerCase().includes("quota")) {
+        throw new Error("⏳ Лимит запросов ИИ исчерпан! Подождите ровно 1 минуту.");
       }
-      const msg = errJson?.error?.message || `Ошибка Google API (${res.status})`;
-      throw new Error(msg);
+      throw new Error(errJson?.error?.message || `Ошибка Google API (${res.status})`);
     }
   } catch (err: any) {
+    const isFriendlyError = err?.message?.includes("⏳");
     return {
       success: false,
       answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
-      error: err?.message || "Таймаут соединения с Google.",
+      error: isFriendlyError ? err.message : `Ошибка соединения с ИИ: ${err?.message || "Таймаут"}`,
     };
   }
 }
@@ -236,8 +234,7 @@ export async function checkAkinatorGuess({
       const controller = new AbortController();
       const tId = setTimeout(() => controller.abort(), 5000);
 
-      // Стабильный, всегда рабочий эндпоинт v1
-      const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey.trim()}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey.trim()}`;
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
