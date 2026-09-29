@@ -1,5 +1,5 @@
 /**
- * Utility for querying Akinator AI both in Fullstack and Static Hosting (GitHub Pages)
+ * Utility for querying Akinator AI
  */
 
 export function normalizeAkinatorAnswer(rawText: string): string {
@@ -37,7 +37,6 @@ export function normalizeAkinatorAnswer(rawText: string): string {
 }
 
 let inMemoryKey = "";
-let cachedWorkingModel = "";
 
 export async function resolveGeminiKey(providedKey?: string): Promise<string> {
   if (providedKey && providedKey.trim().length > 10) {
@@ -73,7 +72,7 @@ export async function resolveGeminiKey(providedKey?: string): Promise<string> {
     for (const u of urls) {
       try {
         const controller = new AbortController();
-        const tId = setTimeout(() => controller.abort(), 2500);
+        const tId = setTimeout(() => controller.abort(), 2000);
         const res = await fetch(u, { signal: controller.signal });
         clearTimeout(tId);
         if (res.ok) {
@@ -93,56 +92,6 @@ export async function resolveGeminiKey(providedKey?: string): Promise<string> {
   return inMemoryKey;
 }
 
-// Автоматический поиск актуальной рабочей Flash-модели через ListModels
-async function getActiveGeminiModel(apiKey: string): Promise<string> {
-  if (cachedWorkingModel) return cachedWorkingModel;
-
-  if (typeof window !== "undefined") {
-    const saved = localStorage.getItem("gemini_working_model");
-    if (saved) {
-      cachedWorkingModel = saved;
-      return cachedWorkingModel;
-    }
-  }
-
-  try {
-    const controller = new AbortController();
-    const tId = setTimeout(() => controller.abort(), 3500);
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.trim()}`, {
-      signal: controller.signal,
-    });
-    clearTimeout(tId);
-
-    if (res.ok) {
-      const data = await res.json();
-      const models: Array<{ name: string; supportedGenerationMethods?: string[] }> = data?.models || [];
-      
-      const contentModels = models.filter(m => 
-        m.supportedGenerationMethods?.includes("generateContent")
-      );
-
-      // Ищем самую быструю актуальную Flash модель
-      const best = contentModels.find(m => m.name.includes("flash") && !m.name.includes("preview") && !m.name.includes("thinking"))
-        || contentModels.find(m => m.name.includes("flash"))
-        || contentModels.find(m => m.name.includes("gemini"))
-        || contentModels[0];
-
-      if (best) {
-        const cleanName = best.name.replace(/^models\//, "");
-        cachedWorkingModel = cleanName;
-        if (typeof window !== "undefined") {
-          try { localStorage.setItem("gemini_working_model", cleanName); } catch {}
-        }
-        return cleanName;
-      }
-    }
-  } catch {}
-
-  // Запасные варианты на случай сетевого сбоя ListModels
-  cachedWorkingModel = "gemini-2.5-flash";
-  return cachedWorkingModel;
-}
-
 export async function askAkinator({
   animeTitle,
   question,
@@ -158,6 +107,7 @@ export async function askAkinator({
     window.location.protocol === "file:"
   );
 
+  // Сначала пробуем локальный бэкенд (если не на GitHub Pages)
   if (!isStaticHosting) {
     try {
       const controller = new AbortController();
@@ -179,13 +129,14 @@ export async function askAkinator({
     } catch {}
   }
 
+  // Если бэкенда нет (GitHub Pages) — обращаемся напрямую к Gemini REST API
   const apiKey = await resolveGeminiKey(geminiKey);
 
   if (!apiKey || apiKey.trim().length <= 10) {
     return {
       success: false,
       answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
-      error: "Gemini API ключ не найден. Ведущему нужно сохранить ключ в Панели Ведущего внизу страницы.",
+      error: "Gemini API ключ не найден. Сохраните ключ в Панели Ведущего.",
     };
   }
 
@@ -203,54 +154,44 @@ export async function askAkinator({
 
 Ответ:`;
 
-  const activeModel = await getActiveGeminiModel(apiKey);
-  const modelsToTry = Array.from(new Set([activeModel, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]));
+  try {
+    const controller = new AbortController();
+    const tId = setTimeout(() => controller.abort(), 6000);
 
-  let lastApiError = "";
+    // ЖЕСТКО ЗАДАННАЯ, ВСЕГДА ДОСТУПНАЯ МОДЕЛЬ В v1beta
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey.trim()}`;
+    
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: promptText }] }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 20,
+        },
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(tId);
 
-  for (const model of modelsToTry) {
-    try {
-      const controller = new AbortController();
-      const tId = setTimeout(() => controller.abort(), 6000);
-
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: promptText }] }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 20,
-          },
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(tId);
-
-      if (res.ok) {
-        const data = await res.json();
-        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        const normalized = normalizeAkinatorAnswer(rawText);
-        cachedWorkingModel = model;
-        if (typeof window !== "undefined") {
-          try { localStorage.setItem("gemini_working_model", model); } catch {}
-        }
-        return { success: true, answer: normalized };
-      } else {
-        const errJson = await res.json().catch(() => null);
-        lastApiError = errJson?.error?.message || `Ошибка Google API (${res.status})`;
-      }
-    } catch (err: any) {
-      lastApiError = err?.message || "Таймаут соединения с Google";
+    if (res.ok) {
+      const data = await res.json();
+      const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const normalized = normalizeAkinatorAnswer(rawText);
+      return { success: true, answer: normalized };
+    } else {
+      const errJson = await res.json().catch(() => null);
+      const msg = errJson?.error?.message || `Ошибка Google API (${res.status})`;
+      throw new Error(msg);
     }
+  } catch (err: any) {
+    return {
+      success: false,
+      answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
+      error: `Ошибка сети/ИИ: ${err?.message || "Таймаут"}`,
+    };
   }
-
-  return {
-    success: false,
-    answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
-    error: lastApiError ? `Ошибка ИИ: ${lastApiError}` : "Не удалось связаться с Gemini API.",
-  };
 }
 
 export async function checkAkinatorGuess({
@@ -286,33 +227,28 @@ export async function checkAkinatorGuess({
 Вариант игрока: "${guess}".
 Имел ли игрок в виду это аниме (учитывая опечатки или перевод)?`;
 
-    const activeModel = await getActiveGeminiModel(apiKey);
-    const modelsToTry = Array.from(new Set([activeModel, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"]));
+    try {
+      const controller = new AbortController();
+      const tId = setTimeout(() => controller.abort(), 5000);
 
-    for (const model of modelsToTry) {
-      try {
-        const controller = new AbortController();
-        const tId = setTimeout(() => controller.abort(), 5000);
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey.trim()}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.0, maxOutputTokens: 10 },
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(tId);
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
-        const res = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.0, maxOutputTokens: 10 },
-          }),
-          signal: controller.signal,
-        });
-        clearTimeout(tId);
-
-        if (res.ok) {
-          const data = await res.json();
-          const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").toUpperCase();
-          return text.includes("ДА") || text.includes("YES");
-        }
-      } catch {}
-    }
+      if (res.ok) {
+        const data = await res.json();
+        const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").toUpperCase();
+        return text.includes("ДА") || text.includes("YES");
+      }
+    } catch {}
   }
 
   return false;
