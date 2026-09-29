@@ -25,8 +25,8 @@ app.use((req, res, next) => {
 // Auto-sync GEMINI_API_KEY into Firebase gameState so static clients (GitHub Pages) can also access it
 const FIREBASE_DB = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
 async function autoSyncKeyToFirebase() {
-  const apiKey = process.env.GEMINI_API_KEY || "AQ.Ab8RN6Lsasb57qDqpjIiVVSdZFYMBwnaSva0NKEqT_CBo5DiaA";
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY") return;
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || !apiKey.startsWith("AIza")) return;
   try {
     const urls = [
       `${FIREBASE_DB}/gameState/geminiApiKey.json`,
