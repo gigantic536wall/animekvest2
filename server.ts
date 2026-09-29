@@ -147,9 +147,9 @@ app.post(["/api/akinator/ask", "/animekvest2/api/akinator/ask"], async (req, res
 
     let rawAnswer = "";
     try {
-      // Прямой вызов стабильной модели без циклов перебора, экономим квоту!
+      // Жестко заданная модель
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3.8-flash",
         contents: `Вопрос игрока: "${question}"`,
         config: {
           systemInstruction: systemPrompt,
@@ -165,9 +165,8 @@ app.post(["/api/akinator/ask", "/animekvest2/api/akinator/ask"], async (req, res
     } catch (genErr: any) {
       console.error("Gemini failed for /api/akinator/ask:", genErr);
       
-      // Если это ошибка квоты - отправляем специальный статус 429
-      if (genErr?.status === 429 || genErr?.message?.includes("Quota")) {
-        return res.status(429).json({ error: "Квота исчерпана. Подождите 1 минуту." });
+      if (genErr?.status === 429 || genErr?.message?.includes("Quota") || genErr?.message?.includes("limit")) {
+        return res.status(429).json({ error: "⏳ Лимит запросов ИИ исчерпан! Подождите ровно 1 минуту." });
       }
       
       return res.json({
@@ -221,7 +220,7 @@ app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"],
 Ответь строго ОДНИМ словом: ДА или НЕТ.`;
 
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3.8-flash",
         contents: prompt,
         config: { temperature: 0.0 }
       });
