@@ -117,8 +117,7 @@ function normalizeAkinatorAnswer(rawText: string): string {
 
 // Supported Gemini models with fallbacks in case of high demand / 503 errors
 const GEMINI_MODELS = [
-  "gemini-1.5-flash-latest",
-  "gemini-1.5-flash",
+  "gemini-3.8-flash",
 ];
 
 async function generateWithFallback(
