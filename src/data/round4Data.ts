@@ -21,7 +21,7 @@ export const ROUND4_STAGES: MemoryStage[] = [
   {
     stageIdx: 0,
     title: "Картинка 1 из 3",
-    image: "/foto4/round4_1.png",
+    image: "/foto4/round4_1.jpg",
     memorizeDuration: 15,
     subQuestions: [
       {
@@ -65,7 +65,7 @@ export const ROUND4_STAGES: MemoryStage[] = [
   {
     stageIdx: 1,
     title: "Картинка 2 из 3",
-    image: "/foto4/round4_2.png",
+    image: "/foto4/round4_2.jpg",
     memorizeDuration: 15,
     subQuestions: [
       {
@@ -116,7 +116,7 @@ export const ROUND4_STAGES: MemoryStage[] = [
   {
     stageIdx: 2,
     title: "Картинка 3 из 3",
-    image: "/foto4/round4_3.png",
+    image: "/foto4/round4_3.jpg",
     memorizeDuration: 15,
     subQuestions: [
       {
