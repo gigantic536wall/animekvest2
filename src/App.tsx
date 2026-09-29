@@ -389,52 +389,52 @@ const roundsData: Round[] = [
     questions: [
       {
         text: "Звук 1: Музыка первых серий",
-        audio: "/audio3/sound3_1.mp3",
+        audio: "/audio4/r3-1.mp3",
         correctAnswer: "Реинкарнация безработного"
       },
       {
         text: "Звук 2: Отчаянный крик персонажа",
-        audio: "/audio3/sound3_2.mp3",
+        audio: "/audio4/r3-2.mp3",
         correctAnswer: "Охотник х Охотник (Крик Гона)"
       },
       {
         text: "Звук 3: Саундтрек битвы (с 24 секунды)",
-        audio: "/audio3/sound3_3.mp3",
+        audio: "/audio4/r3-3.mp3",
         correctAnswer: "Блич (Bleach — On the Precipice of Defeat)"
       },
       {
         text: "Звук 4: Культовая способность / фраза",
-        audio: "/audio3/sound3_4.mp3",
+        audio: "/audio4/r3-4.mp3",
         correctAnswer: "Невероятные приключения ДжоДжо (The World / Za Warudo)"
       },
       {
         text: "Звук 5: Коронная фраза на английском",
-        audio: "/audio3/sound3_5.mp3",
+        audio: "/audio4/r3-5.mp3",
         correctAnswer: "Восхождение в тени (I am Atomic)"
       },
       {
         text: "Звук 6: Взрывное заклинание волшебницы",
-        audio: "/audio3/sound3_6.mp3",
+        audio: "/audio4/r3-6.mp3",
         correctAnswer: "Этот замечательный мир! / Коносуба (Взрыв Мегумин)"
       },
       {
         text: "Звук 7: Опенинг аниме",
-        audio: "/audio3/sound3_7.mp3",
+        audio: "/audio4/r3-7.mp3",
         correctAnswer: "Хоримия"
       },
       {
         text: "Звук 8: Расширение территории",
-        audio: "/audio3/sound3_8.mp3",
+        audio: "/audio4/r3-8.mp3",
         correctAnswer: "Магическая битва (Расширение территории Сатору Годзё)"
       },
       {
         text: "Звук 9: Музыка / саундтрек",
-        audio: "/audio3/sound3_9.mp3",
+        audio: "/audio4/r3-9.mp3",
         correctAnswer: "Киберпанк: Бегущие по краю (Cyberpunk: Edgerunners)"
       },
       {
         text: "Звук 10: Звуки битвы",
-        audio: "/audio3/sound3_10.mp3",
+        audio: "/audio4/r3-10.mp3",
         correctAnswer: "Человек-бензопила"
       }
     ]
