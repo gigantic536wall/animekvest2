@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -96,9 +95,42 @@ export default function MemoryItemsRoundView({
     return () => clearInterval(interval);
   }, [gameState.memoryEndTime, gameState.active, currentPhase, currentStageIdx, currentSubQIdx, serverOffset, user.isAdmin]);
 
-  // Image source resolution: Admin uploaded base64 dataURL in gameState OR local file path in /foto4/
+  // Image source resolution with GitHub Pages basePath support and auto-fallbacks
   const customUploadedImage = gameState.round4Images?.[currentStageIdx];
-  const stageImageSrc = customUploadedImage || stageData.image;
+  const [candidateIdx, setCandidateIdx] = useState(0);
+  const [allCandidatesFailed, setAllCandidatesFailed] = useState(false);
+
+  useEffect(() => {
+    setCandidateIdx(0);
+    setAllCandidatesFailed(false);
+  }, [currentStageIdx, customUploadedImage]);
+
+  const n = currentStageIdx + 1;
+  const base = (import.meta as any).env?.BASE_URL || "/";
+  const cleanBase = base.endsWith("/") ? base : base + "/";
+
+  const candidates = customUploadedImage
+    ? [customUploadedImage]
+    : [
+        `${cleanBase}foto4/round4_${n}.jpg`,
+        `./foto4/round4_${n}.jpg`,
+        `/animekvest2/foto4/round4_${n}.jpg`,
+        `/foto4/round4_${n}.jpg`,
+        `${cleanBase}foto4/round4_${n}.png`,
+        `./foto4/round4_${n}.png`,
+        `/animekvest2/foto4/round4_${n}.png`,
+        `/foto4/round4_${n}.png`,
+      ];
+
+  const currentImgSrc = candidates[candidateIdx] || candidates[0];
+
+  const handleImgError = () => {
+    if (candidateIdx < candidates.length - 1) {
+      setCandidateIdx((prev) => prev + 1);
+    } else {
+      setAllCandidatesFailed(true);
+    }
+  };
 
   // ==================== ADMIN ACTIONS ====================
 
@@ -345,35 +377,30 @@ export default function MemoryItemsRoundView({
 
           {/* Picture Box */}
           <div className="relative bg-slate-900/90 border border-white/15 rounded-3xl p-3 shadow-2xl overflow-hidden flex items-center justify-center min-h-[380px]">
-            <img
-              src={stageImageSrc}
-              alt={stageData.title}
-              referrerPolicy="no-referrer"
-              className="max-h-[560px] w-auto max-w-full rounded-2xl object-contain shadow-2xl transition-all"
-              onError={(e) => {
-                // Graceful fallback if file is not found on disk yet
-                (e.target as any).style.display = "none";
-                const fallbackContainer = document.getElementById(`fallback-stage-${currentStageIdx}`);
-                if (fallbackContainer) fallbackContainer.style.display = "flex";
-              }}
-            />
-
-            {/* Fallback container with prompt if image file is not yet deployed */}
-            <div 
-              id={`fallback-stage-${currentStageIdx}`} 
-              style={{ display: "none" }}
-              className="flex-col items-center justify-center text-center p-8 space-y-4 max-w-md"
-            >
-              <div className="w-16 h-16 rounded-2xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-2xl">
-                🖼️
+            {!allCandidatesFailed ? (
+              <img
+                key={currentImgSrc}
+                src={currentImgSrc}
+                alt={stageData.title}
+                referrerPolicy="no-referrer"
+                className="max-h-[560px] w-auto max-w-full rounded-2xl object-contain shadow-2xl transition-all"
+                onError={handleImgError}
+              />
+            ) : (
+              <div 
+                className="flex flex-col items-center justify-center text-center p-8 space-y-4 max-w-md"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-2xl">
+                  🖼️
+                </div>
+                <h4 className="text-white font-bold text-sm">
+                  Изображение для {stageData.title}
+                </h4>
+                <p className="text-xs text-gray-400">
+                  Картинка не найдена по пути <code className="text-purple-300 bg-black/40 px-2 py-0.5 rounded">public/foto4/round4_{n}.jpg</code>. Загрузите её в панели ведущего ниже.
+                </p>
               </div>
-              <h4 className="text-white font-bold text-sm">
-                Изображение для {stageData.title}
-              </h4>
-              <p className="text-xs text-gray-400">
-                Картинка размещается в папке <code className="text-purple-300 bg-black/40 px-2 py-0.5 rounded">public{stageData.image}</code> или загружается ведущим прямо в панели управления ниже.
-              </p>
-            </div>
+            )}
           </div>
         </motion.div>
       )}
@@ -523,10 +550,12 @@ export default function MemoryItemsRoundView({
                 👁️ Просмотр картинки этапа (видна только ведущему для сверки):
               </p>
               <img
-                src={stageImageSrc}
+                key={currentImgSrc}
+                src={currentImgSrc}
                 alt={stageData.title}
                 referrerPolicy="no-referrer"
                 className="max-h-[360px] w-auto max-w-full rounded-xl object-contain border border-white/20"
+                onError={handleImgError}
               />
             </motion.div>
           )}
