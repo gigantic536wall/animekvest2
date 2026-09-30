@@ -14,6 +14,8 @@ interface MemoryItemsRoundViewProps {
   restPut: (path: string, data: any) => Promise<any>;
   serverOffset?: number;
   globalPause?: any;
+  isLeader?: boolean;
+  leaderNickname?: string;
 }
 
 export default function MemoryItemsRoundView({
@@ -24,6 +26,8 @@ export default function MemoryItemsRoundView({
   restPut,
   serverOffset = 0,
   globalPause,
+  isLeader,
+  leaderNickname,
 }: MemoryItemsRoundViewProps) {
   // Current stage (0, 1, 2)
   const currentStageIdx: number = gameState.memoryStage ?? 0;
@@ -300,7 +304,7 @@ export default function MemoryItemsRoundView({
 
   const handlePlayerSubmit = async () => {
     const text = answerInput.trim();
-    if (!text || hasSubmitted || isSubmitting || user.isAdmin) return;
+    if (!text || hasSubmitted || isSubmitting || user.isAdmin || isLeader === false) return;
 
     setIsSubmitting(true);
     try {
@@ -521,11 +525,22 @@ export default function MemoryItemsRoundView({
             )}
 
             {/* Answer Input Section for Players */}
-            {!user.isAdmin && (
+            {!user.isAdmin && isLeader === false && (
+              <div className="p-4 bg-purple-950/40 border border-purple-500/30 rounded-2xl text-center space-y-1">
+                <p className="text-sm font-bold text-purple-200">
+                  👑 Ответ по памяти отправляет капитан вашей команды: <strong className="text-white underline">{leaderNickname || "Не назначен"}</strong>
+                </p>
+                <p className="text-xs text-gray-400">
+                  Совещайтесь в голосовом чате — ответ в игру вводит капитан!
+                </p>
+              </div>
+            )}
+
+            {!user.isAdmin && isLeader !== false && (
               <div className="space-y-4 pt-2 border-t border-white/10">
                 <div className="space-y-2">
                   <label className="text-xs font-black uppercase tracking-wider text-purple-300 flex items-center justify-between">
-                    <span>Ваш ответ по памяти:</span>
+                    <span>Ваш ответ по памяти (как капитан команды):</span>
                     {hasSubmitted && (
                       <span className="text-emerald-400 text-xs font-bold flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5" />
