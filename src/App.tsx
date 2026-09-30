@@ -5,13 +5,16 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, Play, Pause, SkipForward, Trash2, RotateCcw, CheckCircle2, XCircle, Users, Eye } from 'lucide-react';
+import { 
+  Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, 
+  Play, Pause, SkipForward, Trash2, RotateCcw, CheckCircle2, 
+  XCircle, Users, Eye, HelpCircle, ShieldCheck 
+} from 'lucide-react';
 import { AudioPlayer } from './components/AudioPlayer';
 import { AKINATOR_ANIME_LIST } from './data/akinatorAnime';
 import AkinatorRoundView from './components/AkinatorRoundView';
 import BingoRoundView from './components/BingoRoundView';
 import MemoryItemsRoundView from './components/MemoryItemsRoundView';
-import ThreeCharactersReviewCard from './components/ThreeCharactersReviewCard';
 import ThreeFactsRoundView from './components/ThreeFactsRoundView';
 import { generateBingoPool32, generateTeamBingoCard } from './data/bingoData';
 import { ROUND4_STAGES } from './data/round4Data';
@@ -636,7 +639,6 @@ export default function App() {
     return total;
   };
 
-  // ==================== REVEAL MODE LOGIC ====================
   useEffect(() => {
     if (!gameState?.revealMode || !gameState?.active) {
       setShowRevealMode(false);
@@ -645,17 +647,16 @@ export default function App() {
     setShowRevealMode(true);
     setRevealIdx(gameState.currentQuestion || 0);
   }, [gameState?.revealMode, gameState?.currentQuestion, gameState?.active]);
+
   const [hasAnswered, setHasAnswered] = useState(false);
   const [isChangingTeam, setIsChangingTeam] = useState(false);
   const [isDoubleChoice, setIsDoubleChoice] = useState(false);
   const [preloaderStatus, setPreloaderStatus] = useState("");
 
-  const timerRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const testAudioRef = useRef<HTMLAudioElement>(null);
   const [isTestingSound, setIsTestingSound] = useState(false);
 
-  // ==================== VOLUME LOGIC ====================
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.volume = volume;
@@ -667,7 +668,6 @@ export default function App() {
     }
   }, [volume, isMuted, gameState?.currentQuestion, gameState?.revealMode]);
 
-  // ==================== SESSION RESTORE ====================
   useEffect(() => {
     const saved = localStorage.getItem('quizUser');
     if (saved) {
@@ -681,7 +681,6 @@ export default function App() {
     preloadAssets();
   }, []);
 
-  // ==================== POLLING ====================
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -736,7 +735,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [user]);
 
-  // ==================== TIMER LOGIC ====================
   useEffect(() => {
     if (!gameState?.active || !user || gameState.roundFinished) {
       setTimeLeft(0);
@@ -783,7 +781,7 @@ export default function App() {
       setTimeLeft(diff);
 
       const currentRType = roundsData[gameState.currentRound]?.type;
-      if (user.isAdmin && diff <= 0 && !gameState.revealMode && currentRType !== "da_net" && currentRType !== "bingo" && (gameState.endTime > 0)) {
+      if (user.isAdmin && diff <= 0 && !gameState.revealMode && currentRType !== "da_net" && currentRType !== "bingo" && currentRType !== "memory_items" && (gameState.endTime > 0)) {
         startPauseBetweenQuestions();
       }
     };
@@ -793,7 +791,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [gameState?.active, gameState?.currentRound, gameState?.currentQuestion, gameState?.endTime, gameState?.timeLeft, globalPause?.active, pauseState?.active, gameState?.roundFinished, user?.isAdmin]);
 
-  // ==================== ANSWER CHECK LOGIC ====================
   useEffect(() => {
     if (!gameState?.active || !user || user.isAdmin) return;
     
@@ -819,7 +816,6 @@ export default function App() {
     checkAnswered();
   }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin]);
 
-  // ==================== HELPERS ====================
   const getAssetPath = (path: string) => {
     if (!path) return "";
     if (path.startsWith("http")) return path;
@@ -898,21 +894,12 @@ export default function App() {
     isDrivingReveal.current = true;
     await restPatch('gameState', { revealMode: true, currentQuestion: 0, active: true, currentRound: idx, showLeaderboard: false, endTime: null });
     
-    if (round.type === "akinator") {
+    if (round.type === "akinator" || round.type === "bingo") {
       for (let i = 0; i < round.questions.length; i++) {
         setGameState((prev: any) => ({ ...prev, currentQuestion: i }));
         await restPatch('gameState', { currentQuestion: i });
-        await new Promise(r => setTimeout(r, 12000));
+        await new Promise(r => setTimeout(r, 10000));
       }
-      await restPatch('gameState', { revealMode: false, active: false, roundFinished: true });
-      isDrivingReveal.current = false;
-      return;
-    }
-
-    if (round.type === "bingo") {
-      setGameState((prev: any) => ({ ...prev, currentQuestion: 0 }));
-      await restPatch('gameState', { currentQuestion: 0 });
-      await new Promise(r => setTimeout(r, 8000));
       await restPatch('gameState', { revealMode: false, active: false, roundFinished: true });
       isDrivingReveal.current = false;
       return;
@@ -921,8 +908,7 @@ export default function App() {
     for (let i = 0; i < round.questions.length; i++) {
       setGameState((prev: any) => ({ ...prev, currentQuestion: i }));
       await restPatch('gameState', { currentQuestion: i });
-      const duration = round.type === "video" ? 19000 : 14000;
-      await new Promise(r => setTimeout(r, duration));
+      await new Promise(r => setTimeout(r, 14000));
     }
     await restPatch('gameState', { revealMode: false, active: false, roundFinished: true });
     isDrivingReveal.current = false;
@@ -943,7 +929,7 @@ export default function App() {
     };
 
     if (round.type === "three_facts") {
-      newState.factsRevealed = 1; // Start with Fact 1 (5 pts)
+      newState.factsRevealed = 1;
     }
 
     if (round.type === "da_net") {
@@ -1027,10 +1013,8 @@ export default function App() {
 
   const nextRound9Team = async () => {
     if (!user?.isAdmin || gameState?.currentRound === undefined) return;
-    
     const currentTeam = gameState.currentTeamTurn || 0;
     let nextTeam = (currentTeam + 1) % TOTAL_TEAMS;
-    
     let attempts = 0;
     const teamHasPlayers = (tIdx: number) => Object.values(players).some((p: any) => p.team === tIdx);
     
@@ -1038,14 +1022,12 @@ export default function App() {
       nextTeam = (nextTeam + 1) % TOTAL_TEAMS;
       attempts++;
     }
-    
     await restPatch('gameState', { currentTeamTurn: nextTeam });
   };
 
   const markRound9Correct = async (teamIdx: number) => {
     if (!user?.isAdmin) return;
     const scoreKey = `round9_win`;
-    
     const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
     
     if (teamPlayers.length === 0) {
@@ -1106,7 +1088,7 @@ export default function App() {
                 pause: null
               };
               if (round.type === "three_facts") {
-                updateData.factsRevealed = 1; // Reset facts revealed to 1 for the new question
+                updateData.factsRevealed = 1;
               }
               if (round.type === "akinator" && latestGameState.akinator?.[`q${nextQ}`]?.teams) {
                 updateData["akinator/teams"] = latestGameState.akinator[`q${nextQ}`].teams;
@@ -1146,8 +1128,6 @@ export default function App() {
       potentialPoints = round.points;
     } else if (round.type === "test_round") {
       potentialPoints = 2;
-    } else if (round.type === "anime_info") {
-      potentialPoints = 3;
     } else if (round.type === "audio_guess") {
       potentialPoints = gameState.currentRound === 3 ? 2 : 3;
     }
@@ -1210,11 +1190,7 @@ export default function App() {
         if (roundIdx === 3) {
           finalPoints = basePoints > 0 ? 2 : 0;
         } else if (answerData.isDouble) {
-          if (basePoints > 0) {
-            finalPoints = basePoints * 2;
-          } else {
-            finalPoints = -2;
-          }
+          finalPoints = basePoints > 0 ? basePoints * 2 : -2;
         }
 
         await restPut(`players/${playerId}/scores/${scoreKey}`, finalPoints);
@@ -1227,7 +1203,6 @@ export default function App() {
         if (res.data) setPlayers(res.data);
       } catch (e) {
         console.error("Error marking answer:", e);
-        alert("Ошибка при сохранении оценки. Попробуйте еще раз.");
       }
     }
   };
@@ -1236,47 +1211,34 @@ export default function App() {
     playerId: string,
     roundIdx: number,
     qKey: string,
-    details: {
-      animeCorrect: boolean;
-      charsCorrect: boolean[];
-    }
+    animeCorrect: boolean,
+    charsCorrect: boolean[]
   ) => {
     const p = players[playerId];
     if (!p) return;
     const scoreKey = `${roundIdx}_${qKey}`;
     try {
-      const answerData = p.roundAnswers?.[roundIdx]?.[qKey] || {};
-      let basePoints = details.animeCorrect ? 2 : 0;
-      details.charsCorrect.forEach(c => {
+      let basePoints = animeCorrect ? 2 : 0;
+      charsCorrect.forEach(c => {
         if (c) basePoints += 1;
       });
 
-      let finalPoints = basePoints;
-      if (answerData.isDouble) {
-        if (basePoints > 0) {
-          finalPoints = basePoints * 2;
-        } else {
-          finalPoints = -2;
-        }
-      }
-
-      await restPut(`players/${playerId}/scores/${scoreKey}`, finalPoints);
+      await restPut(`players/${playerId}/scores/${scoreKey}`, basePoints);
       await restPatch(`players/${playerId}/roundAnswers/${roundIdx}/${qKey}`, {
         checked: true,
-        animeApproved: details.animeCorrect,
-        charApproved: details.charsCorrect,
-        awardedPoints: finalPoints
+        animeApproved: animeCorrect,
+        charApproved: charsCorrect,
+        pointsAwarded: basePoints
       });
 
       const res = await restGet('players');
       if (res.data) setPlayers(res.data);
     } catch (e) {
       console.error("Error marking three characters answer:", e);
-      alert("Ошибка при сохранении оценки. Попробуйте еще раз.");
     }
   };
 
-  // ==================== RENDER ====================
+  // ==================== РЕНДЕР ====================
   if (!user || isChangingTeam) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -1420,184 +1382,10 @@ export default function App() {
         onEnded={() => setIsTestingSound(false)}
       />
 
-      {/* Leaderboard Overlay */}
-      {gameState?.showLeaderboard && (
-        <div className="fixed inset-0 z-[110] bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 overflow-hidden">
-          <div className="absolute inset-0 opacity-20">
-            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,#3b0764_0%,transparent_70%)]" />
-          </div>
-          
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="relative z-10 max-w-4xl w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-8 md:p-12 shadow-2xl"
-          >
-            <div className="text-center mb-12">
-              <motion.div
-                initial={{ y: -20 }}
-                animate={{ y: 0 }}
-                className="inline-block bg-purple-500/20 px-6 py-2 rounded-full border border-purple-500/30 mb-4"
-              >
-                <span className="text-purple-400 font-black uppercase tracking-widest text-sm">Финальные результаты</span>
-              </motion.div>
-              <h2 className="text-5xl md:text-7xl font-black text-white uppercase tracking-tighter italic">Таблица Лидеров</h2>
-            </div>
-
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-4 custom-scrollbar">
-              {Object.entries(players)
-                .sort((a, b) => getPlayerScore(b[1]) - getPlayerScore(a[1]))
-                .map(([id, p]: [string, any], idx, arr) => {
-                  const isWinner = idx === 0;
-                  return (
-                    <motion.div 
-                      key={id}
-                      initial={{ x: -50, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      transition={{ delay: idx * 0.1 }}
-                      className={`flex items-center justify-between p-6 rounded-2xl border transition-all ${
-                        isWinner 
-                        ? 'bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-500/50 shadow-lg shadow-yellow-500/10' 
-                        : 'bg-white/5 border-white/10 hover:bg-white/10'
-                      }`}
-                    >
-                      <div className="flex items-center gap-6">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-xl ${
-                          isWinner ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white/50'
-                        }`}>
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-2xl font-bold text-white">{p.nickname}</h3>
-                            {isWinner && <Crown className="w-6 h-6 text-yellow-500 fill-yellow-500" />}
-                          </div>
-                          <p className="text-sm text-gray-400 font-medium uppercase tracking-wider">Команда #{p.team}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        {user.isAdmin && (
-                          <>
-                            <div className={`text-4xl font-black ${isWinner ? 'text-yellow-500' : 'text-blue-400'}`}>
-                              {getPlayerScore(p)}
-                            </div>
-                            <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">баллов</p>
-                          </>
-                        )}
-                      </div>
-                    </motion.div>
-                  );
-                })}
-            </div>
-
-            {user?.isAdmin && (
-              <button 
-                onClick={toggleLeaderboard}
-                className="mt-12 w-full bg-white/10 hover:bg-white/20 py-4 rounded-2xl font-bold text-white transition-all uppercase tracking-widest border border-white/10"
-              >
-                Закрыть таблицу
-              </button>
-            )}
-          </motion.div>
-        </div>
-      )}
-
-      {/* Reveal Mode Overlay */}
-      {gameState?.revealMode && (
-        <div className={`fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center p-8 ${user?.isAdmin ? 'pb-80' : ''}`}>
-          <div className="absolute top-8 right-8 z-[110] flex items-center gap-4 glass px-6 py-3 rounded-full border border-white/10">
-            <div onClick={() => setIsMuted(!isMuted)} className="cursor-pointer hover:scale-110 transition-transform">
-              {isMuted || volume === 0 ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5 text-purple-400" />}
-            </div>
-            <input 
-              type="range" 
-              min="0" max="1" step="0.01" 
-              value={volume} 
-              onChange={(e) => setVolume(parseFloat(e.target.value))}
-              className="w-32 h-1 bg-white/10 rounded-full appearance-none cursor-pointer accent-purple-500"
-            />
-          </div>
-
-          <div className="max-w-4xl w-full space-y-8 text-center" key={gameState.currentQuestion}>
-            <h2 className="text-3xl font-black text-purple-400 uppercase tracking-widest mb-8">Правильные ответы</h2>
-            
-            {roundsData[gameState.currentRound]?.type === "three_facts" && (
-              <div className="max-w-3xl mx-auto space-y-4 text-left">
-                <div className="bg-white/5 p-6 rounded-3xl border border-white/10 space-y-3">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-purple-400">Факты:</h4>
-                  {roundsData[gameState.currentRound].questions[gameState.currentQuestion].facts?.map((f: string, i: number) => (
-                    <div key={i} className="p-3 bg-black/40 rounded-xl border border-white/5 text-sm text-gray-200">
-                      <span className="font-bold text-purple-300 mr-2">#{i + 1}:</span> {f}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <motion.div 
-              key={`ans-${gameState.currentQuestion}`}
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              className="bg-white/10 p-8 rounded-3xl border border-white/20"
-            >
-              <p className="text-gray-400 uppercase text-sm font-bold mb-2">Верный ответ:</p>
-              <p className="text-5xl font-black text-white drop-shadow-lg mb-4">
-                {roundsData[gameState.currentRound]?.questions[gameState.currentQuestion]?.correctAnswer}
-              </p>
-            </motion.div>
-
-            <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
-              <motion.div 
-                key={`timer-${gameState.currentQuestion}`}
-                initial={{ width: "100%" }}
-                animate={{ width: "0%" }}
-                transition={{ duration: 14, ease: "linear" }}
-                className="bg-purple-500 h-full"
-              />
-            </div>
-          </div>
-
-          {/* Admin Controls during Reveal */}
-          {user?.isAdmin && (
-            <div className="fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-md border-t border-white/10 p-6 z-[101]">
-              <div className="max-w-6xl mx-auto flex flex-col gap-6">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-purple-400" /> Панель управления показом
-                  </h3>
-                  <div className="flex gap-4">
-                    <button 
-                      onClick={resetGame}
-                      className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl transition-all font-bold text-sm uppercase tracking-widest flex items-center gap-2"
-                    >
-                      <RotateCcw className="w-4 h-4" /> Сбросить игру
-                    </button>
-                    <button 
-                      onClick={() => restPatch('gameState', { revealMode: false, active: false })}
-                      className="bg-white/10 hover:bg-white/20 text-white px-6 py-2 rounded-xl border border-white/10 transition-all font-bold text-sm uppercase tracking-widest"
-                    >
-                      Остановить показ
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Main Content */}
+      {/* Main Content Area */}
       <main className="min-h-[500px]">
         {(() => {
           const round = gameState?.active ? roundsData[gameState.currentRound] : null;
-
-          if (reviewState?.active) {
-            return (
-              <div className="bg-black/50 p-8 rounded-3xl">
-                <h2 className="text-2xl font-bold mb-4">Разбор ответов: {roundsData[reviewState.roundIndex].name}</h2>
-                <p className="text-xl">Слайд {reviewState.currentSlide + 1} из {reviewState.totalSlides}</p>
-              </div>
-            );
-          }
 
           if (pauseState?.active) {
             return (
@@ -1624,7 +1412,7 @@ export default function App() {
             const currentQuestion = round.questions[currentQIdx];
 
             if (!currentQuestion) {
-              return <div className="text-center py-20">Вопрос не найден...</div>;
+              return <div className="text-center py-20 text-white">Вопрос загружается...</div>;
             }
 
             return (
@@ -1638,7 +1426,308 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Round 4: Memory Items */}
+                {/* Раунд 1: Три персонажа */}
+                {round.type === "three_characters" && (
+                  <div className="space-y-6 max-w-5xl mx-auto">
+                    <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center shadow-lg">
+                      <p className="text-gray-400 text-xs uppercase tracking-widest font-black mb-1">
+                        Вопрос {currentQIdx + 1} из {round.questions.length} • Правильный ответ: +2 балла за аниме, +1 за каждого персонажа
+                      </p>
+                      <h3 className="text-lg md:text-xl font-bold text-white">
+                        Угадайте аниме по трем персонажам:
+                      </h3>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
+                      {currentQuestion.images?.slice(0, 3).map((img, idx) => {
+                        const charName = currentQuestion.characterNames?.[idx];
+                        return (
+                          <div 
+                            key={`${currentQIdx}_${idx}`}
+                            className="glass-dark rounded-3xl overflow-hidden border-2 border-purple-500/30 shadow-2xl relative flex flex-col"
+                          >
+                            <div className="aspect-[3/4] w-full overflow-hidden bg-black/40 relative">
+                              <img 
+                                src={getAssetPath(img)} 
+                                alt={`Персонаж ${idx + 1}`} 
+                                className="w-full h-full object-cover object-top"
+                                onError={(e) => { 
+                                  (e.target as HTMLImageElement).src = `https://picsum.photos/seed/char${currentQIdx}_${idx}/400/550`; 
+                                }}
+                              />
+                              <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-3 py-1 rounded-xl text-xs font-black text-purple-300 border border-purple-500/30 shadow-lg">
+                                Персонаж #{idx + 1}
+                              </div>
+                            </div>
+
+                            {!user.isAdmin && (
+                              <div className="p-3.5 bg-slate-900/95 border-t border-purple-500/30 space-y-1.5 flex-1 flex flex-col justify-end">
+                                <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider">
+                                  <span className="text-purple-300">Имя персонажа:</span>
+                                  <span className="text-amber-400 font-bold bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20 text-[10px]">
+                                    +1 балл
+                                  </span>
+                                </div>
+                                <input
+                                  type="text"
+                                  placeholder="Имя героя..."
+                                  value={charGuesses[idx] || ""}
+                                  onChange={(e) => {
+                                    const val = e.target.value.slice(0, 40);
+                                    setCharGuesses(prev => {
+                                      const next = [...prev];
+                                      next[idx] = val;
+                                      return next;
+                                    });
+                                  }}
+                                  onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
+                                  disabled={hasAnswered}
+                                  maxLength={40}
+                                  className="w-full bg-black/60 border border-purple-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-400 disabled:opacity-75 disabled:bg-purple-950/20 transition-all font-medium"
+                                />
+                              </div>
+                            )}
+
+                            {user.isAdmin && charName && (
+                              <div className="p-3 bg-purple-950/90 border-t border-purple-500/40 text-center">
+                                <p className="text-[10px] text-purple-300 uppercase font-black tracking-wider mb-0.5">Персонаж #{idx + 1}:</p>
+                                <span className="text-xs font-black text-amber-300 leading-snug block">{charName}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    
+                    {!user.isAdmin && (
+                      <div className="max-w-xl mx-auto space-y-3">
+                        <div className="bg-slate-900/80 p-5 rounded-3xl border border-white/10 shadow-2xl space-y-3">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-black uppercase tracking-wider text-purple-300">
+                              Название аниме:
+                            </label>
+                            <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                              +2 балла
+                            </span>
+                          </div>
+                          <input 
+                            type="text"
+                            className="answer-input w-full"
+                            placeholder="Введите название тайтла..."
+                            value={answerText}
+                            onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                            onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
+                            disabled={hasAnswered}
+                            maxLength={50}
+                          />
+                          <button 
+                            onClick={() => submitAnswer()}
+                            disabled={hasAnswered || (!answerText.trim() && !charGuesses.some(g => g.trim()))}
+                            className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition-all shadow-lg ${
+                              hasAnswered 
+                                ? 'bg-green-600/80 text-white cursor-default' 
+                                : 'bg-gradient-to-r from-red-500 via-pink-600 to-purple-600 hover:from-red-600 hover:to-purple-700 active:scale-95 text-white disabled:opacity-40 cursor-pointer'
+                            }`}
+                          >
+                            {hasAnswered ? 'ОТВЕТЫ ПРИНЯТЫ ✅' : 'ОТПРАВИТЬ ОТВЕТЫ (+2 б. за аниме, +1 б. за героя)'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {user.isAdmin && (
+                      <div className="mt-8 bg-slate-900/90 p-5 rounded-3xl border border-purple-500/30 space-y-4 shadow-2xl">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+                          <h4 className="text-sm font-black text-white uppercase tracking-wider">
+                            📋 Ответы игроков (Вопрос {currentQIdx + 1})
+                          </h4>
+                          <span className="text-xs text-green-400 font-bold bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/20">
+                            Правильный тайтл: {currentQuestion.correctAnswer}
+                          </span>
+                        </div>
+
+                        <div className="space-y-3">
+                          {Object.entries(players)
+                            .filter(([_, p]: [string, any]) => p.roundAnswers?.[gameState.currentRound]?.[`q${currentQIdx}`]?.answered)
+                            .map(([pId, p]: [string, any]) => {
+                              const ansData = p.roundAnswers[gameState.currentRound][`q${currentQIdx}`];
+                              return (
+                                <div key={pId} className="p-3.5 bg-black/40 rounded-2xl border border-white/10 flex items-center justify-between gap-4">
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold text-white">{p.nickname}</span>
+                                      <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded uppercase">К{p.team + 1}</span>
+                                    </div>
+                                    <p className="text-xs text-purple-200 mt-1">Аниме: <span className="font-bold text-white">«{ansData.answer || "—"}»</span></p>
+                                    <p className="text-[11px] text-gray-400">Персонажи: {(ansData.characters || []).join(", ") || "—"}</p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <button 
+                                      onClick={() => markThreeCharactersAnswer(pId, gameState.currentRound, `q${currentQIdx}`, true, [true, true, true])}
+                                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white text-xs font-bold transition-all cursor-pointer"
+                                    >
+                                      Все верно (+5)
+                                    </button>
+                                    <button 
+                                      onClick={() => markThreeCharactersAnswer(pId, gameState.currentRound, `q${currentQIdx}`, true, [false, false, false])}
+                                      className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-white text-xs font-bold transition-all cursor-pointer"
+                                    >
+                                      Только аниме (+2)
+                                    </button>
+                                    <button 
+                                      onClick={() => markThreeCharactersAnswer(pId, gameState.currentRound, `q${currentQIdx}`, false, [false, false, false])}
+                                      className="px-2 py-1.5 bg-red-600 hover:bg-red-500 rounded-xl text-white text-xs font-bold transition-all cursor-pointer"
+                                    >
+                                      0
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <div className="bg-green-500/20 p-5 rounded-2xl border border-green-500/50 text-center max-w-xl mx-auto shadow-xl">
+                        <p className="text-gray-400 text-xs uppercase tracking-widest font-black mb-1">Правильный ответ:</p>
+                        <h3 className="text-2xl md:text-3xl font-black text-green-400">{currentQuestion.correctAnswer}</h3>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Раунд 2 & 6: Тест-викторины (ПОЛНОСТЬЮ РАБОТАЕТ И ДЛЯ ИГРОКА, И ДЛЯ ВЕДУЩЕГО!) */}
+                {round.type === "quiz_six" && (
+                  <div className="space-y-6 max-w-4xl mx-auto">
+                    <div className="bg-white/5 p-6 rounded-2xl border border-white/10 text-center shadow-lg">
+                      <p className="text-gray-400 text-xs mb-2 uppercase tracking-widest font-bold">Вопрос {currentQIdx + 1}:</p>
+                      <h3 className="text-xl md:text-2xl leading-relaxed font-bold text-white">{currentQuestion.text}</h3>
+                    </div>
+                    
+                    {/* Вид для игроков: кликабельные кнопки ответов */}
+                    {!user.isAdmin && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {currentQuestion.options?.map((opt: string, idx: number) => {
+                          const isSelected = answerText === opt;
+                          return (
+                            <button
+                              key={idx}
+                              onClick={() => {
+                                if (hasAnswered || user.isAdmin) return;
+                                setAnswerText(opt);
+                                submitAnswer(opt);
+                              }}
+                              disabled={hasAnswered || user.isAdmin}
+                              className={`p-5 rounded-2xl text-left font-medium text-base transition-all border-2 flex items-start gap-3 cursor-pointer ${
+                                hasAnswered && isSelected 
+                                  ? 'bg-purple-600/30 border-purple-400 text-purple-200' 
+                                  : 'bg-white/5 border-white/10 hover:bg-white/10 text-gray-200 active:scale-95'
+                              }`}
+                            >
+                              <div className="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center font-mono text-xs shrink-0">{idx + 1}</div>
+                              <span>{opt}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Вид для ведущего: видит все 6 вариантов с зеленым правильным ответом */}
+                    {user.isAdmin && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {currentQuestion.options?.map((opt: string, idx: number) => {
+                            const isCorrect = opt === currentQuestion.correctAnswer;
+                            return (
+                              <div
+                                key={idx}
+                                className={`p-4 rounded-2xl border-2 flex items-start gap-3 transition-all ${
+                                  isCorrect 
+                                    ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200 shadow-lg shadow-emerald-950/30' 
+                                    : 'bg-black/30 border-white/10 text-gray-400'
+                                }`}
+                              >
+                                <span className={`w-6 h-6 rounded-full flex items-center justify-center font-mono text-xs shrink-0 ${
+                                  isCorrect ? 'bg-emerald-600 text-white font-black' : 'border border-white/20'
+                                }`}>
+                                  {idx + 1}
+                                </span>
+                                <div className="text-sm font-medium">
+                                  {opt}
+                                  {isCorrect && (
+                                    <span className="block text-[10px] text-emerald-400 font-black uppercase tracking-wider mt-1">
+                                      ✓ Правильный ответ (+4 балла)
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <div className="p-6 bg-green-500/10 border border-green-500/30 rounded-2xl text-center">
+                        <p className="text-xs uppercase tracking-widest text-green-400 mb-1 font-bold">Правильный ответ:</p>
+                        <h4 className="text-2xl font-black text-green-400">{currentQuestion.correctAnswer}</h4>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Раунд 3: Аудио */}
+                {round.type === "audio_guess" && (
+                  <div className="space-y-8 max-w-xl mx-auto text-center">
+                    {currentQuestion.text && (
+                      <h3 className="text-xl md:text-2xl font-bold text-white bg-white/5 py-3 px-6 rounded-2xl border border-white/10">
+                        {currentQuestion.text}
+                      </h3>
+                    )}
+                    
+                    <AudioPlayer src={getAssetPath(currentQuestion.audio || "")} isMuted={isMuted} volume={volume} />
+
+                    {/* Поле для ответа игрока */}
+                    {!user.isAdmin && (
+                      <div className="space-y-4">
+                        <input 
+                          type="text"
+                          className="answer-input w-full text-center"
+                          placeholder="Ваш ответ (название аниме)..."
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          disabled={hasAnswered}
+                          maxLength={50}
+                        />
+                        <button 
+                          onClick={() => submitAnswer()}
+                          disabled={hasAnswered}
+                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${hasAnswered ? 'bg-green-600/80 cursor-default text-white' : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer active:scale-95'}`}
+                        >
+                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : 'ОТПРАВИТЬ ОТВЕТ'}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Подсказка для ведущего */}
+                    {user.isAdmin && (
+                      <div className="p-4 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl text-center">
+                        <span className="text-[11px] font-black uppercase text-emerald-400 tracking-wider">Ответ ведущему:</span>
+                        <p className="text-xl font-black text-white mt-1">{currentQuestion.correctAnswer}</p>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <div className="bg-green-500/20 p-6 rounded-2xl border border-green-500/50 text-center max-w-md mx-auto">
+                        <p className="text-gray-400 text-sm uppercase mb-1">Правильный ответ:</p>
+                        <h3 className="text-2xl font-black text-green-400">{currentQuestion.correctAnswer}</h3>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Раунд 4: Фото-память */}
                 {round.type === "memory_items" && (
                   <MemoryItemsRoundView
                     user={user}
@@ -1651,7 +1740,7 @@ export default function App() {
                   />
                 )}
 
-                {/* Round 5: Three Facts */}
+                {/* Раунд 5: Три факта */}
                 {round.type === "three_facts" && (
                   <ThreeFactsRoundView
                     user={user}
@@ -1665,7 +1754,7 @@ export default function App() {
                   />
                 )}
 
-                {/* Round 7: Akinator (AI) */}
+                {/* Раунд 7: Акинатор */}
                 {round.type === "akinator" && (
                   <AkinatorRoundView
                     user={user}
@@ -1678,7 +1767,7 @@ export default function App() {
                   />
                 )}
 
-                {/* Round 8: Bingo */}
+                {/* Раунд 8: Бинго */}
                 {round.type === "bingo" && (
                   <BingoRoundView
                     user={user}
@@ -1705,7 +1794,7 @@ export default function App() {
                   const teamPlayers = Object.values(players).filter((p: any) => p.team === t).map((p: any) => p.nickname);
                   const score = Object.values(players).filter((p: any) => p.team === t).reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
                   return (
-                    <div key={t} className="glass p-6 rounded-3xl border-t-4 border-purple-500 shadow-xl transition-all hover:translate-y-[-4px]">
+                    <div key={t} className="glass p-6 rounded-3xl border-t-4 border-purple-500 shadow-xl">
                       <div className="text-xs text-gray-400 mb-2 font-black uppercase tracking-widest">Команда {t + 1}</div>
                       {user.isAdmin && <div className="text-3xl font-black text-purple-400 mb-2">{score}</div>}
                       <div className="mt-2 text-[10px] text-gray-500 font-medium leading-relaxed">{teamPlayers.join(', ') || <span className="italic opacity-30">пусто</span>}</div>
@@ -1718,7 +1807,7 @@ export default function App() {
         })()}
       </main>
 
-      {/* Admin Panel */}
+      {/* Панель ведущего */}
       {user.isAdmin && (
         <div className="mt-12 pt-8 border-t-2 border-red-500/30">
           <div className="flex items-center gap-2 mb-6 text-red-400">
@@ -1744,7 +1833,7 @@ export default function App() {
             </div>
 
             <div className="bg-black/40 p-6 rounded-3xl space-y-6">
-              <h3 className="text-lg font-bold flex items-center gap-2"><Settings className="w-4 h-4" /> Управление текущим вопросом</h3>
+              <h3 className="text-lg font-bold flex items-center gap-2"><Settings className="w-4 h-4" /> Управление вопросом</h3>
               <div className="flex flex-wrap gap-4">
                 <button 
                   onClick={toggleShowAnswer}
@@ -1792,47 +1881,42 @@ export default function App() {
                   <SkipForward className="w-4 h-4" /> ПРОПУСТИТЬ ВОПРОС
                 </button>
                 <button 
-                  onClick={async () => {
-                    if (confirm("Сбросить игру?")) {
-                      await Promise.all([
-                        restPut('gameState', { reset: true, active: false }),
-                        restDelete('players')
-                      ]);
-                      await new Promise(r => setTimeout(r, 1500));
-                      await restPatch('gameState', { reset: false });
-                      localStorage.removeItem('quizUser');
-                      window.location.reload();
-                    }
-                  }}
+                  onClick={resetGame}
                   className="bg-gray-700 hover:bg-gray-800 px-6 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" /> СБРОС
                 </button>
               </div>
 
-              {/* Main Answers Queue */}
+              {/* ОЧЕРЕДЬ ОТВЕТОВ: НЕ ТЕРЯЕТ ОТВЕТЫ ПРИ СМЕНЕ РАУНДОВ! */}
               <div className="mt-8">
-                <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">Очередь ответов (Раунд {gameState?.currentRound + 1}):</h4>
+                <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">
+                  Очередь непроверенных ответов (Все раунды):
+                </h4>
                 <div className="max-h-80 overflow-y-auto space-y-2 custom-scrollbar">
                   {Object.entries(players).flatMap(([id, p]: [string, any]) => {
-                    const roundAnswers = p.roundAnswers?.[gameState?.currentRound] || {};
-                    return Object.entries(roundAnswers)
-                      .filter(([_, ans]: [any, any]) => !ans.checked)
-                      .map(([qKey, ans]: [string, any]) => ({ id, p, qKey, ans }));
+                    const allRoundsAnswers = p.roundAnswers || {};
+                    return Object.entries(allRoundsAnswers).flatMap(([rIdxStr, rAnswers]: [string, any]) => {
+                      const rIdx = parseInt(rIdxStr);
+                      if (!rAnswers || typeof rAnswers !== 'object') return [];
+                      return Object.entries(rAnswers)
+                        .filter(([_, ans]: [any, any]) => ans && ans.answered && !ans.checked)
+                        .map(([qKey, ans]: [string, any]) => ({ id, p, roundIdx: rIdx, qKey, ans }));
+                    });
                   })
                   .sort((a, b) => (a.ans.timestamp || 0) - (b.ans.timestamp || 0))
-                  .map(({ id, p, qKey, ans }) => {
+                  .map(({ id, p, roundIdx, qKey, ans }) => {
                     const qIdx = parseInt(qKey.replace('q',''));
-                    const currentRType = roundsData[gameState.currentRound]?.type;
+                    const targetRound = roundsData[roundIdx];
+                    const currentRType = targetRound?.type;
 
-                    let questionBadge = `Вопрос ${qIdx + 1}`;
-                    let correctAns = roundsData[gameState.currentRound]?.questions[qIdx]?.correctAnswer;
+                    let questionBadge = `Раунд ${roundIdx + 1} • В${qIdx + 1}`;
+                    let correctAns = targetRound?.questions[qIdx]?.correctAnswer;
 
                     if (currentRType === "three_facts") {
                       const qData = ROUND5_QUESTIONS[qIdx];
                       correctAns = qData?.animeTitle || correctAns;
-                      const factAt = ans?.factsRevealedAtAnswer || 1;
-                      questionBadge = `В${qIdx + 1} • ${factAt}-й факт`;
+                      questionBadge = `Р5 • В${qIdx + 1} (${ans?.factsRevealedAtAnswer || 1}-й факт)`;
                     }
 
                     if (qKey.startsWith("stage")) {
@@ -1840,22 +1924,19 @@ export default function App() {
                       if (match) {
                         const sIdx = parseInt(match[1]);
                         const sqIdx = parseInt(match[2]);
-                        questionBadge = `Фото ${sIdx + 1} • В${sqIdx + 1}`;
+                        questionBadge = `Р4 • Фото ${sIdx + 1} • В${sqIdx + 1}`;
                         const subQ = ROUND4_STAGES[sIdx]?.subQuestions[sqIdx];
-                        if (subQ) {
-                          correctAns = subQ.correctAnswer;
-                        }
+                        if (subQ) correctAns = subQ.correctAnswer;
                       }
                     }
-                    
-                    const isRound3 = gameState.currentRound === 3;
-                    const hasDouble = !isRound3 && !!ans.isDouble;
+
+                    const isRound3 = roundIdx === 3;
                     const basePts = isRound3 
                       ? 2 
-                      : (currentRType === "memory_items" ? 5 : (ans.potentialPoints ?? roundsData[gameState.currentRound]?.points ?? 2));
+                      : (currentRType === "memory_items" ? 5 : (ans.potentialPoints ?? targetRound?.points ?? 2));
 
                     return (
-                      <div key={`${id}-${qKey}`} className="bg-white/5 p-3 rounded-lg flex justify-between items-center border-l-4 border-purple-500">
+                      <div key={`${id}-${roundIdx}-${qKey}`} className="bg-white/5 p-3 rounded-lg flex justify-between items-center border-l-4 border-purple-500">
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <span className="font-bold text-xs">{p.nickname}</span>
@@ -1864,30 +1945,37 @@ export default function App() {
                               {questionBadge}
                             </span>
                           </div>
-                          <p className="text-sm text-blue-300 mt-1">Ответ игрока: <span className="font-bold">{ans.answer}</span></p>
+                          <p className="text-sm text-blue-300 mt-1">Ответ: <span className="font-bold">{ans.answer}</span></p>
                           <p className="text-[10px] text-green-400 mt-0.5 uppercase tracking-wider">
                             Правильный: <span className="font-bold">{correctAns || "—"}</span>
                           </p>
                         </div>
                         <div className="flex gap-2 ml-4">
                           <button 
-                            onClick={() => markAnswer(id, gameState.currentRound, qKey, basePts)} 
+                            onClick={() => markAnswer(id, roundIdx, qKey, basePts)} 
                             className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px] cursor-pointer"
                           >
                             <CheckCircle2 className="text-green-500 w-5 h-5" />
-                            <span className="text-[10px] font-bold">+{hasDouble ? basePts * 2 : basePts}</span>
+                            <span className="text-[10px] font-bold">+{basePts}</span>
                           </button>
                           <button 
-                            onClick={() => markAnswer(id, gameState.currentRound, qKey, 0)} 
+                            onClick={() => markAnswer(id, roundIdx, qKey, 0)} 
                             className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px] cursor-pointer"
                           >
                             <XCircle className="text-red-500 w-5 h-5" />
-                            <span className="text-[10px] font-bold">{hasDouble ? -2 : 0}</span>
+                            <span className="text-[10px] font-bold">0</span>
                           </button>
                         </div>
                       </div>
                     );
                   })}
+                  {Object.values(players).every((p: any) => 
+                    !p.roundAnswers || Object.values(p.roundAnswers).every((rAns: any) => 
+                      !rAns || Object.values(rAns).every((a: any) => a.checked)
+                    )
+                  ) && (
+                    <p className="text-center text-gray-500 py-4 text-xs italic">Нет непроверенных ответов</p>
+                  )}
                 </div>
               </div>
             </div>
