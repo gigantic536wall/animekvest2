@@ -1,8 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  Sparkles, Clock, Send, CheckCircle2, XCircle, 
-  Eye, Lock, ShieldCheck, ChevronRight, Award, Trophy
+  Clock, Send, CheckCircle2, Lock, ChevronRight, Trophy
 } from "lucide-react";
 import { ROUND5_QUESTIONS, ThreeFactsQuestion } from "../data/round5Data";
 
@@ -29,10 +28,8 @@ export default function ThreeFactsRoundView({
   const currentQIdx = gameState.currentQuestion ?? 0;
   const questionData: ThreeFactsQuestion = ROUND5_QUESTIONS[currentQIdx] || ROUND5_QUESTIONS[0];
   
-  // factsRevealed: 1 (open Fact 1: 5 pts), 2 (open Fact 1 & 2: 4 pts), 3 (all 3 facts: 3 pts)
+  // factsRevealed: 1 (5 б.), 2 (4 б.), 3 (3 б.)
   const factsRevealed = Math.min(3, Math.max(1, gameState.factsRevealed || 1));
-
-  // Points based on how many facts are revealed
   const currentPoints = factsRevealed === 1 ? 5 : (factsRevealed === 2 ? 4 : 3);
 
   const [answerInput, setAnswerInput] = useState("");
@@ -42,28 +39,35 @@ export default function ThreeFactsRoundView({
   const storageKey = `q${currentQIdx}`;
   const answerStoragePath = `players/${user?.id}/roundAnswers/${gameState.currentRound || 4}/${storageKey}`;
 
-  // Check if player has already submitted for this question
+  // СБРОС ТОЛЬКО ПРИ СМЕНЕ ВОПРОСА (больше не стирает текст во время ввода!)
+  const prevQIdxRef = useRef<number>(currentQIdx);
+  useEffect(() => {
+    if (prevQIdxRef.current !== currentQIdx) {
+      prevQIdxRef.current = currentQIdx;
+      setAnswerInput("");
+      setHasSubmitted(false);
+      setSubmittedPoints(null);
+    }
+  }, [currentQIdx]);
+
+  // Проверка: отправил ли игрок уже ответ (не перезаписывает ввод, если игрок еще пишет)
   useEffect(() => {
     const existing = players?.[user?.id]?.roundAnswers?.[gameState.currentRound || 4]?.[storageKey];
     if (existing?.answered) {
       setHasSubmitted(true);
       setAnswerInput(existing.answer || "");
       setSubmittedPoints(existing.potentialPoints || 5);
-    } else {
-      setHasSubmitted(false);
-      setAnswerInput("");
-      setSubmittedPoints(null);
     }
-  }, [currentQIdx, user?.id, players, gameState.currentRound, storageKey]);
+  }, [players, user?.id, gameState.currentRound, storageKey]);
 
-  // Host Action: Reveal next fact (reducing current question value by 1 pt)
+  // Открытие следующего факта ведущим (5 ➔ 4 ➔ 3)
   const handleRevealNextFact = async () => {
     if (!user.isAdmin || factsRevealed >= 3) return;
     const nextRevealed = factsRevealed + 1;
     await restPatch("gameState", { factsRevealed: nextRevealed });
   };
 
-  // Host Action: Mark Answer
+  // Оценка ответа ведущим
   const handleMarkAnswer = async (playerId: string, isCorrect: boolean, basePoints: number) => {
     if (!user.isAdmin) return;
     const scoreKey = `${gameState.currentRound || 4}_${storageKey}`;
@@ -75,7 +79,7 @@ export default function ThreeFactsRoundView({
     });
   };
 
-  // Player Submit
+  // Отправка ответа игроком
   const handlePlayerSubmit = async () => {
     const text = answerInput.trim();
     if (!text || hasSubmitted || user.isAdmin) return;
@@ -101,7 +105,7 @@ export default function ThreeFactsRoundView({
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6">
-      {/* ==================== HEADER BAR ==================== */}
+      {/* Шапка раунда */}
       <div className="bg-gradient-to-r from-purple-900/90 via-slate-900/90 to-indigo-900/90 p-5 rounded-3xl border border-purple-500/30 shadow-2xl backdrop-blur-xl">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -124,7 +128,6 @@ export default function ThreeFactsRoundView({
             </h2>
           </div>
 
-          {/* Central Timer & Points Badge */}
           <div className="flex items-center gap-3">
             <div className={`px-5 py-2.5 rounded-2xl border font-mono font-black text-2xl sm:text-3xl shadow-lg flex items-center gap-2 transition-all ${
               isPaused 
@@ -147,7 +150,7 @@ export default function ThreeFactsRoundView({
         </div>
       </div>
 
-      {/* ==================== 3 FACTS CARDS ==================== */}
+      {/* 3 карточки фактов */}
       <div className="space-y-4">
         {questionData.facts.map((factText, idx) => {
           const factNumber = idx + 1;
@@ -212,7 +215,7 @@ export default function ThreeFactsRoundView({
         })}
       </div>
 
-      {/* ==================== PLAYER INPUT SECTION ==================== */}
+      {/* Поле ввода для игроков */}
       {!user.isAdmin && (
         <div className="bg-slate-900/90 border-2 border-purple-500/30 rounded-3xl p-6 shadow-2xl space-y-4 backdrop-blur-xl">
           <div className="flex items-center justify-between">
@@ -235,7 +238,7 @@ export default function ThreeFactsRoundView({
             <input
               type="text"
               value={answerInput}
-              onChange={(e) => !hasSubmitted && setAnswerInput(e.target.value.slice(0, 80))}
+              onChange={(e) => setAnswerInput(e.target.value.slice(0, 80))}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !hasSubmitted) handlePlayerSubmit();
               }}
@@ -269,7 +272,7 @@ export default function ThreeFactsRoundView({
         </div>
       )}
 
-      {/* ==================== REVEALED ANSWER (SHOW ANSWER) ==================== */}
+      {/* Показ ответа ведущим */}
       {(gameState.showAnswer || gameState.roundFinished) && (
         <motion.div
           initial={{ opacity: 0, y: 15 }}
@@ -286,7 +289,7 @@ export default function ThreeFactsRoundView({
         </motion.div>
       )}
 
-      {/* ==================== ADMIN CONTROL PANEL ==================== */}
+      {/* Панель ведущего */}
       {user.isAdmin && (
         <div className="bg-slate-900/95 p-6 rounded-3xl border border-purple-500/30 space-y-6 shadow-2xl">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
@@ -302,7 +305,6 @@ export default function ThreeFactsRoundView({
               </p>
             </div>
 
-            {/* Fact Revealer Button */}
             {factsRevealed < 3 && (
               <button
                 onClick={handleRevealNextFact}
@@ -314,7 +316,6 @@ export default function ThreeFactsRoundView({
             )}
           </div>
 
-          {/* Quick Review of Team Answers for this question */}
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs">
               <span className="font-black text-purple-300 uppercase tracking-wider">
