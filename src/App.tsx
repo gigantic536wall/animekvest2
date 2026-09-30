@@ -2118,15 +2118,18 @@ export default function App() {
                 )}
 
                 {/* Раунд 8: Бинго */}
-                {round.type === "bingo" && (
-                  <BingoRoundView
-                    user={user}
-                    gameState={gameState}
-                    players={players}
-                    restPatch={restPatch}
-                    restPut={restPut}
-                  />
-                )}
+                {/* Раунд 8: Бинго */}
+{round.type === "bingo" && (
+  <React.Suspense fallback={<div className="text-white text-center py-10">Загрузка Бинго...</div>}>
+    <BingoRoundView
+      user={user}
+      gameState={gameState}
+      players={players}
+      restPatch={restPatch}
+      restPut={restPut}
+    />
+  </React.Suspense>
+)}
               </div>
             );
           }
