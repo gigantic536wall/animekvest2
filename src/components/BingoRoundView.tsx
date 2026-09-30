@@ -23,6 +23,75 @@ interface BingoRoundViewProps {
 
 const TOTAL_TEAMS = 10;
 
+// Извлечение чистого названия
+function getAnimeTitle(item: any): string {
+  if (!item) return "";
+  if (typeof item === "string") return item;
+  if (typeof item === "object") {
+    return item.title || item.name || item.anime || "";
+  }
+  return String(item);
+}
+
+// Защищенный конвертер карточки в 4x4 сетку
+function to4x4Grid(cardRaw: any): BingoCell[][] {
+  if (!cardRaw) return [];
+
+  let flatCells: BingoCell[] = [];
+
+  if (Array.isArray(cardRaw)) {
+    if (cardRaw.length > 0 && Array.isArray(cardRaw[0])) {
+      return cardRaw.map(row => 
+        (Array.isArray(row) ? row : Object.values(row || {})).map(cell => ({
+          title: getAnimeTitle(cell),
+          checked: typeof cell === 'object' ? !!cell?.checked : false,
+          id: typeof cell === 'object' ? cell?.id : undefined
+        }))
+      );
+    }
+    flatCells = cardRaw.map(c => ({
+      title: getAnimeTitle(c),
+      checked: typeof c === 'object' ? !!c?.checked : false,
+      id: typeof c === 'object' ? c?.id : undefined
+    }));
+  } else if (typeof cardRaw === "object") {
+    const keys = Object.keys(cardRaw).sort((a, b) => Number(a) - Number(b));
+    const firstVal = cardRaw[keys[0]];
+
+    if (Array.isArray(firstVal) || (firstVal && typeof firstVal === 'object' && !('title' in firstVal) && !('checked' in firstVal))) {
+      return keys.map(k => {
+        const rowObj = cardRaw[k];
+        const rowCells = Array.isArray(rowObj) ? rowObj : Object.values(rowObj || {});
+        return rowCells.map((cell: any) => ({
+          title: getAnimeTitle(cell),
+          checked: typeof cell === 'object' ? !!cell?.checked : false,
+          id: typeof cell === 'object' ? cell?.id : undefined
+        }));
+      });
+    } else {
+      flatCells = keys.map(k => {
+        const cell = cardRaw[k];
+        return {
+          title: getAnimeTitle(cell),
+          checked: typeof cell === 'object' ? !!cell?.checked : false,
+          id: typeof cell === 'object' ? cell?.id : undefined
+        };
+      });
+    }
+  }
+
+  const grid: BingoCell[][] = [];
+  for (let r = 0; r < 4; r++) {
+    const row: BingoCell[] = [];
+    for (let c = 0; c < 4; c++) {
+      const idx = r * 4 + c;
+      row.push(flatCells[idx] || { title: "", checked: false });
+    }
+    grid.push(row);
+  }
+  return grid;
+}
+
 export default function BingoRoundView({
   user,
   gameState,
@@ -46,16 +115,26 @@ export default function BingoRoundView({
     setShowRulesModal(false);
   };
 
-  // Определение текущей партии (0 = Партия 1, 1 = Партия 2)
   const currentQIdx = gameState?.currentQuestion ?? 0;
   const isGame2 = currentQIdx === 1;
 
   const bingoState = gameState?.bingo || {};
-  const pool32: string[] = bingoState.pool32 || [];
-  const revealedCount: number = bingoState.revealedCount || 0;
-  const revealedAnime = pool32.slice(0, revealedCount);
-  const lastRevealed: string[] = bingoState.lastRevealed || [];
+  
+  const rawPool = bingoState.pool32;
+  const poolList: any[] = Array.isArray(rawPool) 
+    ? rawPool 
+    : (rawPool && typeof rawPool === 'object' ? Object.values(rawPool) : []);
+  const pool32: string[] = poolList.map(getAnimeTitle).filter(Boolean);
 
+  const revealedCount = Math.min(32, Math.max(0, Number(bingoState.revealedCount) || 0));
+
+  const rawLast = bingoState.lastRevealed;
+  const lastList: any[] = Array.isArray(rawLast)
+    ? rawLast
+    : (rawLast && typeof rawLast === 'object' ? Object.values(rawLast) : []);
+  const lastRevealed: string[] = lastList.map(getAnimeTitle).filter(Boolean);
+
+  const revealedAnime = pool32.slice(0, revealedCount);
   const currentPair: string[] = (lastRevealed && lastRevealed.length > 0)
     ? lastRevealed
     : pool32.slice(Math.max(0, revealedCount - 2), revealedCount);
@@ -68,21 +147,17 @@ export default function BingoRoundView({
     }
   }, [currentPair, selectedAnime]);
 
+  const teamsData: Record<string, any> = bingoState.teams || {};
   const currentTeamIdx = user.isAdmin ? adminSelectedTeam : (user.team ?? 0);
-  const teamsData = bingoState.teams || {};
-  const currentTeamData = teamsData[currentTeamIdx] || null;
-  const card: BingoCell[] = currentTeamData?.card || [];
+  const myTeamData = teamsData[currentTeamIdx] || null;
+
+  const revealedAnimeSet = new Set(
+    pool32.slice(0, revealedCount).map((s) => s.toLowerCase().trim())
+  );
 
   useEffect(() => {
-    if (user?.isAdmin && (!bingoState.pool32 || bingoState.pool32.length === 0)) {
-      initializeBingoGame();
-    }
-  }, [user?.isAdmin, bingoState?.pool32]);
-
-  const initializeBingoGame = async () => {
-    setIsProcessing(true);
-    try {
-      const newPool = generateBingoPool32();
+    if (user?.isAdmin && (!gameState?.bingo?.pool32 || !gameState?.bingo?.teams)) {
+      const pool = generateBingoPool32();
       const initialTeams: Record<string, any> = {};
       for (let t = 0; t < TOTAL_TEAMS; t++) {
         initialTeams[t] = {
@@ -94,45 +169,31 @@ export default function BingoRoundView({
           firstLineApproved: false,
           fullApproved: false,
           penaltyTotal: 0,
-          lastPenaltyNotice: null
+          lastPenaltyNotice: null,
         };
       }
-
-      await restPatch("gameState/bingo", {
-        pool32: newPool,
+      restPatch("gameState/bingo", {
+        gameIndex: currentQIdx,
+        pool32: pool,
         revealedCount: 0,
         lastRevealed: [],
         teams: initialTeams,
-        roundOver: false
+        roundOver: false,
       });
-      setStatusNotice("Бинго инициализировано: 32 тайтла готовы к выдаче!");
-      setTimeout(() => setStatusNotice(""), 3500);
-    } catch (e) {
-      console.error("Failed to initialize bingo:", e);
-    } finally {
-      setIsProcessing(false);
     }
+  }, [user?.isAdmin, gameState?.bingo]);
+
+  const handleRevealNextTwo = async () => {
+    if (!user.isAdmin || roundOver) return;
+    const nextCount = Math.min(32, revealedCount + 2);
+    const newRevealed = pool32.slice(revealedCount, nextCount);
+    await restPatch("gameState/bingo", {
+      revealedCount: nextCount,
+      lastRevealed: newRevealed,
+    });
+    setSelectedAnime(null);
   };
 
-  const handleRevealNext2 = async () => {
-    if (!user.isAdmin || revealedCount >= pool32.length || roundOver) return;
-    setIsProcessing(true);
-    try {
-      const nextCount = Math.min(revealedCount + 2, pool32.length);
-      const newlyRevealed = pool32.slice(revealedCount, nextCount);
-      await restPatch("gameState/bingo", {
-        revealedCount: nextCount,
-        lastRevealed: newlyRevealed
-      });
-      setSelectedAnime(null);
-    } catch (e) {
-      console.error("Error revealing anime:", e);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // ЗАПУСК 2-Й ПАРТИИ БИНГО
   const handleStartGame2 = async () => {
     if (!user.isAdmin) return;
     if (!window.confirm("Все результаты 1-й партии проверены? Начать 2-ю партию с новыми карточками?")) return;
@@ -156,7 +217,7 @@ export default function BingoRoundView({
       }
 
       await restPatch("gameState", {
-        currentQuestion: 1, // Переключаем на 2 партию
+        currentQuestion: 1, 
         bingo: {
           pool32: newPool,
           revealedCount: 0,
@@ -176,34 +237,88 @@ export default function BingoRoundView({
     }
   };
 
-  const usedAnimeTitles = new Set(
-    card.map(c => c?.placedAnime).filter(Boolean) as string[]
-  );
+  const handleApproveSubmission = async (targetTeamIdx: number, type: "line" | "full") => {
+    if (!user.isAdmin) return;
+    const points = type === "line" ? 12 : 24;
+    const scoreKey = `bingo_q${currentQIdx}_${type}`;
 
-  const placedAnimeCellMap = new Map<string, number>();
-  card.forEach((c, idx) => {
-    if (c?.placedAnime) placedAnimeCellMap.set(c.placedAnime, idx);
-  });
+    const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === targetTeamIdx);
+    for (const [pId] of teamPlayers) {
+      await restPut(`players/${pId}/scores/${scoreKey}`, points);
+    }
 
-  const cardEvaluation = evaluateBingoCard(card);
+    const patchData: any = { submittedForReview: false };
+    if (type === "line") patchData.firstLineApproved = true;
+    if (type === "full") patchData.fullApproved = true;
 
-  const handleCellClick = async (cellIndex: number) => {
-    if (user.isAdmin) {
-      const cell = card[cellIndex];
-      if (!cell?.placedAnime) {
-        setStatusNotice("В этой ячейке нет аниме — ошибку можно отметить только в заполненной ячейке!");
-        setTimeout(() => setStatusNotice(""), 3000);
-        return;
+    await restPatch(`gameState/bingo/teams/${targetTeamIdx}`, patchData);
+    setAdminSelectedErrorCells([]);
+  };
+
+  const handleRejectSubmissionWithPenalty = async (targetTeamIdx: number) => {
+    if (!user.isAdmin || !myTeamData) return;
+    if (adminSelectedErrorCells.length === 0) {
+      alert("Сначала нажмите на ячейки с ошибочными аниме на карточке выше, чтобы отметить их!");
+      return;
+    }
+
+    const grid = to4x4Grid(myTeamData.card);
+    const flatCard = grid.flat();
+
+    const invalidIndices = adminSelectedErrorCells.filter(idx => flatCard[idx]?.title);
+    if (invalidIndices.length === 0) {
+      alert("В выбранных ячейках нет отмеченных аниме!");
+      return;
+    }
+
+    setIsProcessing(true);
+    const count = invalidIndices.length;
+    const penalty = count * 3;
+
+    try {
+      const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === targetTeamIdx);
+      const penaltyKey = `bingo_q${currentQIdx}_penalty_${Date.now()}`;
+      for (const [pId] of teamPlayers) {
+        await restPut(`players/${pId}/scores/${penaltyKey}`, -penalty);
       }
+
+      for (const idx of invalidIndices) {
+        const r = Math.floor(idx / 4);
+        const c = idx % 4;
+        grid[r][c].checked = false;
+        grid[r][c].title = ""; 
+      }
+
+      const penaltyNotice = `❌ Ведущий отклонил ячейки (${count} шт.). Списано ${penalty} б. (-3 б. за каждую). Ошибочные отметки удалены.`;
+
+      await restPatch(`gameState/bingo/teams/${targetTeamIdx}`, {
+        submittedForReview: false,
+        lastPenaltyNotice: penaltyNotice,
+        penaltyTotal: (myTeamData.penaltyTotal || 0) + penalty
+      });
+      await restPut(`gameState/bingo/teams/${targetTeamIdx}/card`, grid);
+
+      setAdminSelectedErrorCells([]);
+      alert(`С команды ${targetTeamIdx + 1} списано ${penalty} баллов.`);
+    } catch (e) {
+      console.error("Reject error:", e);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleCellClick = async (rIdx: number, cIdx: number) => {
+    if (user.isAdmin) {
+      const flatIdx = rIdx * 4 + cIdx;
       setAdminSelectedErrorCells(prev => 
-        prev.includes(cellIndex) 
-          ? prev.filter(i => i !== cellIndex) 
-          : [...prev, cellIndex]
+        prev.includes(flatIdx) 
+          ? prev.filter(i => i !== flatIdx) 
+          : [...prev, flatIdx]
       );
       return;
     }
 
-    if (currentTeamData?.submittedForReview) {
+    if (myTeamData?.submittedForReview) {
       setStatusNotice("Ваша карточка сейчас находится на проверке у админа!");
       setTimeout(() => setStatusNotice(""), 3000);
       return;
@@ -215,8 +330,10 @@ export default function BingoRoundView({
       return;
     }
 
-    const cell = card[cellIndex];
-    if (cell.placedAnime) {
+    const grid = to4x4Grid(myTeamData?.card);
+    const cell = grid[rIdx][cIdx];
+
+    if (cell.title) {
       setStatusNotice("Эта ячейка уже занята! Нажмите на 🗑️ в ячейке, чтобы освободить её.");
       setTimeout(() => setStatusNotice(""), 3500);
       return;
@@ -235,6 +352,9 @@ export default function BingoRoundView({
       return;
     }
 
+    const flatCard = grid.flat();
+    const usedAnimeTitles = new Set(flatCard.map(c => c.title).filter(Boolean));
+
     if (usedAnimeTitles.has(selectedAnime)) {
       setStatusNotice("Это аниме уже поставлено в другую ячейку!");
       setTimeout(() => setStatusNotice(""), 3000);
@@ -242,46 +362,38 @@ export default function BingoRoundView({
     }
 
     try {
-      const newCard = [...card];
-      newCard[cellIndex] = {
-        ...newCard[cellIndex],
-        placedAnime: selectedAnime,
-        hasError: false
-      };
-
-      await restPut(`gameState/bingo/teams/${currentTeamIdx}/card`, newCard);
+      grid[rIdx][cIdx].title = selectedAnime;
+      grid[rIdx][cIdx].checked = true;
+      await restPut(`gameState/bingo/teams/${teamIdx}/card`, grid);
       setSelectedAnime(null);
     } catch (e) {
       console.error("Error placing anime:", e);
     }
   };
 
-  const handleDeleteCellAnime = async (e: React.MouseEvent, cellIndex: number) => {
+  const handleDeleteCellAnime = async (e: React.MouseEvent, rIdx: number, cIdx: number) => {
     e.stopPropagation();
     if (roundOver) return;
-    if (currentTeamData?.submittedForReview && !user.isAdmin) {
+    if (myTeamData?.submittedForReview && !user.isAdmin) {
       setStatusNotice("Нельзя менять карточку, пока идет проверка админом!");
       setTimeout(() => setStatusNotice(""), 3000);
       return;
     }
 
     try {
-      const newCard = [...card];
-      newCard[cellIndex] = {
-        ...newCard[cellIndex],
-        placedAnime: null,
-        hasError: false
-      };
-      await restPut(`gameState/bingo/teams/${currentTeamIdx}/card`, newCard);
+      const grid = to4x4Grid(myTeamData?.card);
+      grid[rIdx][cIdx].title = "";
+      grid[rIdx][cIdx].checked = false;
+      await restPut(`gameState/bingo/teams/${currentTeamIdx}/card`, grid);
     } catch (e) {
       console.error("Error clearing cell:", e);
     }
   };
 
   const handleSubmitForReview = async (type: "line" | "full") => {
-    if (user.isAdmin || currentTeamData?.submittedForReview || roundOver) return;
+    if (user.isAdmin || myTeamData?.submittedForReview || roundOver) return;
     try {
-      await restPatch(`gameState/bingo/teams/${currentTeamIdx}`, {
+      await restPatch(`gameState/bingo/teams/${teamIdx}`, {
         submittedForReview: true,
         submissionType: type,
         submittedAt: Date.now(),
@@ -298,104 +410,10 @@ export default function BingoRoundView({
     }
   };
 
-  const handleAdminApprove = async () => {
-    if (!user.isAdmin || !currentTeamData?.submittedForReview) return;
-    setIsProcessing(true);
-    const teamIdx = adminSelectedTeam;
-    const isFull = currentTeamData.submissionType === "full" || cardEvaluation.allCompleted;
-
-    // Уникальный ключ для каждой партии, чтобы баллы суммировались
-    const scoreKey = isFull ? `round8_q${currentQIdx}_bingo_full` : `round8_q${currentQIdx}_bingo_line`;
-
-    try {
-      const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
-
-      if (isFull) {
-        for (const [pId] of teamPlayers) {
-          await restPut(`players/${pId}/scores/${scoreKey}`, 24);
-        }
-        await restPatch(`gameState/bingo/teams/${teamIdx}`, {
-          submittedForReview: false,
-          fullApproved: true,
-          firstLineApproved: true
-        });
-        await restPatch("gameState/bingo", {
-          roundOver: true // Завершает текущую партию
-        });
-        alert(`🎉 Команда ${teamIdx + 1} заполнила ВСЕ ячейки (+24 балла)! Партия завершена!`);
-      } else {
-        for (const [pId] of teamPlayers) {
-          await restPut(`players/${pId}/scores/${scoreKey}`, 12);
-        }
-        await restPatch(`gameState/bingo/teams/${teamIdx}`, {
-          submittedForReview: false,
-          firstLineApproved: true
-        });
-        alert(`✅ Бинго подтверждено! Команда ${teamIdx + 1} получает +12 баллов.`);
-      }
-    } catch (e) {
-      console.error("Approve error:", e);
-    } finally {
-      setIsProcessing(false);
-      setAdminSelectedErrorCells([]);
-    }
-  };
-
-  const handleAdminReject = async () => {
-    if (!user.isAdmin || !currentTeamData) return;
-    if (adminSelectedErrorCells.length === 0) {
-      alert("Сначала нажмите на ячейки с ошибочными аниме на карточке выше, чтобы отметить их!");
-      return;
-    }
-
-    const invalidIndices = adminSelectedErrorCells.filter(idx => card[idx]?.placedAnime);
-    if (invalidIndices.length === 0) {
-      alert("В выбранных ячейках нет аниме!");
-      return;
-    }
-
-    setIsProcessing(true);
-    const teamIdx = adminSelectedTeam;
-    const count = invalidIndices.length;
-    const penalty = count * 3;
-
-    try {
-      const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
-      const penaltyKey = `round8_q${currentQIdx}_penalty_${Date.now()}`;
-      for (const [pId] of teamPlayers) {
-        await restPut(`players/${pId}/scores/${penaltyKey}`, -penalty);
-      }
-
-      const newCard = [...card];
-      const rejectedItems: string[] = [];
-      for (const idx of invalidIndices) {
-        const wrongCell = newCard[idx];
-        rejectedItems.push(`#${idx + 1} («${wrongCell.criterion}» → «${wrongCell.placedAnime}»)`);
-        newCard[idx] = {
-          ...newCard[idx],
-          placedAnime: null,
-          hasError: false
-        };
-      }
-
-      const penaltyNotice = `❌ Ошибки при проверке (${count} шт.): ${rejectedItems.join(", ")}. С команды списано ${penalty} б. (-3 б. за каждую ошибку). Ячейки снова свободны.`;
-
-      await restPatch(`gameState/bingo/teams/${teamIdx}`, {
-        submittedForReview: false,
-        lastPenaltyNotice: penaltyNotice,
-        penaltyTotal: (currentTeamData.penaltyTotal || 0) + penalty
-      });
-      await restPut(`gameState/bingo/teams/${teamIdx}/card`, newCard);
-
-      setAdminSelectedErrorCells([]);
-      alert(`Отклонено ${count} ошибочных ячеек. С команды ${teamIdx + 1} списано ${penalty} баллов.`);
-    } catch (e) {
-      console.error("Reject error:", e);
-      alert("Ошибка при отклонении ячеек");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
+  const safeGrid = myTeamData ? to4x4Grid(myTeamData.card) : [];
+  const flatCard = safeGrid.flat();
+  const cardEvaluation = evaluateBingoCard(flatCard as any);
+  const usedAnimeTitles = new Set(flatCard.map(c => c.title).filter(Boolean));
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto select-none">
@@ -412,42 +430,8 @@ export default function BingoRoundView({
         )}
       </AnimatePresence>
 
-      {/* Экран ожидания для игроков между партиями */}
-      {!user.isAdmin && roundOver && !isGame2 && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="p-6 bg-amber-500/20 border border-amber-500/40 rounded-3xl text-center shadow-xl backdrop-blur-md"
-        >
-          <h3 className="text-2xl font-black text-amber-400 mb-2 flex items-center justify-center gap-2">
-            <Trophy className="w-6 h-6" /> Партия 1 завершена!
-          </h3>
-          <p className="text-amber-100 font-medium max-w-xl mx-auto">
-            Ведущий проверяет результаты карточек и начисляет баллы. Пожалуйста, подождите. 
-            Скоро начнется <span className="font-bold text-white">Партия 2</span> с абсолютно новыми тайтлами и карточками!
-          </p>
-        </motion.div>
-      )}
-
-      {currentTeamData?.lastPenaltyNotice && !user.isAdmin && (
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="p-4 bg-rose-500/20 border-2 border-rose-500/50 rounded-2xl text-center text-rose-200 text-sm font-bold shadow-xl flex items-center justify-center gap-3"
-        >
-          <AlertTriangle className="w-6 h-6 text-rose-400 shrink-0" />
-          <span>{currentTeamData.lastPenaltyNotice}</span>
-          <button
-            onClick={() => restPatch(`gameState/bingo/teams/${currentTeamIdx}`, { lastPenaltyNotice: null })}
-            className="ml-auto text-xs text-rose-300 hover:text-white underline"
-          >
-            Понятно
-          </button>
-        </motion.div>
-      )}
-
       {/* Header Info Bar */}
-      <div className="bg-slate-900/80 p-5 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-purple-950/90 via-slate-900/90 to-indigo-950/90 p-5 rounded-3xl border border-purple-500/30 shadow-2xl backdrop-blur-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-gradient-to-tr from-amber-500 to-pink-500 rounded-2xl shadow-lg">
             <Trophy className="w-6 h-6 text-white" />
@@ -470,7 +454,7 @@ export default function BingoRoundView({
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => setShowRulesModal(true)}
-            className="bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 hover:text-white border border-purple-500/40 px-3.5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all hover:scale-105 active:scale-95 shadow-md shadow-purple-950/40 cursor-pointer"
+            className="bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 hover:text-white border border-purple-500/40 px-3.5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all hover:scale-105 active:scale-95 shadow-md cursor-pointer"
             title="Открыть правила раунда 8"
           >
             <BookOpen className="w-4 h-4 text-purple-300" />
@@ -486,20 +470,6 @@ export default function BingoRoundView({
               </div>
             </div>
           </div>
-
-          {currentTeamData?.firstLineApproved && (
-            <div className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 shadow-md">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Линия +12 б.</span>
-            </div>
-          )}
-
-          {currentTeamData?.fullApproved && (
-            <div className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 shadow-md animate-pulse">
-              <Award className="w-4 h-4" />
-              <span>Фулл +24 б.!</span>
-            </div>
-          )}
         </div>
       </div>
 
@@ -516,10 +486,7 @@ export default function BingoRoundView({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {lastRevealed.map((title, i) => (
-              <span
-                key={i}
-                className="bg-pink-500/20 border border-pink-400/40 text-pink-200 px-3 py-1.5 rounded-xl font-black text-sm shadow-md"
-              >
+              <span key={i} className="bg-pink-500/20 border border-pink-400/40 text-pink-200 px-3 py-1.5 rounded-xl font-black text-sm shadow-md">
                 {title}
               </span>
             ))}
@@ -527,7 +494,7 @@ export default function BingoRoundView({
         </motion.div>
       )}
 
-      {/* Admin Quick Reveal Bar */}
+      {/* Admin Controls */}
       {user.isAdmin && (
         <div className="bg-gradient-to-r from-purple-950/70 via-indigo-950/70 to-slate-900/90 p-4 rounded-3xl border border-purple-500/40 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-3">
           <div>
@@ -548,7 +515,7 @@ export default function BingoRoundView({
                     restPatch("gameState/bingo", { roundOver: true });
                   }
                 }}
-                className="bg-red-600/80 hover:bg-red-500 text-white font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl shadow-lg transition-all active:scale-95 flex items-center gap-2"
+                className="bg-red-600/80 hover:bg-red-500 text-white font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl shadow-lg transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
               >
                 <StopCircle className="w-4 h-4" />
                 Завершить партию
@@ -557,9 +524,9 @@ export default function BingoRoundView({
 
             {!roundOver && (
               <button
-                onClick={handleRevealNext2}
+                onClick={handleRevealNextTwo}
                 disabled={isProcessing || revealedCount >= pool32.length}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 text-white font-black text-xs sm:text-sm px-5 py-3 rounded-2xl shadow-lg shadow-purple-900/40 flex items-center gap-2 transition-all active:scale-95 shrink-0"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 text-white font-black text-xs sm:text-sm px-5 py-3 rounded-2xl shadow-lg shadow-purple-900/40 flex items-center gap-2 transition-all active:scale-95 shrink-0 cursor-pointer"
               >
                 <SkipForward className="w-4 h-4" />
                 {revealedCount >= pool32.length
@@ -572,7 +539,7 @@ export default function BingoRoundView({
               <button
                 onClick={handleStartGame2}
                 disabled={isProcessing}
-                className="bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black text-xs sm:text-sm px-5 py-3 rounded-2xl shadow-lg flex items-center gap-2 transition-all active:scale-95 shrink-0 animate-pulse"
+                className="bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black text-xs sm:text-sm px-5 py-3 rounded-2xl shadow-lg flex items-center gap-2 transition-all active:scale-95 shrink-0 animate-pulse cursor-pointer"
               >
                 <span>Начать 2-ю партию Бинго</span>
                 <ArrowRight className="w-4 h-4" />
@@ -608,7 +575,7 @@ export default function BingoRoundView({
                     setAdminSelectedTeam(i);
                     setAdminSelectedErrorCells([]);
                   }}
-                  className={`py-2 px-1 rounded-xl text-xs font-bold transition-all relative ${
+                  className={`py-2 px-1 rounded-xl text-xs font-bold transition-all relative cursor-pointer ${
                     isSelected
                       ? "bg-purple-600 text-white shadow-[0_0_12px_rgba(168,85,247,0.6)] scale-105 border border-purple-400"
                       : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/5"
@@ -628,401 +595,431 @@ export default function BingoRoundView({
         </div>
       )}
 
-      {/* Main Play Area: 4x4 Grid + Anime Selection Dock */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: 4x4 Card (lg:col-span-8) */}
-        <div className="lg:col-span-8 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
-              <span>Карточка: Команда {currentTeamIdx + 1}</span>
-              {currentTeamData?.submittedForReview && (
-                <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
-                  ⏳ На проверке
-                </span>
-              )}
-            </h3>
-            <div className="text-xs text-gray-400">
-              Заполнено: <span className="font-bold text-white">{cardEvaluation.placedCount} / 16</span>
-              {cardEvaluation.hasBingo && (
-                <span className="ml-2 text-emerald-400 font-bold">
-                  (Линий: {cardEvaluation.completedLinesCount})
-                </span>
-              )}
-            </div>
+      {/* === ДИНАМИЧЕСКИЙ ЭКРАН === */}
+      {!user.isAdmin && roundOver ? (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          className="p-12 mt-8 bg-amber-500/20 border-2 border-amber-500/40 rounded-[2.5rem] text-center shadow-2xl backdrop-blur-md"
+        >
+          <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto text-3xl font-bold mb-4 shadow-lg shadow-amber-500/20 animate-pulse">
+            ⏳
           </div>
+          <h3 className="text-3xl font-black text-white mb-3">
+            {isGame2 ? "Партия 2 завершена!" : "Партия 1 завершена! Идёт проверка..."}
+          </h3>
+          <p className="text-lg text-amber-200/80 max-w-2xl mx-auto font-medium">
+            {isGame2 
+              ? "Раунд Бинго окончен! Ведущий проверяет результаты и подводит итоги." 
+              : "Карточки Бинго временно заблокированы. Ведущий проверяет результаты и начисляет баллы. Пожалуйста, подождите. Сразу после проверки начнется Партия 2 с новыми карточками!"}
+          </p>
+        </motion.div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left Column: 4x4 Card */}
+          <div className="lg:col-span-8 space-y-4">
+            {myTeamData && (
+              <>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <span>Карточка: Команда {currentTeamIdx + 1}</span>
+                    {myTeamData?.submittedForReview && (
+                      <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
+                        ⏳ На проверке
+                      </span>
+                    )}
+                  </h3>
+                  <div className="text-xs text-gray-400">
+                    Заполнено: <span className="font-bold text-white">{cardEvaluation.placedCount} / 16</span>
+                    {cardEvaluation.hasBingo && (
+                      <span className="ml-2 text-emerald-400 font-bold">
+                        (Линий: {cardEvaluation.completedLinesCount})
+                      </span>
+                    )}
+                  </div>
+                </div>
 
-          {/* 4x4 Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 p-3.5 sm:p-4 bg-slate-900/80 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md">
-            {card.map((cell, idx) => {
-              const isHighlighted = cardEvaluation.highlightedIndices.has(idx);
-              const isSelectedError = user.isAdmin && adminSelectedErrorCells.includes(idx);
+                {/* 4x4 Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 p-3.5 sm:p-4 bg-slate-900/80 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md">
+                  {safeGrid.map((row, rIdx) =>
+                    row.map((cell, cIdx) => {
+                      const flatIdx = rIdx * 4 + cIdx;
+                      const isHighlighted = cardEvaluation.highlightedIndices.has(flatIdx);
+                      const isSelectedError = user.isAdmin && adminSelectedErrorCells.includes(flatIdx);
+                      const isRevealedByHost = cell.title ? revealedAnimeSet.has(cell.title.toLowerCase().trim()) : false;
+                      const isChecked = !!cell.checked;
 
-              return (
-                <div
-                  key={cell.id}
-                  onClick={() => handleCellClick(idx)}
-                  className={`min-h-[110px] sm:min-h-[125px] p-3 rounded-2xl border-2 transition-all relative flex flex-col justify-between cursor-pointer group ${
-                    isSelectedError
-                      ? "bg-rose-950/90 border-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.7)] ring-2 ring-rose-500 scale-[1.02]"
-                      : isHighlighted
-                        ? "bg-emerald-950/40 border-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.3)] hover:border-emerald-300"
-                        : cell.placedAnime
-                          ? user.isAdmin 
-                            ? "bg-purple-950/40 border-purple-500/40 hover:border-rose-400/80" 
-                            : "bg-purple-950/40 border-purple-500/40 hover:border-purple-400"
-                          : "bg-white/5 border-white/10 hover:border-white/30 hover:bg-white/10"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] font-mono font-bold text-gray-500">
-                      #{idx + 1}
-                    </span>
-                    {cell.placedAnime && !user.isAdmin && !roundOver && (
+                      return (
+                        <div
+                          key={`${rIdx}-${cIdx}`}
+                          onClick={() => handleCellClick(rIdx, cIdx)}
+                          className={`min-h-[110px] sm:min-h-[125px] p-3 rounded-2xl border-2 transition-all relative flex flex-col justify-between cursor-pointer group ${
+                            isSelectedError
+                              ? "bg-rose-950/90 border-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.7)] ring-2 ring-rose-500 scale-[1.02]"
+                              : isHighlighted
+                                ? "bg-emerald-950/40 border-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.3)] hover:border-emerald-300"
+                                : cell.title
+                                  ? user.isAdmin 
+                                    ? "bg-purple-950/40 border-purple-500/40 hover:border-rose-400/80" 
+                                    : "bg-purple-950/40 border-purple-500/40 hover:border-purple-400"
+                                  : "bg-white/5 border-white/10 hover:border-white/30 hover:bg-white/10"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-mono font-bold text-gray-500">
+                              #{flatIdx + 1}
+                            </span>
+                            {cell.title && !user.isAdmin && !roundOver && (
+                              <button
+                                onClick={(e) => handleDeleteCellAnime(e, rIdx, cIdx)}
+                                className="opacity-70 group-hover:opacity-100 hover:text-red-400 p-1 hover:bg-red-500/20 rounded-md transition-all text-gray-400 cursor-pointer"
+                                title="Удалить аниме из ячейки"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          {cell.title ? (
+                            <div className="mt-1 pt-1.5 border-t border-white/10">
+                              <div className={`text-[11px] sm:text-xs font-black leading-tight truncate ${
+                                isSelectedError ? "text-rose-300 line-through" : "text-amber-300"
+                              }`}>
+                                {cell.title}
+                              </div>
+                              <div className="text-[9px] mt-0.5 flex items-center gap-1 font-bold opacity-70">
+                                {isRevealedByHost ? "✓ Совпало" : "❌ Ошибка!"}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-1 pt-1 border-t border-dashed border-white/10 text-[9px] text-gray-500 italic">
+                              + Нажмите для выбора
+                            </div>
+                          )}
+
+                          {user.isAdmin && isSelectedError && (
+                            <div className="absolute top-1 right-1 bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 shadow-md">
+                              <span>❌ Ошибка (-3)</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {!user.isAdmin && !roundOver && (
+                  <div className="bg-slate-900/80 p-4 rounded-3xl border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-bold text-slate-300">
+                        Статус Бинго:{" "}
+                        {cardEvaluation.hasBingo ? (
+                          <span className="text-emerald-400 font-black">
+                            Линия собрана ({cardEvaluation.completedLinesCount})!
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">Соберите 4 в ряд (строка или столбец)</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        Диагонали не учитываются. Ошибка при проверке: -3 балла штраф за каждую ошибочную ячейку!
+                      </div>
+                    </div>
+
+                    {!myTeamData?.firstLineApproved && (
                       <button
-                        onClick={(e) => handleDeleteCellAnime(e, idx)}
-                        className="opacity-70 group-hover:opacity-100 hover:text-red-400 p-1 hover:bg-red-500/20 rounded-md transition-all text-gray-400"
-                        title="Удалить аниме из ячейки"
+                        onClick={() => handleSubmitForReview("line")}
+                        disabled={!cardEvaluation.hasBingo || myTeamData?.submittedForReview}
+                        className={`px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-xl active:scale-95 flex items-center gap-2 ${
+                          myTeamData?.submittedForReview
+                            ? "bg-amber-600/50 text-white cursor-default"
+                            : cardEvaluation.hasBingo
+                              ? "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/20 cursor-pointer"
+                              : "bg-white/5 text-gray-500 cursor-not-allowed border border-white/5"
+                        }`}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Send className="w-4 h-4" />
+                        {myTeamData?.submittedForReview ? "ЗАЯВКА НА ПРОВЕРКЕ..." : "ЗАЯВИТЬ БИНГО (+12 б.)"}
+                      </button>
+                    )}
+
+                    {myTeamData?.firstLineApproved && !myTeamData?.fullApproved && (
+                      <button
+                        onClick={() => handleSubmitForReview("full")}
+                        disabled={!cardEvaluation.allCompleted || myTeamData?.submittedForReview}
+                        className={`px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-xl active:scale-95 flex items-center gap-2 ${
+                          myTeamData?.submittedForReview
+                            ? "bg-amber-600/50 text-white cursor-default"
+                            : cardEvaluation.allCompleted
+                              ? "bg-gradient-to-r from-amber-500 to-pink-600 hover:from-amber-400 hover:to-pink-500 text-white shadow-amber-500/30 animate-pulse cursor-pointer"
+                              : "bg-white/5 text-gray-500 cursor-not-allowed border border-white/5"
+                        }`}
+                      >
+                        <Award className="w-4 h-4" />
+                        {myTeamData?.submittedForReview ? "ФУЛЛ НА ПРОВЕРКЕ..." : "ФУЛЛ КАРТОЧКА (+24 б.)"}
                       </button>
                     )}
                   </div>
-
-                  <div className="text-[11px] sm:text-xs font-semibold text-slate-200 leading-snug my-1 line-clamp-3">
-                    {cell.criterion}
-                  </div>
-
-                  {cell.placedAnime ? (
-                    <div className="mt-1 pt-1.5 border-t border-white/10">
-                      <div className={`text-[11px] sm:text-xs font-black leading-tight truncate ${
-                        isSelectedError ? "text-rose-300 line-through" : "text-amber-300"
-                      }`}>
-                        {cell.placedAnime}
-                      </div>
-                      <div className="text-[9px] text-emerald-400 font-bold mt-0.5 flex items-center gap-1">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> Занято
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-1 pt-1 border-t border-dashed border-white/10 text-[9px] text-gray-500 italic">
-                      + Нажмите для выбора
-                    </div>
-                  )}
-
-                  {user.isAdmin && isSelectedError && (
-                    <div className="absolute top-1 right-1 bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 shadow-md">
-                      <span>❌ Ошибка (-3)</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {!user.isAdmin && !roundOver && (
-            <div className="bg-slate-900/80 p-4 rounded-3xl border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-bold text-slate-300">
-                  Статус Бинго:{" "}
-                  {cardEvaluation.hasBingo ? (
-                    <span className="text-emerald-400 font-black">
-                      Линия собрана ({cardEvaluation.completedLinesCount})!
-                    </span>
-                  ) : (
-                    <span className="text-gray-400">Соберите 4 в ряд (строка или столбец)</span>
-                  )}
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  Диагонали не учитываются. Ошибка при проверке: -3 балла штраф за каждую ошибочную ячейку!
-                </div>
-              </div>
-
-              {!currentTeamData?.firstLineApproved && (
-                <button
-                  onClick={() => handleSubmitForReview("line")}
-                  disabled={!cardEvaluation.hasBingo || currentTeamData?.submittedForReview}
-                  className={`px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-xl active:scale-95 flex items-center gap-2 ${
-                    currentTeamData?.submittedForReview
-                      ? "bg-amber-600/50 text-white cursor-default"
-                      : cardEvaluation.hasBingo
-                        ? "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/20"
-                        : "bg-white/5 text-gray-500 cursor-not-allowed border border-white/5"
-                  }`}
-                >
-                  <Send className="w-4 h-4" />
-                  {currentTeamData?.submittedForReview ? "ЗАЯВКА НА ПРОВЕРКЕ..." : "ЗАЯВИТЬ БИНГО (+12 б.)"}
-                </button>
-              )}
-
-              {currentTeamData?.firstLineApproved && !currentTeamData?.fullApproved && (
-                <button
-                  onClick={() => handleSubmitForReview("full")}
-                  disabled={!cardEvaluation.allCompleted || currentTeamData?.submittedForReview}
-                  className={`px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-xl active:scale-95 flex items-center gap-2 ${
-                    currentTeamData?.submittedForReview
-                      ? "bg-amber-600/50 text-white cursor-default"
-                      : cardEvaluation.allCompleted
-                        ? "bg-gradient-to-r from-amber-500 to-pink-600 hover:from-amber-400 hover:to-pink-500 text-white shadow-amber-500/30 animate-pulse"
-                        : "bg-white/5 text-gray-500 cursor-not-allowed border border-white/5"
-                  }`}
-                >
-                  <Award className="w-4 h-4" />
-                  {currentTeamData?.submittedForReview ? "ФУЛЛ НА ПРОВЕРКЕ..." : "ФУЛЛ КАРТОЧКА (+24 б.)"}
-                </button>
-              )}
-            </div>
-          )}
-
-          {user.isAdmin && (
-            <div className="bg-slate-900/90 p-5 rounded-3xl border border-purple-500/30 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
-                <div>
-                  <h4 className="text-sm font-black text-purple-300 uppercase tracking-wider flex items-center gap-2">
-                    <span>Панель Верификации: Команда {adminSelectedTeam + 1}</span>
-                    {currentTeamData?.submittedForReview && (
-                      <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">
-                        ЗАЯВКА АКТИВНА
-                      </span>
-                    )}
-                  </h4>
-                  <div className="text-xs text-gray-400 mt-1">
-                    {adminSelectedErrorCells.length > 0 ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-rose-300 font-bold">
-                          Выбрано ошибочных ячеек: {adminSelectedErrorCells.length} ({adminSelectedErrorCells.map(i => `#${i + 1}`).join(", ")}). Штраф: -{adminSelectedErrorCells.length * 3} б.
-                        </span>
-                        <button
-                          onClick={() => setAdminSelectedErrorCells([])}
-                          className="text-[11px] text-gray-400 hover:text-white underline"
-                        >
-                          Сбросить выбор
-                        </button>
-                      </div>
-                    ) : (
-                      <span>Нажмите на ошибочные ячейки на карточке выше, чтобы отметить их.</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="text-xs text-gray-400">
-                  Штрафов команды: <span className="text-red-400 font-bold">-{currentTeamData?.penaltyTotal || 0} б.</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  onClick={handleAdminApprove}
-                  disabled={isProcessing || !currentTeamData?.submittedForReview}
-                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 py-3.5 px-4 rounded-2xl font-black text-sm text-white shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 active:scale-95 transition-all"
-                >
-                  <CheckCircle2 className="w-5 h-5" />
-                  {currentTeamData?.submissionType === "full" ? "ЗАЧЕСТЬ ВСЁ ПОЛЕ (+24 б.)" : "ЗАЧЕСТЬ БИНГО (+12 б.)"}
-                </button>
-
-                <button
-                  onClick={handleAdminReject}
-                  disabled={isProcessing || adminSelectedErrorCells.length === 0}
-                  className="bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 disabled:opacity-40 py-3.5 px-4 rounded-2xl font-black text-sm text-white shadow-lg shadow-rose-900/30 flex items-center justify-center gap-2 active:scale-95 transition-all"
-                >
-                  <XCircle className="w-5 h-5" />
-                  {adminSelectedErrorCells.length > 0
-                    ? `ОТКЛОНИТЬ ВЫБРАННЫЕ (-${adminSelectedErrorCells.length * 3} б.)`
-                    : "ВЫБЕРИТЕ ОШИБОЧНЫЕ ЯЧЕЙКИ"}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right Column: Revealed Anime Dock (lg:col-span-4) */}
-        <div className="lg:col-span-4 space-y-4">
-          <div className="bg-slate-900/80 p-5 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md space-y-4">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div>
-                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>Выдача аниме</span>
-                </h3>
-                <p className="text-[11px] text-gray-400">
-                  {dockTab === "current" ? "Доступно только сейчас" : "История всех открытых"}
-                </p>
-              </div>
-              <span className="text-xs font-mono font-bold bg-white/5 px-2.5 py-1 rounded-xl text-purple-300">
-                {revealedCount} / 32
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/40 rounded-2xl border border-white/5 text-xs font-bold">
-              <button
-                onClick={() => setDockTab("current")}
-                className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                  dockTab === "current"
-                    ? "bg-purple-600 text-white shadow-md"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <Flame className="w-3.5 h-3.5 text-pink-400" />
-                <span>Текущая пара ({currentPair.length})</span>
-              </button>
-              <button
-                onClick={() => setDockTab("all")}
-                className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                  dockTab === "all"
-                    ? "bg-purple-600 text-white shadow-md"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <History className="w-3.5 h-3.5 text-slate-400" />
-                <span>Все тайтлы ({revealedAnime.length})</span>
-              </button>
-            </div>
-
-            {selectedAnime ? (
-              <div className="p-3 bg-purple-600/30 border border-purple-400/50 rounded-2xl flex items-center justify-between gap-2 shadow-lg animate-pulse">
-                <div className="min-w-0">
-                  <div className="text-[10px] uppercase font-black text-purple-300">Выбран тайтл:</div>
-                  <div className="text-sm font-black text-white truncate">{selectedAnime}</div>
-                  <div className="text-[10px] text-purple-200 mt-0.5">Нажмите на пустую ячейку слева</div>
-                </div>
-                <button
-                  onClick={() => setSelectedAnime(null)}
-                  className="text-xs text-purple-300 hover:text-white bg-white/10 px-2 py-1 rounded-lg shrink-0"
-                >
-                  Отмена
-                </button>
-              </div>
-            ) : (
-              <div className="text-center py-1 text-xs text-gray-500 italic">
-                (Нажмите на аниме ниже для выбора)
-              </div>
+                )}
+              </>
             )}
 
-            {dockTab === "current" && (
-              <div className="space-y-3">
-                {currentPair.length === 0 ? (
-                  <div className="text-center py-10 space-y-2">
-                    <div className="text-4xl">⏳</div>
-                    <div className="text-sm font-bold text-gray-400">Аниме еще не открыты</div>
-                    <p className="text-xs text-gray-500">
-                      Ожидайте, пока ведущий нажмет кнопку «Следующие 2 аниме»!
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] text-amber-200 flex items-start gap-2">
-                      <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      <span>
-                        <strong>Внимание:</strong> эти аниме можно расставить только <u>СЕЙЧАС</u>. При нажатии ведущим следующих 2 аниме нерасставленные тайтлы сгорят!
-                      </span>
+            {/* Admin specific Verification Panel */}
+            {user.isAdmin && myTeamData && (
+              <div className="bg-slate-900/90 p-5 rounded-3xl border border-purple-500/30 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
+                  <div>
+                    <h4 className="text-sm font-black text-purple-300 uppercase tracking-wider flex items-center gap-2">
+                      <span>Панель Верификации: Команда {adminSelectedTeam + 1}</span>
+                      {myTeamData?.submittedForReview && (
+                        <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">
+                          ЗАЯВКА АКТИВНА
+                        </span>
+                      )}
+                    </h4>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {adminSelectedErrorCells.length > 0 ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-rose-300 font-bold">
+                            Выбрано ошибочных ячеек: {adminSelectedErrorCells.length} ({adminSelectedErrorCells.map(i => `#${i + 1}`).join(", ")}). Штраф: -{adminSelectedErrorCells.length * 3} б.
+                          </span>
+                          <button
+                            onClick={() => setAdminSelectedErrorCells([])}
+                            className="text-[11px] text-gray-400 hover:text-white underline cursor-pointer"
+                          >
+                            Сбросить выбор
+                          </button>
+                        </div>
+                      ) : (
+                        <span>Нажмите на ошибочные ячейки на карточке выше, чтобы отметить их.</span>
+                      )}
                     </div>
+                  </div>
 
-                    <div className="space-y-2.5">
-                      {currentPair.map((title, idx) => {
+                  <div className="text-xs text-gray-400">
+                    Штрафов команды: <span className="text-red-400 font-bold">-{myTeamData?.penaltyTotal || 0} б.</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={handleAdminApprove}
+                    disabled={isProcessing || !myTeamData?.submittedForReview}
+                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 py-3.5 px-4 rounded-2xl font-black text-sm text-white shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-5 h-5" />
+                    {myTeamData?.submissionType === "full" ? "ЗАЧЕСТЬ ВСЁ ПОЛЕ (+24 б.)" : "ЗАЧЕСТЬ БИНГО (+12 б.)"}
+                  </button>
+
+                  <button
+                    onClick={handleAdminReject}
+                    disabled={isProcessing || adminSelectedErrorCells.length === 0}
+                    className="bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 disabled:opacity-40 py-3.5 px-4 rounded-2xl font-black text-sm text-white shadow-lg shadow-rose-900/30 flex items-center justify-center gap-2 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <XCircle className="w-5 h-5" />
+                    {adminSelectedErrorCells.length > 0
+                      ? `ОТКЛОНИТЬ ВЫБРАННЫЕ (-${adminSelectedErrorCells.length * 3} б.)`
+                      : "ВЫБЕРИТЕ ОШИБОЧНЫЕ ЯЧЕЙКИ"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Dock */}
+          <div className="lg:col-span-4 space-y-4">
+            <div className="bg-slate-900/80 p-5 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md space-y-4">
+              <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                <div>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span>Выдача аниме</span>
+                  </h3>
+                  <p className="text-[11px] text-gray-400">
+                    {dockTab === "current" ? "Доступно только сейчас" : "История всех открытых"}
+                  </p>
+                </div>
+                <span className="text-xs font-mono font-bold bg-white/5 px-2.5 py-1 rounded-xl text-purple-300">
+                  {revealedCount} / 32
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/40 rounded-2xl border border-white/5 text-xs font-bold">
+                <button
+                  onClick={() => setDockTab("current")}
+                  className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    dockTab === "current"
+                      ? "bg-purple-600 text-white shadow-md"
+                      : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <Flame className="w-3.5 h-3.5 text-pink-400" />
+                  <span>Текущая пара ({currentPair.length})</span>
+                </button>
+                <button
+                  onClick={() => setDockTab("all")}
+                  className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    dockTab === "all"
+                      ? "bg-purple-600 text-white shadow-md"
+                      : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  <History className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Все тайтлы ({revealedAnime.length})</span>
+                </button>
+              </div>
+
+              {selectedAnime ? (
+                <div className="p-3 bg-purple-600/30 border border-purple-400/50 rounded-2xl flex items-center justify-between gap-2 shadow-lg animate-pulse">
+                  <div className="min-w-0">
+                    <div className="text-[10px] uppercase font-black text-purple-300">Выбран тайтл:</div>
+                    <div className="text-sm font-black text-white truncate">{selectedAnime}</div>
+                    <div className="text-[10px] text-purple-200 mt-0.5">Нажмите на пустую ячейку слева</div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedAnime(null)}
+                    className="text-xs text-purple-300 hover:text-white bg-white/10 px-2 py-1 rounded-lg shrink-0 cursor-pointer"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              ) : (
+                <div className="text-center py-1 text-xs text-gray-500 italic">
+                  (Нажмите на аниме ниже для выбора)
+                </div>
+              )}
+
+              {dockTab === "current" && (
+                <div className="space-y-3">
+                  {currentPair.length === 0 ? (
+                    <div className="text-center py-10 space-y-2">
+                      <div className="text-4xl">⏳</div>
+                      <div className="text-sm font-bold text-gray-400">Аниме еще не открыты</div>
+                      <p className="text-xs text-gray-500">
+                        Ожидайте, пока ведущий нажмет кнопку «Следующие 2 аниме»!
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] text-amber-200 flex items-start gap-2">
+                        <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <span>
+                          <strong>Внимание:</strong> эти аниме можно расставить только <u>СЕЙЧАС</u>. При нажатии ведущим следующих 2 аниме нерасставленные тайтлы сгорят!
+                        </span>
+                      </div>
+
+                      <div className="space-y-2.5">
+                        {currentPair.map((title, idx) => {
+                          const isUsed = usedAnimeTitles.has(title);
+                          const isCurrentSelection = selectedAnime === title;
+                          
+                          // Найти индекс, если уже размещено
+                          const foundIndex = flatCard.findIndex(c => c.title === title);
+                          const cellNum = foundIndex >= 0 ? foundIndex : null;
+
+                          return (
+                            <div
+                              key={idx}
+                              onClick={() => {
+                                if (isUsed || roundOver) return;
+                                setSelectedAnime(title);
+                              }}
+                              className={`p-3.5 rounded-2xl border transition-all text-xs font-bold ${roundOver && !isUsed ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} relative ${
+                                isCurrentSelection
+                                  ? "bg-gradient-to-r from-purple-600 to-pink-600 border-purple-300 text-white shadow-xl shadow-purple-900/40 scale-[1.02]"
+                                  : isUsed
+                                    ? "bg-white/5 border-white/5 text-gray-400 cursor-not-allowed"
+                                    : "bg-slate-800/90 hover:bg-slate-700/90 border-white/10 text-white hover:border-purple-400"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-extrabold text-sm truncate">{title}</span>
+                                <span className="text-[10px] uppercase px-2 py-0.5 rounded-full font-mono shrink-0 font-bold bg-white/10">
+                                  {isUsed ? "✓ В ячейке" : "Доступно"}
+                                </span>
+                              </div>
+
+                              <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-400">
+                                <span>
+                                  {isUsed 
+                                    ? `Размещено в ячейке #${cellNum! + 1}`
+                                    : isCurrentSelection 
+                                      ? "✓ Выбрано! Кликните по ячейке слева" 
+                                      : "Нажмите, чтобы выбрать"}
+                                </span>
+                                {!isUsed && !isCurrentSelection && !roundOver && (
+                                  <span className="text-purple-400 font-bold">Выбрать →</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {dockTab === "all" && (
+                <div className="space-y-2">
+                  <div className="text-[11px] text-gray-400 pb-1 border-b border-white/5">
+                    Тайтлы из прошлых выдач, не поставленные вовремя на карточку, сгорели.
+                  </div>
+
+                  {revealedAnime.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-gray-500">
+                      Пока нет открытых тайтлов
+                    </div>
+                  ) : (
+                    <div className="max-h-[420px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                      {revealedAnime.map((title, idx) => {
                         const isUsed = usedAnimeTitles.has(title);
-                        const isCurrentSelection = selectedAnime === title;
-                        const cellNum = placedAnimeCellMap.get(title);
+                        const isCurrent = currentPair.includes(title);
+                        const foundIndex = flatCard.findIndex(c => c.title === title);
+                        const cellNum = foundIndex >= 0 ? foundIndex : null;
 
                         return (
                           <div
                             key={idx}
                             onClick={() => {
-                              if (isUsed || roundOver) return;
-                              setSelectedAnime(title);
+                              if (roundOver) return;
+                              if (isCurrent && !isUsed) {
+                                setSelectedAnime(title);
+                                setDockTab("current");
+                              } else if (!isCurrent && !isUsed) {
+                                setStatusNotice("Это аниме сгорело, так как раунд ушел вперед!");
+                                setTimeout(() => setStatusNotice(""), 3000);
+                              }
                             }}
-                            className={`p-3.5 rounded-2xl border transition-all text-xs font-bold ${roundOver && !isUsed ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} relative ${
-                              isCurrentSelection
-                                ? "bg-gradient-to-r from-purple-600 to-pink-600 border-purple-300 text-white shadow-xl shadow-purple-900/40 scale-[1.02]"
+                            className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+                              isCurrent
+                                ? "bg-purple-950/40 border-purple-500/50 text-white cursor-pointer hover:bg-purple-900/40"
                                 : isUsed
-                                  ? "bg-white/5 border-white/5 text-gray-400 cursor-not-allowed"
-                                  : "bg-slate-800/90 hover:bg-slate-700/90 border-white/10 text-white hover:border-purple-400"
+                                  ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
+                                  : "bg-white/5 border-white/5 text-gray-500 line-through opacity-60"
                             }`}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-extrabold text-sm truncate">{title}</span>
-                              <span className="text-[10px] uppercase px-2 py-0.5 rounded-full font-mono shrink-0 font-bold bg-white/10">
-                                {isUsed ? "✓ В ячейке" : "Доступно"}
-                              </span>
-                            </div>
-
-                            <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-400">
-                              <span>
-                                {isUsed 
-                                  ? `Размещено в ячейке #${cellNum! + 1}`
-                                  : isCurrentSelection 
-                                    ? "✓ Выбрано! Кликните по ячейке слева" 
-                                    : "Нажмите, чтобы выбрать"}
-                              </span>
-                              {!isUsed && !isCurrentSelection && !roundOver && (
-                                <span className="text-purple-400 font-bold">Выбрать →</span>
+                            <span className="truncate">{title}</span>
+                            <span className="text-[10px] shrink-0 font-bold">
+                              {isUsed ? (
+                                <span className="text-emerald-400">В ячейке #{cellNum! + 1}</span>
+                              ) : isCurrent ? (
+                                <span className="text-amber-400">⚡ Текущее</span>
+                              ) : (
+                                <span className="text-gray-500">✕ Сгорело</span>
                               )}
-                            </div>
+                            </span>
                           </div>
                         );
                       })}
                     </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {dockTab === "all" && (
-              <div className="space-y-2">
-                <div className="text-[11px] text-gray-400 pb-1 border-b border-white/5">
-                  Тайтлы из прошлых выдач, не поставленные вовремя на карточку, сгорели.
+                  )}
                 </div>
-
-                {revealedAnime.length === 0 ? (
-                  <div className="text-center py-8 text-xs text-gray-500">
-                    Пока нет открытых тайтлов
-                  </div>
-                ) : (
-                  <div className="max-h-[420px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
-                    {revealedAnime.map((title, idx) => {
-                      const isUsed = usedAnimeTitles.has(title);
-                      const isCurrent = currentPair.includes(title);
-                      const cellNum = placedAnimeCellMap.get(title);
-
-                      return (
-                        <div
-                          key={idx}
-                          onClick={() => {
-                            if (roundOver) return;
-                            if (isCurrent && !isUsed) {
-                              setSelectedAnime(title);
-                              setDockTab("current");
-                            } else if (!isCurrent && !isUsed) {
-                              setStatusNotice("Это аниме сгорело, так как раунд ушел вперед!");
-                              setTimeout(() => setStatusNotice(""), 3000);
-                            }
-                          }}
-                          className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
-                            isCurrent
-                              ? "bg-purple-950/40 border-purple-500/50 text-white cursor-pointer hover:bg-purple-900/40"
-                              : isUsed
-                                ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
-                                : "bg-white/5 border-white/5 text-gray-500 line-through opacity-60"
-                          }`}
-                        >
-                          <span className="truncate">{title}</span>
-                          <span className="text-[10px] shrink-0 font-bold">
-                            {isUsed ? (
-                              <span className="text-emerald-400">В ячейке #{cellNum! + 1}</span>
-                            ) : isCurrent ? (
-                              <span className="text-amber-400">⚡ Текущее</span>
-                            ) : (
-                              <span className="text-gray-500">✕ Сгорело</span>
-                            )}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <BingoRulesModal
         isOpen={showRulesModal}
