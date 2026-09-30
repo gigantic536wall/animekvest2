@@ -618,6 +618,7 @@ function Round1CharacterCard({
   const candidates = React.useMemo(() => {
     const list: string[] = [];
     if (customImage) list.push(customImage);
+    // В первую очередь проверяем файлы по схеме пользователя в foto1
     list.push(`/foto1/image4-1-${qIdx + 1}-${cIdx + 1}.jpg`);
     list.push(`./foto1/image4-1-${qIdx + 1}-${cIdx + 1}.jpg`);
     list.push(`/foto1/image4-1-${qIdx + 1}-${cIdx + 1}.png`);
@@ -2290,9 +2291,6 @@ export default function App() {
                             </span>
                           </div>
                           <p className="text-sm text-blue-300 mt-1">Ответ: <span className="font-bold">{ans.answer}</span></p>
-                          {currentRType === "three_characters" && (
-                            <p className="text-[11px] text-gray-400">Персонажи: {(ans.characters || []).join(", ") || "—"}</p>
-                          )}
                           <p className="text-[10px] text-green-400 mt-0.5 uppercase tracking-wider">
                             Правильный: <span className="font-bold">{correctAns || "—"}</span>
                           </p>
