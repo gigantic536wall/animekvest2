@@ -302,7 +302,7 @@ const roundsData: Round[] = [
         correctAnswer: "«Чудовище и принц» "
       },
       {
-        text: "«Золотая пора»: Какое роковое происшествие на мосту в родном городе привело к падению Банри Тады в реку и полной потере его юношеских воспоминаний?",
+        text: "«Золотая пора»: Какое роковое происшествие на мосту в родном городе привело к падению Банри Тады в реку и полной потере юношеских воспоминаний?",
         options: [
           "Внезапный обвал старых перил моста во время тайфуна",
           "Драка с хулиганами, столкнувшими его в воду",
@@ -622,7 +622,6 @@ function Round1CharacterCard({
   const candidates = React.useMemo(() => {
     const list: string[] = [];
     if (customImage) list.push(customImage);
-    // В первую очередь проверяем файлы по схеме пользователя в foto1
     list.push(`/foto1/image4-1-${qIdx + 1}-${cIdx + 1}.jpg`);
     list.push(`./foto1/image4-1-${qIdx + 1}-${cIdx + 1}.jpg`);
     list.push(`/foto1/image4-1-${qIdx + 1}-${cIdx + 1}.png`);
@@ -970,6 +969,11 @@ export default function App() {
     return total;
   };
 
+  // Показ лидерборда поверх всего экрана
+  const toggleLeaderboard = async () => {
+    await restPatch('gameState', { showLeaderboard: !gameState?.showLeaderboard });
+  };
+
   useEffect(() => {
     if (!gameState?.revealMode || !gameState?.active) {
       setShowRevealMode(false);
@@ -1213,10 +1217,6 @@ export default function App() {
     setTimeout(async () => {
       await restPatch('gameState', { reset: false });
     }, 2000);
-  };
-
-  const toggleLeaderboard = async () => {
-    await restPatch('gameState', { showLeaderboard: !gameState?.showLeaderboard });
   };
 
   const startRevealMode = async (idx: number) => {
@@ -1633,6 +1633,83 @@ export default function App() {
 
   return (
     <div className="min-h-screen p-4 md:p-8">
+      {/* ПОВЕРХНОСТНАЯ ТАБЛИЦА ЛИДЕРОВ ДЛЯ ВСЕХ */}
+      {gameState?.showLeaderboard && (
+        <div className="fixed inset-0 z-[110] bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 overflow-hidden">
+          <div className="absolute inset-0 opacity-20">
+            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,#3b0764_0%,transparent_70%)]" />
+          </div>
+          
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="relative z-10 max-w-4xl w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-8 md:p-12 shadow-2xl"
+          >
+            <div className="text-center mb-12">
+              <motion.div
+                initial={{ y: -20 }}
+                animate={{ y: 0 }}
+                className="inline-block bg-purple-500/20 px-6 py-2 rounded-full border border-purple-500/30 mb-4"
+              >
+                <span className="text-purple-400 font-black uppercase tracking-widest text-sm">Таблица результатов</span>
+              </motion.div>
+              <h2 className="text-5xl md:text-7xl font-black text-white uppercase tracking-tighter italic">Таблица Лидеров</h2>
+            </div>
+
+            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-4 custom-scrollbar">
+              {Object.entries(players)
+                .sort((a, b) => getPlayerScore(b[1]) - getPlayerScore(a[1]))
+                .map(([id, p]: [string, any], idx, arr) => {
+                  const isWinner = idx === 0;
+                  return (
+                    <motion.div 
+                      key={id}
+                      initial={{ x: -50, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: idx * 0.1 }}
+                      className={`flex items-center justify-between p-6 rounded-2xl border transition-all ${
+                        isWinner 
+                        ? 'bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-500/50 shadow-lg shadow-yellow-500/10' 
+                        : 'bg-white/5 border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      <div className="flex items-center gap-6">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-xl ${
+                          isWinner ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white/50'
+                        }`}>
+                          {idx + 1}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="text-2xl font-bold text-white">{p.nickname}</h3>
+                            {isWinner && <Crown className="w-6 h-6 text-yellow-500 fill-yellow-500" />}
+                          </div>
+                          <p className="text-sm text-gray-400 font-medium uppercase tracking-wider">Команда #{p.team + 1}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className={`text-4xl font-black ${isWinner ? 'text-yellow-500' : 'text-blue-400'}`}>
+                          {getPlayerScore(p)}
+                        </div>
+                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">баллов</p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+            </div>
+
+            {user?.isAdmin && (
+              <button 
+                onClick={toggleLeaderboard}
+                className="mt-12 w-full bg-white/10 hover:bg-white/20 py-4 rounded-2xl font-bold text-white transition-all uppercase tracking-widest border border-white/10 cursor-pointer"
+              >
+                Скрыть таблицу
+              </button>
+            )}
+          </motion.div>
+        </div>
+      )}
+
       <div className="max-w-[1600px] mx-auto">
         {/* Header */}
         <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-6 glass p-8 rounded-[2.5rem] neon-border">
@@ -2177,6 +2254,13 @@ export default function App() {
             <div className="bg-black/40 p-6 rounded-3xl space-y-6">
               <h3 className="text-lg font-bold flex items-center gap-2"><Settings className="w-4 h-4" /> Управление вопросом</h3>
               <div className="flex flex-wrap gap-4">
+                <button 
+                  onClick={toggleLeaderboard}
+                  className={`px-6 py-3 rounded-full font-bold flex items-center gap-2 transition-all cursor-pointer ${gameState?.showLeaderboard ? 'bg-pink-600 shadow-[0_0_15px_rgba(219,39,119,0.5)]' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+                >
+                  <Trophy className="w-4 h-4" />
+                  {gameState?.showLeaderboard ? 'СКРЫТЬ СЧЁТ КОМАНД' : 'ПОКАЗАТЬ СЧЁТ КОМАНД'}
+                </button>
                 <button 
                   onClick={toggleShowAnswer}
                   className={`px-6 py-3 rounded-full font-bold transition-all cursor-pointer ${gameState?.showAnswer ? 'bg-green-600' : 'bg-blue-600 hover:bg-blue-700'}`}
