@@ -129,9 +129,9 @@ const roundsData: Round[] = [
     questions: [
       {
         images: [
-          "https://iili.io/n7PxWKB.jpg",
-          "https://iili.io/n7PxiRn.jpg",
-          "https://iili.io/n7PxLDG.png"
+          "/foto1/image4-1-1-1.jpg",
+          "/foto1/image4-1-1-2.jpg",
+          "/foto1/image4-1-1-3.jpg"
         ],
         characterNames: [
           "Сатору Миками (главный герой до перерождения)",
@@ -142,9 +142,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "https://iili.io/n7PxZxf.png",
-          "https://iili.io/n7Pxmf2.png",
-          "https://iili.io/n7PxplS.png"
+          "/foto1/image4-1-2-1.jpg",
+          "/foto1/image4-1-2-2.jpg",
+          "/foto1/image4-1-2-3.jpg"
         ],
         characterNames: [
           "Фука Кикути",
@@ -155,9 +155,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "https://iili.io/n7PzHJ9.png",
-          "https://iili.io/n7PzJRe.png",
-          "https://iili.io/n7Pz2Db.png"
+          "/foto1/image4-1-3-1.jpg",
+          "/foto1/image4-1-3-2.jpg",
+          "/foto1/image4-1-3-3.jpg"
         ],
         characterNames: [
           "Юма Куними",
@@ -168,9 +168,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "https://iili.io/n7PzfiQ.jpg",
-          "https://iili.io/n7PzC0B.png",
-          "https://iili.io/n7PznUP.png"
+          "/foto1/image4-1-4-1.jpg",
+          "/foto1/image4-1-4-2.jpg",
+          "/foto1/image4-1-4-3.jpg"
         ],
         characterNames: [
           "Бишамон",
@@ -181,9 +181,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "https://iili.io/n7Pzz5F.png",
-          "https://iili.io/n7PzIOg.png",
-          "https://iili.io/n7PzAzJ.jpg"
+          "/foto1/image4-1-5-1.jpg",
+          "/foto1/image4-1-5-2.jpg",
+          "/foto1/image4-1-5-3.jpg"
         ],
         characterNames: [
           "Тэцу Тоцумура",
@@ -194,9 +194,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "https://iili.io/n7PzRWv.jpg",
-          "https://iili.io/n7Pza0N.jpg",
-          "https://iili.io/n7Pz0Jt.jpg"
+          "/foto1/image4-1-6-1.jpg",
+          "/foto1/image4-1-6-2.jpg",
+          "/foto1/image4-1-6-3.jpg"
         ],
         characterNames: [
           "Ицуки Сумэраги",
@@ -207,9 +207,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "https://iili.io/n7PzVzG.png",
-          "https://iili.io/n7PzXs4.png",
-          "https://iili.io/n7Pzw12.png"
+          "/foto1/image4-1-7-1.jpg",
+          "/foto1/image4-1-7-2.jpg",
+          "/foto1/image4-1-7-3.jpg"
         ],
         characterNames: [
           "Каэде Акамацу",
@@ -220,9 +220,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "https://iili.io/n7Pzed7.png",
-          "https://iili.io/n7Pzvee.png",
-          "https://iili.io/n7PzgXj.png"
+          "/foto1/image4-1-8-1.jpg",
+          "/foto1/image4-1-8-2.jpg",
+          "/foto1/image4-1-8-3.jpg"
         ],
         characterNames: [
           "Ёситэру Дзаимокудза",
@@ -233,9 +233,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "https://iili.io/n7Pz6qQ.jpg",
-          "https://iili.io/n7PzP1V.png",
-          "https://iili.io/n7PzQ71.png"
+          "/foto1/image4-1-9-1.jpg",
+          "/foto1/image4-1-9-2.jpg",
+          "/foto1/image4-1-9-3.jpg"
         ],
         characterNames: [
           "Амира",
@@ -246,9 +246,9 @@ const roundsData: Round[] = [
       },
       {
         images: [
-          "https://iili.io/n7PxSPp.png",
-          "https://iili.io/n7PxgKN.png",
-          "https://iili.io/n7Px4St.png"
+          "/foto1/image4-1-10-1.jpg",
+          "/foto1/image4-1-10-2.jpg",
+          "/foto1/image4-1-10-3.jpg"
         ],
         characterNames: [
           "Цукино",
@@ -618,15 +618,16 @@ function Round1CharacterCard({
   const candidates = React.useMemo(() => {
     const list: string[] = [];
     if (customImage) list.push(customImage);
-    if (src) {
+    // В первую очередь проверяем файлы по схеме пользователя в foto1
+    list.push(`/foto1/image4-1-${qIdx + 1}-${cIdx + 1}.jpg`);
+    list.push(`./foto1/image4-1-${qIdx + 1}-${cIdx + 1}.jpg`);
+    list.push(`/foto1/image4-1-${qIdx + 1}-${cIdx + 1}.png`);
+    list.push(`./foto1/image4-1-${qIdx + 1}-${cIdx + 1}.png`);
+    if (src && !list.includes(src)) {
       list.push(src);
-      if (src.includes('.png')) list.push(src.replace('.png', '.jpg'), src.replace('.png', '.jpeg'), src.replace('.png', '.webp'));
-      if (src.includes('.jpg')) list.push(src.replace('.jpg', '.png'), src.replace('.jpg', '.webp'));
+      if (src.includes('.png')) list.push(src.replace('.png', '.jpg'), src.replace('.png', '.jpeg'));
+      if (src.includes('.jpg')) list.push(src.replace('.jpg', '.png'));
     }
-    list.push(`/chars/q${qIdx + 1}_${cIdx + 1}.jpg`);
-    list.push(`/chars/q${qIdx + 1}_${cIdx + 1}.png`);
-    list.push(`/chars/${qIdx + 1}_${cIdx + 1}.jpg`);
-    list.push(`/chars/${qIdx + 1}_${cIdx + 1}.png`);
     return list;
   }, [customImage, src, qIdx, cIdx]);
 
@@ -651,6 +652,9 @@ function Round1CharacterCard({
         <span className="text-3xl">👤</span>
         <div className="text-xs font-bold text-white px-2 leading-tight">
           {charName || `Персонаж #${cIdx + 1}`}
+        </div>
+        <div className="text-[10px] text-purple-300/80">
+          Фото персонажа
         </div>
         {isAdmin && onUpload && (
           <label className="mt-1 px-3 py-1 bg-purple-600/50 hover:bg-purple-600 border border-purple-400/50 rounded-xl text-[10px] font-bold text-white cursor-pointer transition-all">
