@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Trophy, CheckCircle2, XCircle, AlertTriangle, Trash2, 
   Sparkles, Eye, Send, RotateCcw, Award, Layers, Flame,
-  SkipForward, Clock, History, AlertCircle, BookOpen
+  SkipForward, Clock, History, AlertCircle, BookOpen, ArrowRight, StopCircle
 } from "lucide-react";
 import { 
   BingoCell, 
@@ -37,7 +37,6 @@ export default function BingoRoundView({
   const [statusNotice, setStatusNotice] = useState<string>("");
   const [dockTab, setDockTab] = useState<"current" | "all">("current");
   const [showRulesModal, setShowRulesModal] = useState<boolean>(() => {
-    // Auto-show rules when round 8 starts unless closed in current browser session
     const hasSeen = sessionStorage.getItem("bingo_rules_seen_r8");
     return !hasSeen;
   });
@@ -47,31 +46,33 @@ export default function BingoRoundView({
     setShowRulesModal(false);
   };
 
+  // Определение текущей партии (0 = Партия 1, 1 = Партия 2)
+  const currentQIdx = gameState?.currentQuestion ?? 0;
+  const isGame2 = currentQIdx === 1;
+
   const bingoState = gameState?.bingo || {};
   const pool32: string[] = bingoState.pool32 || [];
   const revealedCount: number = bingoState.revealedCount || 0;
   const revealedAnime = pool32.slice(0, revealedCount);
   const lastRevealed: string[] = bingoState.lastRevealed || [];
 
-  // The active pair that can be placed RIGHT NOW (only current drop of 2 anime)
   const currentPair: string[] = (lastRevealed && lastRevealed.length > 0)
     ? lastRevealed
     : pool32.slice(Math.max(0, revealedCount - 2), revealedCount);
 
-  // If selectedAnime is no longer in currentPair, clear it
+  const roundOver: boolean = !!bingoState.roundOver;
+
   useEffect(() => {
     if (selectedAnime && !currentPair.includes(selectedAnime)) {
       setSelectedAnime(null);
     }
   }, [currentPair, selectedAnime]);
 
-  // Determine active team view
   const currentTeamIdx = user.isAdmin ? adminSelectedTeam : (user.team ?? 0);
   const teamsData = bingoState.teams || {};
   const currentTeamData = teamsData[currentTeamIdx] || null;
   const card: BingoCell[] = currentTeamData?.card || [];
 
-  // Auto-initialize Bingo round if Admin is present and bingo state is missing
   useEffect(() => {
     if (user?.isAdmin && (!bingoState.pool32 || bingoState.pool32.length === 0)) {
       initializeBingoGame();
@@ -113,9 +114,8 @@ export default function BingoRoundView({
     }
   };
 
-  // Host: reveal next 2 anime
   const handleRevealNext2 = async () => {
-    if (!user.isAdmin || revealedCount >= pool32.length) return;
+    if (!user.isAdmin || revealedCount >= pool32.length || roundOver) return;
     setIsProcessing(true);
     try {
       const nextCount = Math.min(revealedCount + 2, pool32.length);
@@ -132,24 +132,63 @@ export default function BingoRoundView({
     }
   };
 
-  // Set of anime titles placed in this team's card
+  // ЗАПУСК 2-Й ПАРТИИ БИНГО
+  const handleStartGame2 = async () => {
+    if (!user.isAdmin) return;
+    if (!window.confirm("Все результаты 1-й партии проверены? Начать 2-ю партию с новыми карточками?")) return;
+
+    setIsProcessing(true);
+    try {
+      const newPool = generateBingoPool32();
+      const initialTeams: Record<string, any> = {};
+      for (let t = 0; t < TOTAL_TEAMS; t++) {
+        initialTeams[t] = {
+          teamIdx: t,
+          card: generateTeamBingoCard(t),
+          submittedForReview: false,
+          submissionType: null,
+          submittedAt: null,
+          firstLineApproved: false,
+          fullApproved: false,
+          penaltyTotal: 0,
+          lastPenaltyNotice: null
+        };
+      }
+
+      await restPatch("gameState", {
+        currentQuestion: 1, // Переключаем на 2 партию
+        bingo: {
+          pool32: newPool,
+          revealedCount: 0,
+          lastRevealed: [],
+          teams: initialTeams,
+          roundOver: false
+        }
+      });
+      setDockTab("current");
+      setSelectedAnime(null);
+      setStatusNotice("Партия 2 успешно запущена! Новые карточки выданы.");
+      setTimeout(() => setStatusNotice(""), 4000);
+    } catch (e) {
+      console.error("Error starting game 2:", e);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const usedAnimeTitles = new Set(
     card.map(c => c?.placedAnime).filter(Boolean) as string[]
   );
 
-  // Map of placed title to cell index
   const placedAnimeCellMap = new Map<string, number>();
   card.forEach((c, idx) => {
     if (c?.placedAnime) placedAnimeCellMap.set(c.placedAnime, idx);
   });
 
-  // Evaluate card status
   const cardEvaluation = evaluateBingoCard(card);
 
-  // Placing anime into an empty cell
   const handleCellClick = async (cellIndex: number) => {
     if (user.isAdmin) {
-      // In Admin view, clicking a cell toggles it in the multi-error selection
       const cell = card[cellIndex];
       if (!cell?.placedAnime) {
         setStatusNotice("В этой ячейке нет аниме — ошибку можно отметить только в заполненной ячейке!");
@@ -170,6 +209,12 @@ export default function BingoRoundView({
       return;
     }
 
+    if (roundOver) {
+      setStatusNotice("Партия завершена! Расставлять тайтлы больше нельзя.");
+      setTimeout(() => setStatusNotice(""), 3000);
+      return;
+    }
+
     const cell = card[cellIndex];
     if (cell.placedAnime) {
       setStatusNotice("Эта ячейка уже занята! Нажмите на 🗑️ в ячейке, чтобы освободить её.");
@@ -183,7 +228,6 @@ export default function BingoRoundView({
       return;
     }
 
-    // Only allow placing anime from the CURRENT drop
     if (!currentPair.includes(selectedAnime)) {
       setStatusNotice("Это аниме уже недоступно (сгорело при переходе к следующей паре тайтлов)!");
       setSelectedAnime(null);
@@ -197,7 +241,6 @@ export default function BingoRoundView({
       return;
     }
 
-    // Place anime into cell
     try {
       const newCard = [...card];
       newCard[cellIndex] = {
@@ -213,9 +256,9 @@ export default function BingoRoundView({
     }
   };
 
-  // Remove anime from a cell (can only delete, not drag/move)
   const handleDeleteCellAnime = async (e: React.MouseEvent, cellIndex: number) => {
     e.stopPropagation();
+    if (roundOver) return;
     if (currentTeamData?.submittedForReview && !user.isAdmin) {
       setStatusNotice("Нельзя менять карточку, пока идет проверка админом!");
       setTimeout(() => setStatusNotice(""), 3000);
@@ -235,9 +278,8 @@ export default function BingoRoundView({
     }
   };
 
-  // Team: submit for review
   const handleSubmitForReview = async (type: "line" | "full") => {
-    if (user.isAdmin || currentTeamData?.submittedForReview) return;
+    if (user.isAdmin || currentTeamData?.submittedForReview || roundOver) return;
     try {
       await restPatch(`gameState/bingo/teams/${currentTeamIdx}`, {
         submittedForReview: true,
@@ -256,19 +298,19 @@ export default function BingoRoundView({
     }
   };
 
-  // Admin: approve review
   const handleAdminApprove = async () => {
     if (!user.isAdmin || !currentTeamData?.submittedForReview) return;
     setIsProcessing(true);
     const teamIdx = adminSelectedTeam;
     const isFull = currentTeamData.submissionType === "full" || cardEvaluation.allCompleted;
 
+    // Уникальный ключ для каждой партии, чтобы баллы суммировались
+    const scoreKey = isFull ? `round8_q${currentQIdx}_bingo_full` : `round8_q${currentQIdx}_bingo_line`;
+
     try {
       const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
 
       if (isFull) {
-        // Full card completed: +24 points bonus, ends the round
-        const scoreKey = "round8_bingo_full";
         for (const [pId] of teamPlayers) {
           await restPut(`players/${pId}/scores/${scoreKey}`, 24);
         }
@@ -278,12 +320,10 @@ export default function BingoRoundView({
           firstLineApproved: true
         });
         await restPatch("gameState/bingo", {
-          roundOver: true
+          roundOver: true // Завершает текущую партию
         });
-        alert(`🎉 Команда ${teamIdx + 1} заполнила ВСЕ ячейки (+24 балла)! Раунд Бинго завершен!`);
+        alert(`🎉 Команда ${teamIdx + 1} заполнила ВСЕ ячейки (+24 балла)! Партия завершена!`);
       } else {
-        // Line completed: +12 points for first line
-        const scoreKey = "round8_bingo_line";
         for (const [pId] of teamPlayers) {
           await restPut(`players/${pId}/scores/${scoreKey}`, 12);
         }
@@ -301,11 +341,10 @@ export default function BingoRoundView({
     }
   };
 
-  // Admin: reject review with multiple error cells and -3 penalty per cell
   const handleAdminReject = async () => {
     if (!user.isAdmin || !currentTeamData) return;
     if (adminSelectedErrorCells.length === 0) {
-      alert("Сначала нажмите на ячейки с ошибочными аниме на карточке выше, чтобы отметить их (можно несколько)!");
+      alert("Сначала нажмите на ячейки с ошибочными аниме на карточке выше, чтобы отметить их!");
       return;
     }
 
@@ -321,14 +360,12 @@ export default function BingoRoundView({
     const penalty = count * 3;
 
     try {
-      // 1. Deduct 3 points per invalid cell from each player of the team
       const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
-      const penaltyKey = `round8_penalty_${Date.now()}`;
+      const penaltyKey = `round8_q${currentQIdx}_penalty_${Date.now()}`;
       for (const [pId] of teamPlayers) {
         await restPut(`players/${pId}/scores/${penaltyKey}`, -penalty);
       }
 
-      // 2. Remove incorrect anime from each selected cell so cells are free for other anime
       const newCard = [...card];
       const rejectedItems: string[] = [];
       for (const idx of invalidIndices) {
@@ -341,9 +378,8 @@ export default function BingoRoundView({
         };
       }
 
-      const penaltyNotice = `❌ Ошибки при проверке (${count} шт.): ${rejectedItems.join(", ")}. С команды списано ${penalty} б. (-3 б. за каждую ошибку). Ошибочные аниме удалены, ячейки снова свободны для заполнения.`;
+      const penaltyNotice = `❌ Ошибки при проверке (${count} шт.): ${rejectedItems.join(", ")}. С команды списано ${penalty} б. (-3 б. за каждую ошибку). Ячейки снова свободны.`;
 
-      // 3. Update team state in Firebase
       await restPatch(`gameState/bingo/teams/${teamIdx}`, {
         submittedForReview: false,
         lastPenaltyNotice: penaltyNotice,
@@ -352,7 +388,7 @@ export default function BingoRoundView({
       await restPut(`gameState/bingo/teams/${teamIdx}/card`, newCard);
 
       setAdminSelectedErrorCells([]);
-      alert(`Отклонено ${count} ошибочных ячеек. С команды ${teamIdx + 1} списано ${penalty} баллов (-3 за каждую). Карточка возвращена команде.`);
+      alert(`Отклонено ${count} ошибочных ячеек. С команды ${teamIdx + 1} списано ${penalty} баллов.`);
     } catch (e) {
       console.error("Reject error:", e);
       alert("Ошибка при отклонении ячеек");
@@ -363,7 +399,6 @@ export default function BingoRoundView({
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto select-none">
-      {/* Top Banner / Notification */}
       <AnimatePresence>
         {statusNotice && (
           <motion.div
@@ -377,7 +412,23 @@ export default function BingoRoundView({
         )}
       </AnimatePresence>
 
-      {/* Penalty Alert for Team */}
+      {/* Экран ожидания для игроков между партиями */}
+      {!user.isAdmin && roundOver && !isGame2 && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-6 bg-amber-500/20 border border-amber-500/40 rounded-3xl text-center shadow-xl backdrop-blur-md"
+        >
+          <h3 className="text-2xl font-black text-amber-400 mb-2 flex items-center justify-center gap-2">
+            <Trophy className="w-6 h-6" /> Партия 1 завершена!
+          </h3>
+          <p className="text-amber-100 font-medium max-w-xl mx-auto">
+            Ведущий проверяет результаты карточек и начисляет баллы. Пожалуйста, подождите. 
+            Скоро начнется <span className="font-bold text-white">Партия 2</span> с абсолютно новыми тайтлами и карточками!
+          </p>
+        </motion.div>
+      )}
+
       {currentTeamData?.lastPenaltyNotice && !user.isAdmin && (
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
@@ -407,7 +458,7 @@ export default function BingoRoundView({
                 Аниме-Бинго 4×4
               </h2>
               <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-white/10 text-gray-300 border border-white/10">
-                Раунд 8
+                Раунд 8 • {isGame2 ? "Партия 2 из 2" : "Партия 1 из 2"}
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
@@ -416,7 +467,6 @@ export default function BingoRoundView({
           </div>
         </div>
 
-        {/* Revealed counter & status & rules button */}
         <div className="flex flex-wrap items-center gap-3">
           <button
             onClick={() => setShowRulesModal(true)}
@@ -453,8 +503,7 @@ export default function BingoRoundView({
         </div>
       </div>
 
-      {/* Fresh Drop Spotlight (The latest 2 anime revealed) */}
-      {lastRevealed.length > 0 && (
+      {lastRevealed.length > 0 && !roundOver && (
         <motion.div
           key={lastRevealed.join("-")}
           initial={{ scale: 0.95, opacity: 0 }}
@@ -484,23 +533,52 @@ export default function BingoRoundView({
           <div>
             <div className="text-xs uppercase font-black text-purple-300 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>Управление выдачей аниме (Ведущий)</span>
+              <span>Управление выдачей аниме (Партия {currentQIdx + 1})</span>
             </div>
             <p className="text-xs text-slate-300 mt-0.5">
               Каждое нажатие выдает 2 новых тайтла. Все нерасставленные тайтлы у команд сгорают!
             </p>
           </div>
 
-          <button
-            onClick={handleRevealNext2}
-            disabled={isProcessing || revealedCount >= pool32.length}
-            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 text-white font-black text-xs sm:text-sm px-5 py-3 rounded-2xl shadow-lg shadow-purple-900/40 flex items-center gap-2 transition-all active:scale-95 shrink-0"
-          >
-            <SkipForward className="w-4 h-4" />
-            {revealedCount >= pool32.length
-              ? "Все 32 аниме открыты"
-              : `Выдать следующие 2 аниме (${revealedCount + 2}/32)`}
-          </button>
+          <div className="flex items-center gap-2">
+            {!roundOver && (
+              <button
+                onClick={() => {
+                  if(window.confirm("Остановить текущую партию досрочно и перейти к проверке?")) {
+                    restPatch("gameState/bingo", { roundOver: true });
+                  }
+                }}
+                className="bg-red-600/80 hover:bg-red-500 text-white font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl shadow-lg transition-all active:scale-95 flex items-center gap-2"
+              >
+                <StopCircle className="w-4 h-4" />
+                Завершить партию
+              </button>
+            )}
+
+            {!roundOver && (
+              <button
+                onClick={handleRevealNext2}
+                disabled={isProcessing || revealedCount >= pool32.length}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 text-white font-black text-xs sm:text-sm px-5 py-3 rounded-2xl shadow-lg shadow-purple-900/40 flex items-center gap-2 transition-all active:scale-95 shrink-0"
+              >
+                <SkipForward className="w-4 h-4" />
+                {revealedCount >= pool32.length
+                  ? "Все 32 аниме открыты"
+                  : `Выдать следующие 2 аниме (${revealedCount + 2}/32)`}
+              </button>
+            )}
+
+            {roundOver && !isGame2 && (
+              <button
+                onClick={handleStartGame2}
+                disabled={isProcessing}
+                className="bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-500 hover:to-green-500 text-white font-black text-xs sm:text-sm px-5 py-3 rounded-2xl shadow-lg flex items-center gap-2 transition-all active:scale-95 shrink-0 animate-pulse"
+              >
+                <span>Начать 2-ю партию Бинго</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -559,7 +637,7 @@ export default function BingoRoundView({
               <span>Карточка: Команда {currentTeamIdx + 1}</span>
               {currentTeamData?.submittedForReview && (
                 <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
-                  ⏳ На проверке у ведущего
+                  ⏳ На проверке
                 </span>
               )}
             </h3>
@@ -595,12 +673,11 @@ export default function BingoRoundView({
                           : "bg-white/5 border-white/10 hover:border-white/30 hover:bg-white/10"
                   }`}
                 >
-                  {/* Cell Header: Number + Delete Button */}
                   <div className="flex items-center justify-between gap-1">
                     <span className="text-[10px] font-mono font-bold text-gray-500">
                       #{idx + 1}
                     </span>
-                    {cell.placedAnime && !user.isAdmin && (
+                    {cell.placedAnime && !user.isAdmin && !roundOver && (
                       <button
                         onClick={(e) => handleDeleteCellAnime(e, idx)}
                         className="opacity-70 group-hover:opacity-100 hover:text-red-400 p-1 hover:bg-red-500/20 rounded-md transition-all text-gray-400"
@@ -611,12 +688,10 @@ export default function BingoRoundView({
                     )}
                   </div>
 
-                  {/* Criterion Text */}
                   <div className="text-[11px] sm:text-xs font-semibold text-slate-200 leading-snug my-1 line-clamp-3">
                     {cell.criterion}
                   </div>
 
-                  {/* Placed Anime or Empty Slot */}
                   {cell.placedAnime ? (
                     <div className="mt-1 pt-1.5 border-t border-white/10">
                       <div className={`text-[11px] sm:text-xs font-black leading-tight truncate ${
@@ -634,7 +709,6 @@ export default function BingoRoundView({
                     </div>
                   )}
 
-                  {/* Admin Error Select Badge */}
                   {user.isAdmin && isSelectedError && (
                     <div className="absolute top-1 right-1 bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 shadow-md">
                       <span>❌ Ошибка (-3)</span>
@@ -645,8 +719,7 @@ export default function BingoRoundView({
             })}
           </div>
 
-          {/* Submission / Verification Action Bar */}
-          {!user.isAdmin && (
+          {!user.isAdmin && !roundOver && (
             <div className="bg-slate-900/80 p-4 rounded-3xl border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
               <div>
                 <div className="text-xs font-bold text-slate-300">
@@ -664,7 +737,6 @@ export default function BingoRoundView({
                 </div>
               </div>
 
-              {/* Submit Button for line (+12 pts) */}
               {!currentTeamData?.firstLineApproved && (
                 <button
                   onClick={() => handleSubmitForReview("line")}
@@ -682,7 +754,6 @@ export default function BingoRoundView({
                 </button>
               )}
 
-              {/* Submit Button for Full Card (+24 pts) */}
               {currentTeamData?.firstLineApproved && !currentTeamData?.fullApproved && (
                 <button
                   onClick={() => handleSubmitForReview("full")}
@@ -702,7 +773,6 @@ export default function BingoRoundView({
             </div>
           )}
 
-          {/* Admin Review Verdict Actions */}
           {user.isAdmin && (
             <div className="bg-slate-900/90 p-5 rounded-3xl border border-purple-500/30 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
@@ -729,7 +799,7 @@ export default function BingoRoundView({
                         </button>
                       </div>
                     ) : (
-                      <span>Нажмите на ошибочные ячейки на карточке выше, чтобы отметить их (можно выбрать сразу несколько).</span>
+                      <span>Нажмите на ошибочные ячейки на карточке выше, чтобы отметить их.</span>
                     )}
                   </div>
                 </div>
@@ -756,7 +826,7 @@ export default function BingoRoundView({
                 >
                   <XCircle className="w-5 h-5" />
                   {adminSelectedErrorCells.length > 0
-                    ? `ОТКЛОНИТЬ ВЫБРАННЫЕ (${adminSelectedErrorCells.length} шт. = -${adminSelectedErrorCells.length * 3} б.)`
+                    ? `ОТКЛОНИТЬ ВЫБРАННЫЕ (-${adminSelectedErrorCells.length * 3} б.)`
                     : "ВЫБЕРИТЕ ОШИБОЧНЫЕ ЯЧЕЙКИ"}
                 </button>
               </div>
@@ -782,7 +852,6 @@ export default function BingoRoundView({
               </span>
             </div>
 
-            {/* Dock Tabs: Current active pair vs All revealed */}
             <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/40 rounded-2xl border border-white/5 text-xs font-bold">
               <button
                 onClick={() => setDockTab("current")}
@@ -808,7 +877,6 @@ export default function BingoRoundView({
               </button>
             </div>
 
-            {/* Currently Selected Anime Badge */}
             {selectedAnime ? (
               <div className="p-3 bg-purple-600/30 border border-purple-400/50 rounded-2xl flex items-center justify-between gap-2 shadow-lg animate-pulse">
                 <div className="min-w-0">
@@ -829,7 +897,6 @@ export default function BingoRoundView({
               </div>
             )}
 
-            {/* TAB 1: Current Drop of 2 Anime (The only ones that can be placed) */}
             {dockTab === "current" && (
               <div className="space-y-3">
                 {currentPair.length === 0 ? (
@@ -842,7 +909,6 @@ export default function BingoRoundView({
                   </div>
                 ) : (
                   <>
-                    {/* Warning Notice about Drop Expiration */}
                     <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] text-amber-200 flex items-start gap-2">
                       <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                       <span>
@@ -860,14 +926,10 @@ export default function BingoRoundView({
                           <div
                             key={idx}
                             onClick={() => {
-                              if (isUsed) {
-                                setStatusNotice(`Это аниме уже поставлено в ячейку #${cellNum! + 1}!`);
-                                setTimeout(() => setStatusNotice(""), 2500);
-                                return;
-                              }
+                              if (isUsed || roundOver) return;
                               setSelectedAnime(title);
                             }}
-                            className={`p-3.5 rounded-2xl border transition-all text-xs font-bold cursor-pointer relative ${
+                            className={`p-3.5 rounded-2xl border transition-all text-xs font-bold ${roundOver && !isUsed ? "opacity-50 cursor-not-allowed" : "cursor-pointer"} relative ${
                               isCurrentSelection
                                 ? "bg-gradient-to-r from-purple-600 to-pink-600 border-purple-300 text-white shadow-xl shadow-purple-900/40 scale-[1.02]"
                                 : isUsed
@@ -890,7 +952,7 @@ export default function BingoRoundView({
                                     ? "✓ Выбрано! Кликните по ячейке слева" 
                                     : "Нажмите, чтобы выбрать"}
                               </span>
-                              {!isUsed && !isCurrentSelection && (
+                              {!isUsed && !isCurrentSelection && !roundOver && (
                                 <span className="text-purple-400 font-bold">Выбрать →</span>
                               )}
                             </div>
@@ -903,7 +965,6 @@ export default function BingoRoundView({
               </div>
             )}
 
-            {/* TAB 2: History of all revealed anime */}
             {dockTab === "all" && (
               <div className="space-y-2">
                 <div className="text-[11px] text-gray-400 pb-1 border-b border-white/5">
@@ -925,6 +986,7 @@ export default function BingoRoundView({
                         <div
                           key={idx}
                           onClick={() => {
+                            if (roundOver) return;
                             if (isCurrent && !isUsed) {
                               setSelectedAnime(title);
                               setDockTab("current");
@@ -962,7 +1024,6 @@ export default function BingoRoundView({
         </div>
       </div>
 
-      {/* Round 8 Full Rules Modal */}
       <BingoRulesModal
         isOpen={showRulesModal}
         onClose={handleCloseRules}
