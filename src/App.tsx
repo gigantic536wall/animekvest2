@@ -8,7 +8,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, 
   Play, Pause, SkipForward, Trash2, RotateCcw, CheckCircle2, 
-  XCircle, Users, Eye, HelpCircle, ShieldCheck, Trophy, Upload, ArrowRight 
+  XCircle, Users, Eye, HelpCircle, ShieldCheck, Trophy, Upload, ArrowRight,
+  ArrowRightLeft, Sparkles, Shield, AlertTriangle
 } from 'lucide-react';
 import { AudioPlayer } from './components/AudioPlayer';
 import { AKINATOR_ANIME_LIST } from './data/akinatorAnime';
@@ -17,6 +18,9 @@ import BingoRoundView from './components/BingoRoundView';
 import MemoryItemsRoundView from './components/MemoryItemsRoundView';
 import ThreeFactsRoundView from './components/ThreeFactsRoundView';
 import BeforeAfterRoundView from './components/BeforeAfterRoundView'; // Подключаем новый раунд!
+import TeamSetupModal, { compressTeamAvatar } from './components/TeamSetupModal';
+import TeamLeaderboardModal from './components/TeamLeaderboardModal';
+import TeamHeaderBanner from './components/TeamHeaderBanner';
 import { generateBingoPool32, generateTeamBingoCard } from './data/bingoData';
 import { ROUND4_STAGES } from './data/round4Data';
 import { ROUND5_QUESTIONS } from './data/round5Data';
@@ -841,6 +845,74 @@ export default function App() {
   // Вкладка проверки ответов 1 раунда (0..9 или 'all')
   const [r1ReviewQ, setR1ReviewQ] = useState<number | 'all'>(0);
 
+  // Командные данные (аватарки, лидеры)
+  const [teamsData, setTeamsData] = useState<Record<string, any>>({});
+  const [isTeamSetupOpen, setIsTeamSetupOpen] = useState(false);
+  const [isPlayerLeaderboardOpen, setIsPlayerLeaderboardOpen] = useState(false);
+  const fileInputLobbyRef = useRef<HTMLInputElement>(null);
+  const [isUploadingLobbyAvatar, setIsUploadingLobbyAvatar] = useState(false);
+  const [lobbyStatusNotice, setLobbyStatusNotice] = useState("");
+
+  // Вычисление данных текущей команды и статуса лидера
+  const currentTeamId = user && !user.isAdmin && user.team !== undefined && user.team >= 0 ? user.team : null;
+  const currentTeamInfo = currentTeamId !== null ? (teamsData[currentTeamId] || {}) : null;
+  const currentTeamLeaderId = currentTeamInfo?.leaderId;
+  const currentTeamLeaderName = currentTeamInfo?.leaderNickname;
+  const hasTeamLeader = !!currentTeamLeaderId;
+  const isCurrentUserLeader = !user?.isAdmin && currentTeamId !== null ? (hasTeamLeader ? currentTeamLeaderId === user?.id : false) : true;
+  const currentTeamMembers: any[] = currentTeamId !== null 
+    ? Object.values(players || {}).filter((p: any) => p.team === currentTeamId) 
+    : [];
+  const otherTeammates: any[] = currentTeamMembers.filter((p: any) => p.id !== user?.id);
+  const isGameStarted = !!gameState?.gameStarted || !!gameState?.teamSetupUnlocked;
+
+  const handleLobbyAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || currentTeamId === null) return;
+    setIsUploadingLobbyAvatar(true);
+    try {
+      const compressed = await compressTeamAvatar(file, 256);
+      await restPatch(`teams/${currentTeamId}`, { avatar: compressed });
+      setLobbyStatusNotice("✅ Аватарка команды успешно обновлена!");
+      setTimeout(() => setLobbyStatusNotice(""), 3500);
+    } catch (err) {
+      console.error(err);
+      setLobbyStatusNotice("❌ Ошибка при загрузке картинки");
+      setTimeout(() => setLobbyStatusNotice(""), 3500);
+    } finally {
+      setIsUploadingLobbyAvatar(false);
+      if (fileInputLobbyRef.current) fileInputLobbyRef.current.value = "";
+    }
+  };
+
+  const handleClaimLeaderDirect = async () => {
+    if (currentTeamId === null || !user) return;
+    try {
+      await restPatch(`teams/${currentTeamId}`, {
+        leaderId: user.id,
+        leaderNickname: user.nickname
+      });
+      setLobbyStatusNotice("👑 Вы стали капитаном команды!");
+      setTimeout(() => setLobbyStatusNotice(""), 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleTransferLeaderDirect = async (target: any) => {
+    if (currentTeamId === null || !target) return;
+    try {
+      await restPatch(`teams/${currentTeamId}`, {
+        leaderId: target.id,
+        leaderNickname: target.nickname
+      });
+      setLobbyStatusNotice(`👑 Лидерство передано игроку ${target.nickname}!`);
+      setTimeout(() => setLobbyStatusNotice(""), 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     gameStateRef.current = gameState;
   }, [gameState]);
@@ -903,12 +975,13 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const [resState, resPause, resReview, resGPause, resPlayers, resKey] = await Promise.all([
+        const [resState, resPause, resReview, resGPause, resPlayers, resTeams, resKey] = await Promise.all([
           restGet('gameState'),
           restGet('gameState/pause'),
           restGet('gameState/answersReview'),
           restGet('gameState/globalPause'),
           restGet('players'),
+          restGet('teams'),
           restGet('appConfig/geminiApiKey')
         ]);
 
@@ -917,6 +990,7 @@ export default function App() {
         const review = resReview.data;
         const gPause = resGPause.data;
         const allPlayers = resPlayers.data;
+        const allTeams = resTeams?.data;
         const serverTime = resState.serverTime;
         const remoteApiKey = resKey?.data;
         if (remoteApiKey && typeof remoteApiKey === "string") {
@@ -941,6 +1015,7 @@ export default function App() {
         setReviewState(review);
         setGlobalPauseState(gPause);
         setPlayers(allPlayers || {});
+        setTeamsData(allTeams || {});
 
         // ЕСЛИ СБРОС ИГРЫ — СБРАСЫВАЕМ ВСЕХ ИГРОКОВ В ЛОГИН
         if (user && !user.isAdmin) {
@@ -1026,12 +1101,23 @@ export default function App() {
     const qIdx = gameState.currentQuestion ?? 0;
     const checkAnswered = async () => {
       try {
-        const { data: ans } = await restGet(`players/${user.id}/roundAnswers/${gameState.currentRound}/q${qIdx}`);
-        if (ans?.answered) {
+        const teamLeaderId = currentTeamLeaderId;
+        const targetId = teamLeaderId || user.id;
+        let ansData: any = null;
+
+        const { data: userAns } = await restGet(`players/${user.id}/roundAnswers/${gameState.currentRound}/q${qIdx}`);
+        if (userAns?.answered) {
+          ansData = userAns;
+        } else if (targetId !== user.id) {
+          const { data: leaderAns } = await restGet(`players/${targetId}/roundAnswers/${gameState.currentRound}/q${qIdx}`);
+          if (leaderAns?.answered) ansData = leaderAns;
+        }
+
+        if (ansData?.answered) {
           setHasAnswered(true);
-          setAnswerText(ans.answer || "");
-          if (Array.isArray(ans.characters)) {
-            setCharGuesses([ans.characters[0] || "", ans.characters[1] || "", ans.characters[2] || ""]);
+          setAnswerText(ansData.answer || "");
+          if (Array.isArray(ansData.characters)) {
+            setCharGuesses([ansData.characters[0] || "", ansData.characters[1] || "", ansData.characters[2] || ""]);
           }
         }
       } catch (e) {
@@ -1039,7 +1125,7 @@ export default function App() {
       }
     };
     checkAnswered();
-  }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin]);
+  }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin, currentTeamLeaderId]);
 
   const getAssetPath = (path: string) => {
     if (!path) return "";
@@ -1058,6 +1144,15 @@ export default function App() {
   const handleJoin = async () => {
     if (!nickname) { setError("Введите никнейм"); return; }
     
+    // Ограничение: максимум 3 человека в команде
+    const targetTeamMembers = Object.values(players || {}).filter(
+      (p: any) => p.team === selectedTeam && p.id !== (user?.id)
+    );
+    if (targetTeamMembers.length >= 3) {
+      setError("В этой команде уже 3 игрока (максимум)! Пожалуйста, выберите другую команду.");
+      return;
+    }
+
     const id = isChangingTeam && user ? user.id : `${nickname}_${Date.now()}`;
     const newUser = { nickname, team: selectedTeam, isAdmin: false, id };
     
@@ -1083,13 +1178,17 @@ export default function App() {
   const resetGame = async () => {
     if (!confirm("Вы уверены, что хотите полностью сбросить игру? Все игроки во всех командах будут удалены!")) return;
     
-    // 1. Полностью очищаем ветку игроков в Firebase
+    // 1. Полностью очищаем ветку игроков и команд в Firebase
     await restDelete('players');
+    await restDelete('teams');
     setPlayers({});
+    setTeamsData({});
 
     // 2. Сбрасываем gameState и даем сигнал reset: true
     await restPut('gameState', {
       active: false,
+      gameStarted: false,
+      teamSetupUnlocked: false,
       currentRound: 0,
       currentQuestion: 0,
       roundFinished: false,
@@ -1143,7 +1242,9 @@ export default function App() {
       timeLeft: duration,
       endTime: Date.now() + duration * 1000,
       showAnswer: false,
-      reset: false
+      reset: false,
+      gameStarted: true,
+      teamSetupUnlocked: true
     };
 
     if (round.type === "three_facts") {
@@ -1330,6 +1431,11 @@ export default function App() {
   };
 
   const submitAnswer = async (overrideAnswer?: string) => {
+    // Только капитан команды может отправлять ответ!
+    if (!user?.isAdmin && currentTeamId !== null && !isCurrentUserLeader) {
+      return;
+    }
+
     const finalAnswer = typeof overrideAnswer === "string" ? overrideAnswer : answerText;
     const round = roundsData[gameState.currentRound];
     if (hasAnswered) return;
@@ -1396,6 +1502,17 @@ export default function App() {
     await restPut(path, payload);
     setHasAnswered(true);
     setIsDoubleChoice(false);
+
+    if (currentTeamId !== null) {
+      restPatch(`teams/${currentTeamId}`, {
+        lastAnswer: {
+          round: gameState.currentRound,
+          question: gameState.currentQuestion,
+          answer: finalAnswer,
+          timestamp: Date.now()
+        }
+      }).catch(console.error);
+    }
   };
 
   const toggleShowAnswer = async () => {
@@ -1485,19 +1602,43 @@ export default function App() {
             <div className="space-y-4">
               <label className="text-xs font-black text-gray-400 uppercase tracking-widest">Выбери команду</label>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => (
-                  <button 
-                    key={t}
-                    className={`py-3 rounded-xl font-bold transition-all border-2 ${
-                      selectedTeam === t 
-                        ? 'bg-purple-600 border-purple-400 shadow-lg shadow-purple-500/20 scale-105' 
-                        : 'bg-white/5 border-white/10 hover:bg-white/10'
-                    }`}
-                    onClick={() => setSelectedTeam(t)}
-                  >
-                    #{t + 1}
-                  </button>
-                ))}
+                {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => {
+                  const members = Object.values(players || {}).filter((p: any) => p.team === t);
+                  const count = members.length;
+                  const isFull = isChangingTeam && user?.team === t ? false : count >= 3;
+                  const isSelected = selectedTeam === t;
+                  const tAvatar = teamsData?.[t]?.avatar;
+
+                  return (
+                    <button 
+                      key={t}
+                      type="button"
+                      disabled={isFull}
+                      className={`p-3 rounded-2xl font-bold transition-all border-2 flex flex-col items-center justify-center relative ${
+                        isFull
+                          ? 'bg-white/5 border-red-500/20 text-gray-500 opacity-50 cursor-not-allowed'
+                          : isSelected 
+                            ? 'bg-purple-600 border-purple-400 shadow-lg shadow-purple-500/30 scale-105 cursor-pointer text-white' 
+                            : 'bg-white/5 border-white/10 hover:bg-white/10 cursor-pointer text-white hover:border-purple-500/30'
+                      }`}
+                      onClick={() => setSelectedTeam(t)}
+                    >
+                      {tAvatar ? (
+                        <img
+                          src={tAvatar}
+                          alt={`Команда ${t + 1}`}
+                          className="w-9 h-9 rounded-full object-cover mb-1 border border-purple-400/50 shadow-md"
+                        />
+                      ) : (
+                        <span className="text-base font-black">#{t + 1}</span>
+                      )}
+                      <span className={`text-[10px] font-mono mt-0.5 ${count >= 3 ? 'text-red-400 font-bold' : count > 0 ? 'text-purple-300' : 'text-gray-400'}`}>
+                        {count}/3
+                      </span>
+                      {isFull && <span className="text-[8px] uppercase tracking-wider text-red-400 font-bold">Полная</span>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -1526,81 +1667,31 @@ export default function App() {
   return (
     <div className="min-h-screen p-4 md:p-8">
       {/* ПОВЕРХНОСТНАЯ ТАБЛИЦА ЛИДЕРОВ ДЛЯ ВСЕХ */}
-      {gameState?.showLeaderboard && (
-        <div className="fixed inset-0 z-[110] bg-slate-950 flex flex-col items-center justify-center p-4 md:p-8 overflow-hidden">
-          <div className="absolute inset-0 opacity-20">
-            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_50%,#3b0764_0%,transparent_70%)]" />
-          </div>
-          
-          <motion.div 
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="relative z-10 max-w-4xl w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-[2.5rem] p-8 md:p-12 shadow-2xl"
-          >
-            <div className="text-center mb-12">
-              <motion.div
-                initial={{ y: -20 }}
-                animate={{ y: 0 }}
-                className="inline-block bg-purple-500/20 px-6 py-2 rounded-full border border-purple-500/30 mb-4"
-              >
-                <span className="text-purple-400 font-black uppercase tracking-widest text-sm">Таблица результатов</span>
-              </motion.div>
-              <h2 className="text-5xl md:text-7xl font-black text-white uppercase tracking-tighter italic">Таблица Лидеров</h2>
-            </div>
+      <TeamLeaderboardModal
+        isOpen={!!gameState?.showLeaderboard || isPlayerLeaderboardOpen}
+        onClose={() => {
+          if (user?.isAdmin && gameState?.showLeaderboard) {
+            toggleLeaderboard();
+          } else {
+            setIsPlayerLeaderboardOpen(false);
+          }
+        }}
+        players={players}
+        teamsData={teamsData}
+        getPlayerScore={getPlayerScore}
+        TOTAL_TEAMS={TOTAL_TEAMS}
+        isAdmin={user?.isAdmin}
+      />
 
-            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-4 custom-scrollbar">
-              {Object.entries(players)
-                .sort((a, b) => getPlayerScore(b[1]) - getPlayerScore(a[1]))
-                .map(([id, p]: [string, any], idx, arr) => {
-                  const isWinner = idx === 0;
-                  return (
-                    <motion.div 
-                      key={id}
-                      initial={{ x: -50, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      transition={{ delay: idx * 0.1 }}
-                      className={`flex items-center justify-between p-6 rounded-2xl border transition-all ${
-                        isWinner 
-                        ? 'bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border-yellow-500/50 shadow-lg shadow-yellow-500/10' 
-                        : 'bg-white/5 border-white/10 hover:bg-white/10'
-                      }`}
-                    >
-                      <div className="flex items-center gap-6">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-xl ${
-                          isWinner ? 'bg-yellow-500 text-black' : 'bg-white/10 text-white/50'
-                        }`}>
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-2xl font-bold text-white">{p.nickname}</h3>
-                            {isWinner && <Crown className="w-6 h-6 text-yellow-500 fill-yellow-500" />}
-                          </div>
-                          <p className="text-sm text-gray-400 font-medium uppercase tracking-wider">Команда #{p.team + 1}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className={`text-4xl font-black ${isWinner ? 'text-yellow-500' : 'text-blue-400'}`}>
-                          {getPlayerScore(p)}
-                        </div>
-                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">баллов</p>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-            </div>
-
-            {user?.isAdmin && (
-              <button 
-                onClick={toggleLeaderboard}
-                className="mt-12 w-full bg-white/10 hover:bg-white/20 py-4 rounded-2xl font-bold text-white transition-all uppercase tracking-widest border border-white/10 cursor-pointer"
-              >
-                Скрыть таблицу
-              </button>
-            )}
-          </motion.div>
-        </div>
-      )}
+      {/* МОДАЛЬНОЕ ОКНО НАСТРОЙКИ КОМАНДЫ (АВАТАРКА, ЛИДЕР) */}
+      <TeamSetupModal
+        isOpen={isTeamSetupOpen}
+        onClose={() => setIsTeamSetupOpen(false)}
+        user={user}
+        players={players}
+        teamsData={teamsData}
+        restPatch={restPatch}
+      />
 
       <div className="max-w-[1600px] mx-auto">
         {/* Header */}
@@ -1616,20 +1707,34 @@ export default function App() {
                 {user.isAdmin ? (
                   <span className="bg-yellow-500/20 text-yellow-500 text-[10px] font-black px-2 py-0.5 rounded-full border border-yellow-500/30 uppercase tracking-widest">Админ</span>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="bg-purple-500/20 text-purple-400 text-[10px] font-black px-2 py-0.5 rounded-full border border-purple-500/30 uppercase tracking-widest">Команда #{user.team + 1}</span>
-                    {!gameState?.active && (
+                    {!gameState?.active && !gameState?.gameStarted && (
                       <button 
                         onClick={() => {
                           setSelectedTeam(user.team);
                           setNickname(user.nickname);
                           setIsChangingTeam(true);
                         }}
-                        className="text-[10px] text-gray-400 hover:text-white underline uppercase tracking-widest"
+                        className="text-[10px] text-gray-400 hover:text-white underline uppercase tracking-widest cursor-pointer"
                       >
                         Сменить команду
                       </button>
                     )}
+                    <button
+                      onClick={() => setIsPlayerLeaderboardOpen(true)}
+                      className="text-[10px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-lg uppercase tracking-wider font-black flex items-center gap-1 cursor-pointer transition-all"
+                      title="Посмотреть текущий счёт всех команд"
+                    >
+                      <Trophy className="w-3 h-3 text-amber-400" />
+                      Счёт команд
+                    </button>
+                    <button
+                      onClick={() => setIsTeamSetupOpen(true)}
+                      className="text-[10px] bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 hover:text-white border border-purple-500/40 px-2.5 py-0.5 rounded-lg uppercase tracking-wider font-black flex items-center gap-1 cursor-pointer transition-all"
+                    >
+                      👑 Штаб команды
+                    </button>
                   </div>
                 )}
               </div>
@@ -1686,13 +1791,27 @@ export default function App() {
             {Array.from({ length: TOTAL_TEAMS }).map((_, tIdx) => {
               const tPlayers = Object.values(players).filter((p: any) => p.team === tIdx);
               const tScore = tPlayers.reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
+              const tAvatar = teamsData?.[tIdx]?.avatar;
+              const tLeader = teamsData?.[tIdx]?.leaderNickname;
               return (
-                <div key={tIdx} className="bg-black/50 border border-white/10 rounded-2xl p-2.5 text-center transition-all hover:border-purple-500/50">
+                <div key={tIdx} className="bg-black/50 border border-white/10 rounded-2xl p-2 text-center transition-all hover:border-purple-500/50 flex flex-col items-center">
+                  <div className="w-8 h-8 rounded-xl overflow-hidden border border-purple-500/40 bg-purple-950/40 flex items-center justify-center mb-1 shadow-sm">
+                    {tAvatar ? (
+                      <img src={tAvatar} alt={`К#${tIdx + 1}`} className="w-full h-full object-cover" />
+                    ) : (
+                      <Shield className="w-4 h-4 text-purple-400" />
+                    )}
+                  </div>
                   <div className="text-[10px] font-bold text-gray-400">К#{tIdx + 1}</div>
-                  <div className="text-lg font-black text-purple-300">{tScore}</div>
-                  <div className="text-[9px] text-gray-500 truncate">
+                  <div className="text-base font-black text-purple-300">{tScore}</div>
+                  <div className="text-[9px] text-gray-500 truncate max-w-full">
                     {tPlayers.length > 0 ? `${tPlayers.length} игр.` : 'пусто'}
                   </div>
+                  {tLeader && (
+                    <div className="text-[8px] text-amber-300 font-bold truncate max-w-full" title={`Капитан: ${tLeader}`}>
+                      👑 {tLeader}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1705,6 +1824,19 @@ export default function App() {
         src={getAssetPath("test_sound.mp3")} 
         onEnded={() => setIsTestingSound(false)}
       />
+
+      {/* Командный баннер игрока (Аватарка, Капитан, Кнопка настройки) */}
+      {!user?.isAdmin && (
+        <TeamHeaderBanner
+          user={user}
+          players={players}
+          teamsData={teamsData}
+          onOpenTeamSetup={() => setIsTeamSetupOpen(true)}
+          onOpenLeaderboard={() => setIsPlayerLeaderboardOpen(true)}
+          isTeamSetupUnlocked={!!gameState?.gameStarted || !!gameState?.teamSetupUnlocked}
+          restPatch={restPatch}
+        />
+      )}
 
       {/* Main Content Area */}
       <main className="min-h-[500px]">
@@ -1782,6 +1914,104 @@ export default function App() {
                   </div>
                 )}
 
+                {/* Тестовый раунд */}
+                {round.type === "test_round" && (
+                  <div className="space-y-6 max-w-4xl mx-auto">
+                    <div className="bg-white/5 p-6 rounded-2xl border border-white/10 text-center shadow-lg">
+                      <p className="text-gray-400 text-xs mb-2 uppercase tracking-widest font-bold">
+                        Тестовый вопрос {currentQIdx + 1} из {round.questions.length}:
+                      </p>
+                      <h3 className="text-xl md:text-2xl leading-relaxed font-bold text-white">
+                        {currentQuestion.text}
+                      </h3>
+                    </div>
+
+                    {currentQuestion.video && (
+                      <div className="rounded-2xl overflow-hidden border border-purple-500/30 bg-black/60 shadow-xl max-w-2xl mx-auto">
+                        <video 
+                          src={getAssetPath(currentQuestion.video)} 
+                          controls 
+                          autoPlay 
+                          muted 
+                          className="w-full max-h-[360px] object-contain mx-auto"
+                        />
+                      </div>
+                    )}
+
+                    {currentQuestion.images && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 max-w-3xl mx-auto">
+                        {currentQuestion.images.map((img: string, i: number) => (
+                          <div key={i} className="aspect-square rounded-xl overflow-hidden border border-white/10 bg-black/50">
+                            <img src={getAssetPath(img)} alt={`Тест ${i + 1}`} className="w-full h-full object-cover" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {!user.isAdmin && !isCurrentUserLeader && (
+                      <div className="p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-2 max-w-xl mx-auto">
+                        <p className="text-sm font-bold text-purple-200">
+                          👑 Ответ вводит капитан команды: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          Совещайтесь в голосовом чате — ответ отправляет только капитан!
+                        </p>
+                        {!hasTeamLeader && (
+                          <button
+                            onClick={handleClaimLeaderDirect}
+                            className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-black text-xs uppercase px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 mx-auto shadow-lg active:scale-95 cursor-pointer mt-1"
+                          >
+                            <Crown className="w-3.5 h-3.5" />
+                            <span>Стать капитаном команды</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {!user.isAdmin && (
+                      <div className="space-y-4 max-w-xl mx-auto">
+                        <input 
+                          type="text"
+                          className="answer-input w-full text-center"
+                          placeholder={!isCurrentUserLeader ? "Ответ вводит только капитан..." : "Ваш тестовый ответ..."}
+                          value={answerText}
+                          onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
+                          disabled={hasAnswered || !isCurrentUserLeader}
+                          maxLength={50}
+                        />
+                        <button 
+                          onClick={() => submitAnswer()}
+                          disabled={hasAnswered || !isCurrentUserLeader || !answerText.trim()}
+                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${
+                            hasAnswered 
+                              ? 'bg-green-600/80 cursor-default text-white' 
+                              : !isCurrentUserLeader
+                              ? 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/10'
+                              : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white cursor-pointer active:scale-95'
+                          }`}
+                        >
+                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : !isCurrentUserLeader ? 'ОТВЕТ ВВОДИТ КАПИТАН 👑' : 'ОТПРАВИТЬ ПРОВЕРКУ (+2 балла)'}
+                        </button>
+                      </div>
+                    )}
+
+                    {user.isAdmin && (
+                      <div className="p-4 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl text-center max-w-md mx-auto">
+                        <span className="text-[11px] font-black uppercase text-emerald-400 tracking-wider">Ответ ведущему:</span>
+                        <p className="text-xl font-black text-white mt-1">{currentQuestion.correctAnswer}</p>
+                      </div>
+                    )}
+
+                    {gameState.showAnswer && (
+                      <div className="bg-green-500/20 p-6 rounded-2xl border border-green-500/50 text-center max-w-md mx-auto">
+                        <p className="text-gray-400 text-sm uppercase mb-1">Правильный ответ:</p>
+                        <h3 className="text-2xl font-black text-green-400">{currentQuestion.correctAnswer}</h3>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Раунд 1: Три персонажа (с исправленной загрузкой картинок и отдельной панелью проверки) */}
                 {round.type === "three_characters" && (
                   <div className="space-y-6 max-w-5xl mx-auto">
@@ -1832,7 +2062,7 @@ export default function App() {
                                 </div>
                                 <input
                                   type="text"
-                                  placeholder="Имя героя..."
+                                  placeholder={!isCurrentUserLeader ? "Ответ вводит капитан..." : "Имя героя..."}
                                   value={charGuesses[idx] || ""}
                                   onChange={(e) => {
                                     const val = e.target.value.slice(0, 40);
@@ -1843,7 +2073,7 @@ export default function App() {
                                     });
                                   }}
                                   onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
-                                  disabled={hasAnswered}
+                                  disabled={hasAnswered || !isCurrentUserLeader}
                                   maxLength={40}
                                   className="w-full bg-black/60 border border-purple-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-400 disabled:opacity-75 disabled:bg-purple-950/20 transition-all font-medium"
                                 />
@@ -1861,6 +2091,17 @@ export default function App() {
                       })}
                     </div>
                     
+                    {!user.isAdmin && !isCurrentUserLeader && (
+                      <div className="max-w-xl mx-auto p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-1">
+                        <p className="text-sm font-bold text-purple-200">
+                          👑 Ответы на тайтл и героев отправляет капитан: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          Совещайтесь в голосовом чате — форму заполняет только капитан!
+                        </p>
+                      </div>
+                    )}
+
                     {!user.isAdmin && (
                       <div className="max-w-xl mx-auto space-y-3">
                         <div className="bg-slate-900/80 p-5 rounded-3xl border border-white/10 shadow-2xl space-y-3">
@@ -1873,25 +2114,27 @@ export default function App() {
                             </span>
                           </div>
                           <input 
-                            type="text"
+                            type="text" 
                             className="answer-input w-full"
-                            placeholder="Введите название тайтла..."
+                            placeholder={!isCurrentUserLeader ? "Ответ вводит только капитан..." : "Введите название тайтла..."}
                             value={answerText}
                             onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
                             onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
-                            disabled={hasAnswered}
+                            disabled={hasAnswered || !isCurrentUserLeader}
                             maxLength={50}
                           />
                           <button 
                             onClick={() => submitAnswer()}
-                            disabled={hasAnswered || (!answerText.trim() && !charGuesses.some(g => g.trim()))}
+                            disabled={hasAnswered || !isCurrentUserLeader || (!answerText.trim() && !charGuesses.some(g => g.trim()))}
                             className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition-all shadow-lg ${
                               hasAnswered 
                                 ? 'bg-green-600/80 text-white cursor-default' 
+                                : !isCurrentUserLeader
+                                ? 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/10'
                                 : 'bg-gradient-to-r from-red-500 via-pink-600 to-purple-600 hover:from-red-600 hover:to-purple-700 active:scale-95 text-white disabled:opacity-40 cursor-pointer'
                             }`}
                           >
-                            {hasAnswered ? 'ОТВЕТЫ ПРИНЯТЫ ✅' : 'ОТПРАВИТЬ ОТВЕТЫ (+2 б. за аниме, +1 б. за героя)'}
+                            {hasAnswered ? 'ОТВЕТЫ ПРИНЯТЫ ✅' : !isCurrentUserLeader ? 'ОТВЕТ ВВОДИТ КАПИТАН 👑' : 'ОТПРАВИТЬ ОТВЕТЫ (+2 б. за аниме, +1 б. за героя)'}
                           </button>
                         </div>
                       </div>
@@ -1926,6 +2169,17 @@ export default function App() {
                       <h3 className="text-xl md:text-2xl leading-relaxed font-bold text-white">{currentQuestion.text}</h3>
                     </div>
                     
+                    {!user.isAdmin && !isCurrentUserLeader && (
+                      <div className="p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-1 mb-2">
+                        <p className="text-sm font-bold text-purple-200">
+                          👑 Вариант ответа выбирает капитан команды: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          Совещайтесь в голосовом чате — ответ кликает только капитан!
+                        </p>
+                      </div>
+                    )}
+
                     {!user.isAdmin && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {currentQuestion.options?.map((opt: string, idx: number) => {
@@ -1934,14 +2188,16 @@ export default function App() {
                             <button
                               key={idx}
                               onClick={() => {
-                                if (hasAnswered || user.isAdmin) return;
+                                if (hasAnswered || user.isAdmin || !isCurrentUserLeader) return;
                                 setAnswerText(opt);
                                 submitAnswer(opt);
                               }}
-                              disabled={hasAnswered || user.isAdmin}
+                              disabled={hasAnswered || user.isAdmin || !isCurrentUserLeader}
                               className={`p-5 rounded-2xl text-left font-medium text-base transition-all border-2 flex items-start gap-3 cursor-pointer ${
                                 hasAnswered && isSelected 
                                   ? 'bg-purple-600/30 border-purple-400 text-purple-200' 
+                                  : !isCurrentUserLeader
+                                  ? 'bg-white/5 border-white/5 text-gray-400 opacity-60 cursor-not-allowed'
                                   : 'bg-white/5 border-white/10 hover:bg-white/10 text-gray-200 active:scale-95'
                               }`}
                             >
@@ -2007,23 +2263,40 @@ export default function App() {
                     
                     <AudioPlayer src={getAssetPath(currentQuestion.audio || "")} isMuted={isMuted} volume={volume} />
 
+                    {!user.isAdmin && !isCurrentUserLeader && (
+                      <div className="p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-1 mb-2">
+                        <p className="text-sm font-bold text-purple-200">
+                          👑 Ответ на звук отправляет капитан команды: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          Совещайтесь в голосовом чате — ответ отправляет только капитан!
+                        </p>
+                      </div>
+                    )}
+
                     {!user.isAdmin && (
                       <div className="space-y-4">
                         <input 
                           type="text"
                           className="answer-input w-full text-center"
-                          placeholder="Ваш ответ (название аниме)..."
+                          placeholder={!isCurrentUserLeader ? "Ответ вводит только капитан..." : "Ваш ответ (название аниме)..."}
                           value={answerText}
                           onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
-                          disabled={hasAnswered}
+                          disabled={hasAnswered || !isCurrentUserLeader}
                           maxLength={50}
                         />
                         <button 
                           onClick={() => submitAnswer()}
-                          disabled={hasAnswered}
-                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${hasAnswered ? 'bg-green-600/80 cursor-default text-white' : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer active:scale-95'}`}
+                          disabled={hasAnswered || !isCurrentUserLeader || !answerText.trim()}
+                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${
+                            hasAnswered 
+                              ? 'bg-green-600/80 cursor-default text-white' 
+                              : !isCurrentUserLeader
+                              ? 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/10'
+                              : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer active:scale-95'
+                          }`}
                         >
-                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : 'ОТПРАВИТЬ ОТВЕТ'}
+                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : !isCurrentUserLeader ? 'ОТВЕТ ВВОДИТ КАПИТАН 👑' : 'ОТПРАВИТЬ ОТВЕТ'}
                         </button>
                       </div>
                     )}
@@ -2054,6 +2327,8 @@ export default function App() {
                     restPut={restPut}
                     serverOffset={serverOffset}
                     globalPause={globalPause}
+                    isLeader={isCurrentUserLeader}
+                    leaderNickname={currentTeamLeaderName}
                   />
                 )}
 
@@ -2068,6 +2343,8 @@ export default function App() {
                     timeLeft={timeLeft}
                     serverOffset={serverOffset}
                     globalPause={globalPause}
+                    isLeader={isCurrentUserLeader}
+                    leaderNickname={currentTeamLeaderName}
                   />
                 )}
 
@@ -2081,6 +2358,8 @@ export default function App() {
                     restPut={restPut}
                     timeLeft={timeLeft}
                     globalPause={globalPause}
+                    isLeader={isCurrentUserLeader}
+                    leaderNickname={currentTeamLeaderName}
                   />
                 )}
 
@@ -2094,6 +2373,8 @@ export default function App() {
                     restPut={restPut}
                     timeLeft={timeLeft}
                     globalPause={globalPause}
+                    isLeader={isCurrentUserLeader}
+                    leaderNickname={currentTeamLeaderName}
                   />
                 )}
 
@@ -2105,32 +2386,498 @@ export default function App() {
                     players={players}
                     restPatch={restPatch}
                     restPut={restPut}
+                    isLeader={isCurrentUserLeader}
+                    leaderNickname={currentTeamLeaderName}
                   />
                 )}
               </div>
             );
           }
 
-          return (
-            <div className="flex flex-col items-center justify-center py-20 space-y-8">
-              <div className="text-center">
-                <div className="text-5xl mb-4">⏳</div>
-                <h2 className="text-2xl font-bold">Ожидание начала раунда</h2>
-                <p className="text-gray-400 mt-2">{preloaderStatus}</p>
-              </div>
-              
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-6 w-full">
-                {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => {
-                  const teamPlayers = Object.values(players).filter((p: any) => p.team === t).map((p: any) => p.nickname);
-                  const score = Object.values(players).filter((p: any) => p.team === t).reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
-                  return (
-                    <div key={t} className="glass p-6 rounded-3xl border-t-4 border-purple-500 shadow-xl">
-                      <div className="text-xs text-gray-400 mb-2 font-black uppercase tracking-widest">Команда {t + 1}</div>
-                      {user.isAdmin && <div className="text-3xl font-black text-purple-400 mb-2">{score}</div>}
-                      <div className="mt-2 text-[10px] text-gray-500 font-medium leading-relaxed">{teamPlayers.join(', ') || <span className="italic opacity-30">пусто</span>}</div>
+          const isGameStarted = !!gameState?.gameStarted || !!gameState?.teamSetupUnlocked;
+
+          // ==================== ЭТАП 1: ЛОББИ (СБОР ИГРОКОВ ПО КОМАНДАМ) ====================
+          if (!isGameStarted) {
+            const allPlayersList: any[] = Object.values(players || {});
+            const teamsWithPlayersCount = Array.from({ length: TOTAL_TEAMS }).filter(
+              (_, t) => allPlayersList.some((p: any) => p.team === t)
+            ).length;
+
+            return (
+              <div className="space-y-8 py-4">
+                {/* Admin Lobby Banner */}
+                {user.isAdmin && (
+                  <div className="p-6 sm:p-8 bg-gradient-to-r from-emerald-950/90 via-slate-900/90 to-purple-950/90 rounded-[2.5rem] border-2 border-emerald-500/60 shadow-2xl text-center space-y-4 max-w-3xl mx-auto backdrop-blur-xl">
+                    <div className="inline-flex items-center gap-2 bg-emerald-500/20 text-emerald-300 px-4 py-1.5 rounded-full border border-emerald-500/40 text-xs font-black uppercase tracking-wider">
+                      <Users className="w-4 h-4" /> Лобби ведущего • {allPlayersList.length} игроков в {teamsWithPlayersCount} командах
                     </div>
-                  );
-                })}
+                    <h2 className="text-2xl sm:text-4xl font-black text-white uppercase tracking-tight">
+                      Все игроки зашли по командам?
+                    </h2>
+                    <p className="text-xs sm:text-sm text-gray-300 max-w-xl mx-auto leading-relaxed">
+                      Дождитесь, пока игроки распределятся по командам (до 3 человек в каждой). Когда все будут готовы — нажмите кнопку ниже! В каждой команде откроется возможность загрузить аватарку команды с файлов ПК и занять лидера команды.
+                    </p>
+                    <div className="pt-2">
+                      <button
+                        onClick={async () => {
+                          await restPatch('gameState', { gameStarted: true, teamSetupUnlocked: true });
+                        }}
+                        className="bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-600 hover:from-emerald-400 hover:to-green-400 text-black font-black px-8 py-4 sm:py-5 rounded-2xl text-sm sm:text-base uppercase tracking-widest shadow-2xl shadow-emerald-500/30 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-3 mx-auto"
+                      >
+                        <Play className="w-5 h-5 fill-black" />
+                        <span>🚀 ВСЕ ЗАШЛИ — НАЧАТЬ ИГРУ</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Player Lobby Banner */}
+                {!user.isAdmin && (
+                  <div className="p-6 sm:p-8 bg-gradient-to-r from-purple-950/80 via-slate-900/90 to-slate-900 rounded-[2.5rem] border border-purple-500/40 shadow-2xl text-center space-y-3 max-w-3xl mx-auto backdrop-blur-xl">
+                    <div className="inline-flex items-center gap-2 bg-purple-500/20 text-purple-300 px-4 py-1.5 rounded-full border border-purple-500/40 text-xs font-black uppercase tracking-wider">
+                      <Users className="w-4 h-4" /> Лобби сбора игроков
+                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tight">
+                      Вы в Команде #{user.team + 1}
+                    </h2>
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                      <span className="text-xs font-bold text-gray-400 uppercase">Состав вашей команды ({currentTeamMembers.length}/3):</span>
+                      {currentTeamMembers.map((m: any) => (
+                        <span key={m.id} className="text-xs font-black bg-purple-600/30 border border-purple-500/40 text-purple-200 px-3 py-1 rounded-xl">
+                          {m.nickname} {m.id === user.id && "(Вы)"}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="p-3 bg-black/40 rounded-2xl border border-white/10 max-w-lg mx-auto text-xs text-gray-300 space-y-1">
+                      <p className="font-bold text-amber-300">
+                        ⏳ Ожидайте запуска игры ведущим!
+                      </p>
+                      <p className="text-[11px] text-gray-400">
+                        Как только ведущий нажмёт кнопку «Начать игру», в вашей команде откроется возможность загрузить аватарку команды с файлов ПК и занять лидера команды.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Grid of all 10 teams in Lobby */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between px-2">
+                    <h3 className="text-xs font-black uppercase tracking-wider text-gray-400 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-purple-400" />
+                      Распределение игроков по командам (максимум 3 в каждой):
+                    </h3>
+                    <span className="text-xs font-bold text-purple-300">
+                      Всего в лобби: {allPlayersList.length} чел.
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                    {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => {
+                      const tMembers = Object.values(players || {}).filter((p: any) => p.team === t);
+                      const isMyTeam = !user?.isAdmin && user?.team === t;
+                      const isFull = tMembers.length >= 3;
+
+                      return (
+                        <div
+                          key={t}
+                          className={`p-5 rounded-3xl border-2 transition-all flex flex-col justify-between min-h-[170px] shadow-lg relative ${
+                            isMyTeam
+                              ? 'bg-purple-950/50 border-purple-400 shadow-purple-500/20'
+                              : isFull
+                              ? 'bg-white/5 border-white/10 opacity-75'
+                              : 'bg-white/5 border-white/10 hover:border-purple-500/30'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center font-black text-xs text-purple-200">
+                                #{t + 1}
+                              </div>
+                              <span className="text-sm font-black text-white">Команда {t + 1}</span>
+                            </div>
+                            <span
+                              className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
+                                isFull
+                                  ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                  : tMembers.length > 0
+                                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                  : 'bg-white/5 text-gray-500'
+                              }`}
+                            >
+                              {tMembers.length}/3
+                            </span>
+                          </div>
+
+                          <div className="my-2 space-y-1">
+                            {tMembers.length === 0 ? (
+                              <p className="text-[11px] text-gray-500 italic py-2">Свободно (0 игроков)</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {tMembers.map((p: any) => (
+                                  <span
+                                    key={p.id}
+                                    className={`text-[11px] font-bold px-2 py-0.5 rounded-lg border ${
+                                      p.id === user?.id
+                                        ? 'bg-purple-500/30 text-white border-purple-400'
+                                        : 'bg-black/40 text-gray-300 border-white/10'
+                                    }`}
+                                  >
+                                    {p.nickname} {p.id === user?.id && "★"}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[10px]">
+                            {isMyTeam ? (
+                              <span className="text-purple-300 font-bold uppercase tracking-wider">Ваша команда</span>
+                            ) : isFull ? (
+                              <span className="text-red-400 font-bold uppercase tracking-wider">Команда полная</span>
+                            ) : (
+                              <span className="text-gray-400">Свободно мест: {3 - tMembers.length}</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          // ==================== ЭТАП 2: ПОДГОТОВКА КОМАНД (АВАТАРКИ И ЛИДЕРЫ) И ОЖИДАНИЕ РАУНДОВ ====================
+          return (
+            <div className="space-y-8 py-4">
+              {/* Hidden file input for team avatar upload */}
+              <input
+                ref={fileInputLobbyRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLobbyAvatarUpload}
+                className="hidden"
+              />
+
+              {/* Player Team Preparation Hub Card */}
+              {!user.isAdmin && currentTeamId !== null && (
+                <div className="p-6 sm:p-8 bg-gradient-to-r from-purple-950/90 via-slate-900/95 to-indigo-950/90 rounded-[2.5rem] border-2 border-purple-500/50 shadow-2xl max-w-4xl mx-auto space-y-6 backdrop-blur-xl">
+                  {/* Top Bar: Title & Avatar Upload */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-5 pb-5 border-b border-white/10">
+                    <div className="flex items-center gap-4">
+                      {/* Avatar with click-to-upload */}
+                      <div
+                        onClick={() => fileInputLobbyRef.current?.click()}
+                        className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-purple-400 bg-black/60 shrink-0 flex items-center justify-center shadow-xl relative group cursor-pointer transition-all hover:scale-105 hover:border-purple-300"
+                        title="Нажмите, чтобы загрузить аватарку команды с вашего ПК"
+                      >
+                        {currentTeamInfo?.avatar ? (
+                          <img
+                            src={currentTeamInfo.avatar}
+                            alt={`Аватарка команды ${currentTeamId + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center justify-center text-purple-400 group-hover:text-purple-300">
+                            <Shield className="w-8 h-8 mb-0.5" />
+                            <span className="text-[10px] font-black">#{currentTeamId + 1}</span>
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity text-[10px] font-bold">
+                          <Upload className="w-5 h-5 mb-0.5" />
+                          <span>С ПК</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="inline-flex items-center gap-2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider mb-1">
+                          <Sparkles className="w-3 h-3 text-amber-400" /> Игра начата • Подготовка команды
+                        </div>
+                        <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tight">
+                          Команда #{currentTeamId + 1}
+                        </h2>
+                        <p className="text-xs text-purple-300 mt-0.5">
+                          {currentTeamInfo?.avatar ? "✅ Аватарка команды загружена" : "📁 Загрузите аватарку команды с файлов вашего ПК"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        onClick={() => fileInputLobbyRef.current?.click()}
+                        disabled={isUploadingLobbyAvatar}
+                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-xs uppercase px-4 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-purple-900/40 active:scale-95 transition-all cursor-pointer"
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span>{isUploadingLobbyAvatar ? "Загрузка..." : currentTeamInfo?.avatar ? "Сменить аватарку" : "Загрузить аватарку с ПК"}</span>
+                      </button>
+                      <button
+                        onClick={() => setIsTeamSetupOpen(true)}
+                        className="bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase px-4 py-3 rounded-2xl border border-white/10 flex items-center gap-2 transition-all cursor-pointer"
+                      >
+                        <Settings className="w-4 h-4 text-purple-300" />
+                        <span>Штаб команды</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {lobbyStatusNotice && (
+                    <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl text-center text-xs font-bold text-emerald-300 animate-pulse">
+                      {lobbyStatusNotice}
+                    </div>
+                  )}
+
+                  {/* Captain Status & Controls */}
+                  <div className="bg-black/40 p-5 rounded-2xl border border-white/10 space-y-4">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5 mb-1">
+                          <Crown className="w-4 h-4 text-amber-400" /> Капитан команды (только он отвечает на вопросы!)
+                        </span>
+                        {hasTeamLeader ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl font-black text-white flex items-center gap-1.5">
+                              <span>👑</span> {currentTeamLeaderName}
+                            </span>
+                            {isCurrentUserLeader ? (
+                              <span className="text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2.5 py-0.5 rounded-lg">
+                                Это вы
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-400">
+                                (отправляет ответы команды)
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-1">
+                            <p className="text-sm font-bold text-red-400 flex items-center gap-1.5 animate-pulse">
+                              <AlertTriangle className="w-4 h-4" /> Капитан ещё не выбран!
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              Без капитана команда не сможет отправлять ответы на вопросы викторины. Займите роль капитана!
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action buttons */}
+                      <div>
+                        {!hasTeamLeader && (
+                          <button
+                            onClick={handleClaimLeaderDirect}
+                            className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-black text-xs uppercase px-5 py-3 rounded-2xl flex items-center gap-2 shadow-xl shadow-amber-900/30 active:scale-95 cursor-pointer"
+                          >
+                            <Crown className="w-4 h-4" />
+                            <span>Занять лидера команды</span>
+                          </button>
+                        )}
+
+                        {isCurrentUserLeader && otherTeammates.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-bold text-gray-400">Передать:</span>
+                            {otherTeammates.map((m: any) => (
+                              <button
+                                key={m.id}
+                                onClick={() => handleTransferLeaderDirect(m)}
+                                className="bg-amber-500/20 hover:bg-amber-500/40 border border-amber-500/40 text-amber-300 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                                title={`Передать лидерство игроку ${m.nickname}`}
+                              >
+                                <ArrowRightLeft className="w-3 h-3" />
+                                <span>{m.nickname}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Team Members List */}
+                    <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-gray-400 uppercase">Игроки ({currentTeamMembers.length}/3):</span>
+                        {currentTeamMembers.map((m: any) => {
+                          const isMemLeader = currentTeamLeaderId === m.id;
+                          return (
+                            <span
+                              key={m.id}
+                              className={`text-xs font-bold px-2.5 py-1 rounded-xl border flex items-center gap-1 ${
+                                isMemLeader
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-black'
+                                  : 'bg-white/10 text-gray-200 border-white/10'
+                              }`}
+                            >
+                              {isMemLeader && <span>👑</span>}
+                              <span>{m.nickname} {m.id === user.id && "(Вы)"}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <span className="text-xs text-gray-400">
+                        Ожидайте старта очередного раунда ведущим!
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Admin Preparation Overview Banner */}
+              {user.isAdmin && (
+                <div className="p-6 sm:p-8 bg-gradient-to-r from-purple-950/80 via-slate-900/90 to-indigo-950/80 rounded-[2.5rem] border border-purple-500/40 shadow-2xl text-center space-y-4 max-w-4xl mx-auto backdrop-blur-xl">
+                  <div className="inline-flex items-center gap-2 bg-purple-500/20 text-purple-300 px-4 py-1.5 rounded-full border border-purple-500/40 text-xs font-black uppercase tracking-wider">
+                    <Crown className="w-4 h-4 text-amber-400" /> Подготовка команд открыта
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-tight">
+                    Команды настраивают аватарки и лидеров
+                  </h2>
+                  <p className="text-xs sm:text-sm text-gray-300 max-w-2xl mx-auto">
+                    Ниже в сетке показаны аватарки, капитаны и составы всех команд. Когда будете готовы — выберите раунд в панели управления внизу!
+                  </p>
+                  <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+                    <button
+                      onClick={() => startRound(0)}
+                      className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs uppercase px-5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      <span>Запустить Тестовый раунд</span>
+                    </button>
+                    <button
+                      onClick={() => startRound(1)}
+                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xs uppercase px-5 py-2.5 rounded-2xl flex items-center gap-1.5 transition-all shadow-lg cursor-pointer"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-white" />
+                      <span>Запустить Раунд 1</span>
+                    </button>
+                    <button
+                      onClick={toggleLeaderboard}
+                      className="bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase px-5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                    >
+                      <Trophy className="w-3.5 h-3.5" />
+                      <span>{gameState?.showLeaderboard ? 'Скрыть счёт' : 'Показать счёт всем'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Grid of all 10 teams with Avatars, Captains and Scores */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between px-2">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-purple-300 flex items-center gap-2">
+                    <Trophy className="w-4 h-4 text-amber-400" />
+                    Команды викторины (аватарки, капитаны и состав):
+                  </h3>
+                  <button
+                    onClick={() => {
+                      if (user?.isAdmin) toggleLeaderboard();
+                      else setIsPlayerLeaderboardOpen(true);
+                    }}
+                    className="text-xs font-bold text-amber-300 hover:text-white flex items-center gap-1 underline cursor-pointer"
+                  >
+                    <Trophy className="w-3.5 h-3.5" />
+                    <span>Открыть полную таблицу счёта</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                  {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => {
+                    const tMembers: any[] = Object.values(players || {}).filter((p: any) => p.team === t);
+                    const tData = teamsData?.[t] || {};
+                    const tScore = tMembers.reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
+                    const isMyTeam = !user?.isAdmin && user?.team === t;
+                    const leaderMember: any = tMembers.find((p: any) => p.id === tData.leaderId);
+                    const leaderName = tData.leaderNickname || leaderMember?.nickname;
+
+                    return (
+                      <div
+                        key={t}
+                        className={`p-5 rounded-3xl border-2 transition-all flex flex-col justify-between min-h-[220px] shadow-xl relative ${
+                          isMyTeam
+                            ? 'bg-gradient-to-b from-purple-950/60 to-slate-900 border-purple-400 shadow-purple-500/20'
+                            : 'bg-slate-900/80 border-white/10 hover:border-purple-500/40'
+                        }`}
+                      >
+                        {/* Top: Avatar & Team Name & Score */}
+                        <div className="flex items-start gap-3 mb-3">
+                          <div className="w-14 h-14 rounded-2xl overflow-hidden border-2 border-purple-500/50 bg-black/60 shrink-0 flex items-center justify-center shadow-md">
+                            {tData.avatar ? (
+                              <img
+                                src={tData.avatar}
+                                alt={`Команда ${t + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex flex-col items-center justify-center text-purple-400">
+                                <Shield className="w-6 h-6" />
+                                <span className="text-[9px] font-black">#{t + 1}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-black text-white uppercase tracking-tight truncate">
+                                Команда #{t + 1}
+                              </span>
+                              <span className="text-base font-black text-purple-300 font-mono">
+                                {tScore}б.
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-gray-400 block font-mono">
+                              Игроков: {tMembers.length}/3
+                            </span>
+                            {isMyTeam && (
+                              <span className="inline-block mt-0.5 text-[9px] font-black uppercase text-purple-300 bg-purple-500/20 px-2 py-0.5 rounded-full border border-purple-500/40">
+                                Ваша команда
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Captain row */}
+                        <div className="my-2 p-2 bg-black/40 rounded-xl border border-white/5">
+                          <span className="text-[9px] font-black uppercase text-amber-400 block tracking-wider">
+                            Капитан команды:
+                          </span>
+                          {leaderName ? (
+                            <span className="text-xs font-black text-white flex items-center gap-1 mt-0.5 truncate">
+                              <span>👑</span> {leaderName}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-red-400 font-medium italic mt-0.5 block">
+                              Не выбран
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Player Chips */}
+                        <div className="mt-2 pt-2 border-t border-white/5">
+                          <div className="flex flex-wrap gap-1">
+                            {tMembers.length === 0 ? (
+                              <span className="text-[10px] text-gray-500 italic">Нет игроков</span>
+                            ) : (
+                              tMembers.map((p: any) => {
+                                const isMemberCap = tData.leaderId === p.id;
+                                return (
+                                  <span
+                                    key={p.id}
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                                      isMemberCap
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                        : 'bg-white/5 text-gray-300 border-white/10'
+                                    }`}
+                                  >
+                                    {isMemberCap && '👑 '}
+                                    {p.nickname}
+                                  </span>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
@@ -2163,8 +2910,30 @@ export default function App() {
             </div>
 
             <div className="bg-black/40 p-6 rounded-3xl space-y-6">
-              <h3 className="text-lg font-bold flex items-center gap-2"><Settings className="w-4 h-4" /> Управление вопросом</h3>
+              <h3 className="text-lg font-bold flex items-center gap-2"><Settings className="w-4 h-4" /> Управление викториной</h3>
               <div className="flex flex-wrap gap-4">
+                {!isGameStarted ? (
+                  <button 
+                    onClick={async () => {
+                      await restPatch('gameState', { gameStarted: true, teamSetupUnlocked: true });
+                    }}
+                    className="bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-black font-black px-6 py-3 rounded-full flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/40 text-xs uppercase tracking-wider"
+                  >
+                    <Play className="w-4 h-4 fill-black" /> НАЧАТЬ ИГРУ (ОТКРЫТЬ ПОДГОТОВКУ)
+                  </button>
+                ) : (
+                  <button 
+                    onClick={async () => {
+                      if (confirm("Вернуться в режим лобби сбора игроков?")) {
+                        await restPatch('gameState', { gameStarted: false, teamSetupUnlocked: false, active: false });
+                      }
+                    }}
+                    className="bg-slate-800 hover:bg-slate-700 text-gray-300 px-5 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer text-xs border border-white/10"
+                    title="Вернуться в режим ожидания сбора игроков"
+                  >
+                    <RotateCcw className="w-4 h-4" /> В ЛОББИ СБОРА
+                  </button>
+                )}
                 <button 
                   onClick={toggleLeaderboard}
                   className={`px-6 py-3 rounded-full font-bold flex items-center gap-2 transition-all cursor-pointer ${gameState?.showLeaderboard ? 'bg-pink-600 shadow-[0_0_15px_rgba(219,39,119,0.5)]' : 'bg-indigo-600 hover:bg-indigo-700'}`}
@@ -2245,12 +3014,13 @@ export default function App() {
                   })
                   .sort((a, b) => (a.ans.timestamp || 0) - (b.ans.timestamp || 0))
                   .map(({ id, p, roundIdx, qKey, ans }) => {
-                    const qIdx = parseInt(qKey.replace('q',''));
+                    const qNumMatch = qKey ? qKey.match(/\d+/) : null;
+                    const qIdx = qNumMatch ? parseInt(qNumMatch[0]) : 0;
                     const targetRound = roundsData[roundIdx];
                     const currentRType = targetRound?.type;
 
                     let questionBadge = `Раунд ${roundIdx + 1} • В${qIdx + 1}`;
-                    let correctAns = targetRound?.questions[qIdx]?.correctAnswer;
+                    let correctAns = targetRound?.questions?.[qIdx]?.correctAnswer;
 
                     if (currentRType === "three_facts") {
                       const qData = ROUND5_QUESTIONS[qIdx];
@@ -2264,8 +3034,17 @@ export default function App() {
                         const sIdx = parseInt(match[1]);
                         const sqIdx = parseInt(match[2]);
                         questionBadge = `Р4 • Фото ${sIdx + 1} • В${sqIdx + 1}`;
-                        const subQ = ROUND4_STAGES[sIdx]?.subQuestions[sqIdx];
+                        const subQ = ROUND4_STAGES[sIdx]?.subQuestions?.[sqIdx];
                         if (subQ) correctAns = subQ.correctAnswer;
+                      }
+                    }
+
+                    if (!correctAns && targetRound?.questions?.[qIdx]) {
+                      const qData = targetRound.questions[qIdx];
+                      if (qData.character) {
+                        correctAns = `${qData.character}${qData.anime ? ` (${qData.anime})` : ''}`;
+                      } else if (qData.options && qData.correct !== undefined) {
+                        correctAns = qData.options[qData.correct];
                       }
                     }
 
@@ -2275,37 +3054,48 @@ export default function App() {
                       : (currentRType === "memory_items" ? 5 : (ans.potentialPoints ?? targetRound?.points ?? 2));
 
                     return (
-                      <div key={`${id}-${roundIdx}-${qKey}`} className="bg-white/5 p-3 rounded-lg flex justify-between items-center border-l-4 border-purple-500">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-xs">{p.nickname}</span>
-                            <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded">К{p.team + 1}</span>
-                            <span className="text-[10px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded font-mono font-bold">
+                      <div key={`${id}-${roundIdx}-${qKey}`} className="bg-white/5 p-3.5 rounded-xl flex justify-between items-center border-l-4 border-purple-500 shadow-md">
+                        <div className="flex-1 min-w-0 mr-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-bold text-xs text-white">{p.nickname}</span>
+                            {p.team !== undefined && p.team !== null && !isNaN(Number(p.team)) ? (
+                              <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded font-bold text-gray-300">К{Number(p.team) + 1}</span>
+                            ) : p.teamName ? (
+                              <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded font-bold text-gray-300">{p.teamName}</span>
+                            ) : null}
+                            <span className="text-[10px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded font-mono font-bold">
                               {questionBadge}
                             </span>
                           </div>
-                          <p className="text-sm text-blue-300 mt-1">Ответ: <span className="font-bold">{ans.answer}</span></p>
-                          {currentRType === "three_characters" && (
-                            <p className="text-[11px] text-gray-400">Персонажи: {(ans.characters || []).join(", ") || "—"}</p>
-                          )}
-                          <p className="text-[10px] text-green-400 mt-0.5 uppercase tracking-wider">
-                            Правильный: <span className="font-bold">{correctAns || "—"}</span>
+                          <p className="text-sm text-blue-200 mt-1.5">
+                            Ответ игрока: <span className="font-bold text-white bg-black/40 px-2 py-0.5 rounded">«{ans.answer}»</span>
                           </p>
+                          {currentRType === "three_characters" && (
+                            <p className="text-[11px] text-gray-400 mt-1">Персонажи: {(ans.characters || []).join(", ") || "—"}</p>
+                          )}
+                          <div className="mt-1.5 p-2 rounded-lg bg-emerald-950/70 border border-emerald-500/40 text-xs">
+                            <span className="text-emerald-400 font-bold uppercase tracking-wider text-[10px] mr-1">
+                              ✓ Правильный ответ:
+                            </span>
+                            <span className="font-bold text-white text-xs sm:text-sm">{correctAns || "—"}</span>
+                          </div>
                         </div>
-                        <div className="flex gap-2 ml-4">
+                        <div className="flex gap-2 shrink-0 ml-2">
                           <button 
                             onClick={() => markAnswer(id, roundIdx, qKey, basePts)} 
-                            className="bg-green-600/20 hover:bg-green-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px] cursor-pointer"
+                            className="bg-green-600/20 hover:bg-green-600/40 text-green-400 hover:text-white p-2.5 rounded-xl flex flex-col items-center min-w-[48px] cursor-pointer transition-all active:scale-95 border border-green-500/30"
+                            title="Принять ответ"
                           >
-                            <CheckCircle2 className="text-green-500 w-5 h-5" />
-                            <span className="text-[10px] font-bold">+{basePts}</span>
+                            <CheckCircle2 className="w-5 h-5 text-green-400" />
+                            <span className="text-[10px] font-black mt-0.5">+{basePts}</span>
                           </button>
                           <button 
                             onClick={() => markAnswer(id, roundIdx, qKey, 0)} 
-                            className="bg-red-600/20 hover:bg-red-600/40 p-2 rounded-lg flex flex-col items-center min-w-[45px] cursor-pointer"
+                            className="bg-red-600/20 hover:bg-red-600/40 text-red-400 hover:text-white p-2.5 rounded-xl flex flex-col items-center min-w-[48px] cursor-pointer transition-all active:scale-95 border border-red-500/30"
+                            title="Отклонить ответ"
                           >
-                            <XCircle className="text-red-500 w-5 h-5" />
-                            <span className="text-[10px] font-bold">0</span>
+                            <XCircle className="w-5 h-5 text-red-400" />
+                            <span className="text-[10px] font-black mt-0.5">0</span>
                           </button>
                         </div>
                       </div>
