@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, 
   Play, Pause, SkipForward, Trash2, RotateCcw, CheckCircle2, 
-  XCircle, Users, Eye, HelpCircle, ShieldCheck 
+  XCircle, Users, Eye, HelpCircle, ShieldCheck, Trophy 
 } from 'lucide-react';
 import { AudioPlayer } from './components/AudioPlayer';
 import { AKINATOR_ANIME_LIST } from './data/akinatorAnime';
@@ -723,6 +723,7 @@ export default function App() {
         setGlobalPauseState(gPause);
         setPlayers(allPlayers || {});
 
+        // ЕСЛИ СБРОС ИГРЫ — СБРАСЫВАЕМ ВСЕХ ИГРОКОВ НА ЭКРАН ВХОДА
         if (state?.reset && user && !user.isAdmin) {
           localStorage.removeItem('quizUser');
           setUser(null);
@@ -854,18 +855,15 @@ export default function App() {
     }
   };
 
+  // ПОЛНЫЙ СБРОС ИГРЫ (Очищает всех игроков во всех командах)
   const resetGame = async () => {
-    if (!confirm("Вы уверены, что хотите полностью сбросить игру? Все баллы и ответы будут удалены!")) return;
+    if (!confirm("Вы уверены, что хотите полностью сбросить игру? Все игроки и баллы во всех командах будут удалены!")) return;
     
-    const resetPlayers = { ...players };
-    Object.keys(resetPlayers).forEach(id => {
-      resetPlayers[id].score = 0;
-      resetPlayers[id].scores = {};
-      resetPlayers[id].roundAnswers = {};
-    });
-    
-    await restPut('players', resetPlayers);
-    
+    // 1. Полностью удаляем ветку players из Firebase
+    await restDelete('players');
+    setPlayers({});
+
+    // 2. Сбрасываем игру и выставляем флаг reset: true для отключения сессий игроков
     await restPut('gameState', {
       active: false,
       currentRound: 0,
@@ -1207,34 +1205,30 @@ export default function App() {
     }
   };
 
-  const markThreeCharactersAnswer = async (
-    playerId: string,
-    roundIdx: number,
-    qKey: string,
-    animeCorrect: boolean,
-    charsCorrect: boolean[]
+  // Раздельная оценка для 1 раунда (Аниме + 3 персонажа)
+  const setDetailedRound1Score = async (
+    playerId: string, 
+    roundIdx: number, 
+    qKey: string, 
+    animeApproved: boolean, 
+    charApproved: [boolean, boolean, boolean]
   ) => {
-    const p = players[playerId];
-    if (!p) return;
     const scoreKey = `${roundIdx}_${qKey}`;
-    try {
-      let basePoints = animeCorrect ? 2 : 0;
-      charsCorrect.forEach(c => {
-        if (c) basePoints += 1;
-      });
+    let totalPoints = animeApproved ? 2 : 0;
+    charApproved.forEach(ok => { if (ok) totalPoints += 1; });
 
-      await restPut(`players/${playerId}/scores/${scoreKey}`, basePoints);
+    try {
+      await restPut(`players/${playerId}/scores/${scoreKey}`, totalPoints);
       await restPatch(`players/${playerId}/roundAnswers/${roundIdx}/${qKey}`, {
         checked: true,
-        animeApproved: animeCorrect,
-        charApproved: charsCorrect,
-        pointsAwarded: basePoints
+        animeApproved,
+        charApproved,
+        pointsAwarded: totalPoints
       });
-
       const res = await restGet('players');
       if (res.data) setPlayers(res.data);
     } catch (e) {
-      console.error("Error marking three characters answer:", e);
+      console.error("Error setting detailed round 1 score:", e);
     }
   };
 
@@ -1309,7 +1303,7 @@ export default function App() {
     <div className="min-h-screen p-4 md:p-8">
       <div className="max-w-[1600px] mx-auto">
         {/* Header */}
-        <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-12 glass p-8 rounded-[2.5rem] neon-border">
+        <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8 glass p-8 rounded-[2.5rem] neon-border">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
               <Users className="w-8 h-8 text-white" />
@@ -1376,6 +1370,35 @@ export default function App() {
           </div>
         </header>
 
+      {/* ПАНЕЛЬ БАЛЛОВ ВСЕХ КОМАНД ДЛЯ ВЕДУЩЕГО (Всегда видна в игре) */}
+      {user.isAdmin && (
+        <div className="mb-8 p-4 md:p-5 rounded-[2rem] bg-gradient-to-r from-purple-950/60 via-slate-900/80 to-indigo-950/60 border border-purple-500/30 backdrop-blur-md shadow-2xl">
+          <div className="flex items-center justify-between mb-3 px-1">
+            <span className="text-xs font-black uppercase tracking-wider text-purple-300 flex items-center gap-2">
+              <Trophy className="w-4 h-4 text-yellow-400" /> Текущие баллы команд в игре:
+            </span>
+            <span className="text-[11px] text-gray-400">
+              Подключено игроков: {Object.keys(players).length}
+            </span>
+          </div>
+          <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+            {Array.from({ length: TOTAL_TEAMS }).map((_, tIdx) => {
+              const tScore = Object.values(players)
+                .filter((p: any) => p.team === tIdx)
+                .reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
+              const pCount = Object.values(players).filter((p: any) => p.team === tIdx).length;
+              return (
+                <div key={tIdx} className="bg-black/40 border border-white/10 rounded-2xl p-2.5 text-center transition-all hover:border-purple-500/50">
+                  <div className="text-[10px] font-bold text-gray-400">К#{tIdx + 1}</div>
+                  <div className="text-lg font-black text-purple-300">{tScore}</div>
+                  <div className="text-[9px] text-gray-500">{pCount > 0 ? `${pCount} игр.` : 'пусто'}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <audio 
         ref={testAudioRef} 
         src={getAssetPath("test_sound.mp3")} 
@@ -1426,7 +1449,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Раунд 1: Три персонажа */}
+                {/* Раунд 1: Три персонажа (с исправленными картинками и раздельной оценкой) */}
                 {round.type === "three_characters" && (
                   <div className="space-y-6 max-w-5xl mx-auto">
                     <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center shadow-lg">
@@ -1450,9 +1473,12 @@ export default function App() {
                               <img 
                                 src={getAssetPath(img)} 
                                 alt={`Персонаж ${idx + 1}`} 
+                                referrerPolicy="no-referrer"
+                                crossOrigin="anonymous"
                                 className="w-full h-full object-cover object-top"
                                 onError={(e) => { 
-                                  (e.target as HTMLImageElement).src = `https://picsum.photos/seed/char${currentQIdx}_${idx}/400/550`; 
+                                  // Заглушка с подписью вместо случайных ручек и столов
+                                  (e.target as HTMLElement).style.display = 'none';
                                 }}
                               />
                               <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-3 py-1 rounded-xl text-xs font-black text-purple-300 border border-purple-500/30 shadow-lg">
@@ -1535,50 +1561,117 @@ export default function App() {
                       </div>
                     )}
 
+                    {/* Раздельная оценка ответов для ведущего */}
                     {user.isAdmin && (
                       <div className="mt-8 bg-slate-900/90 p-5 rounded-3xl border border-purple-500/30 space-y-4 shadow-2xl">
                         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
-                          <h4 className="text-sm font-black text-white uppercase tracking-wider">
-                            📋 Ответы игроков (Вопрос {currentQIdx + 1})
-                          </h4>
+                          <div>
+                            <h4 className="text-sm font-black text-white uppercase tracking-wider">
+                              📋 Проверка ответов игроков (Вопрос {currentQIdx + 1})
+                            </h4>
+                            <p className="text-[11px] text-gray-400">
+                              Оценивайте аниме и каждого персонажа отдельно!
+                            </p>
+                          </div>
                           <span className="text-xs text-green-400 font-bold bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/20">
                             Правильный тайтл: {currentQuestion.correctAnswer}
                           </span>
                         </div>
 
-                        <div className="space-y-3">
+                        <div className="space-y-4">
                           {Object.entries(players)
                             .filter(([_, p]: [string, any]) => p.roundAnswers?.[gameState.currentRound]?.[`q${currentQIdx}`]?.answered)
                             .map(([pId, p]: [string, any]) => {
                               const ansData = p.roundAnswers[gameState.currentRound][`q${currentQIdx}`];
+                              const scoreKey = `${gameState.currentRound}_q${currentQIdx}`;
+                              const awarded = p.scores?.[scoreKey] || ansData.pointsAwarded || 0;
+                              const isAnimeOk = !!ansData.animeApproved;
+                              const charOks = ansData.charApproved || [false, false, false];
+
                               return (
-                                <div key={pId} className="p-3.5 bg-black/40 rounded-2xl border border-white/10 flex items-center justify-between gap-4">
-                                  <div>
+                                <div key={pId} className="p-4 bg-black/50 rounded-2xl border border-white/10 space-y-3">
+                                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
                                     <div className="flex items-center gap-2">
-                                      <span className="text-xs font-bold text-white">{p.nickname}</span>
-                                      <span className="text-[10px] bg-white/10 px-1.5 py-0.5 rounded uppercase">К{p.team + 1}</span>
+                                      <span className="text-sm font-black text-white">{p.nickname}</span>
+                                      <span className="text-[10px] bg-purple-600/30 text-purple-300 px-2 py-0.5 rounded-full font-bold">К#{p.team + 1}</span>
                                     </div>
-                                    <p className="text-xs text-purple-200 mt-1">Аниме: <span className="font-bold text-white">«{ansData.answer || "—"}»</span></p>
-                                    <p className="text-[11px] text-gray-400">Персонажи: {(ansData.characters || []).join(", ") || "—"}</p>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-mono font-black text-emerald-400">
+                                        Начислено: +{awarded} б.
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-1.5">
+
+                                  {/* Аниме */}
+                                  <div className="flex items-center justify-between gap-2 bg-white/5 p-2.5 rounded-xl text-xs">
+                                    <div>
+                                      <span className="text-gray-400">Тайтл игрока: </span>
+                                      <span className="font-bold text-white">«{ansData.answer || "не указал"}»</span>
+                                    </div>
+                                    <button
+                                      onClick={() => setDetailedRound1Score(pId, gameState.currentRound, `q${currentQIdx}`, !isAnimeOk, charOks)}
+                                      className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                                        isAnimeOk ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                                      }`}
+                                    >
+                                      {isAnimeOk ? '✓ Аниме (+2)' : '+2 за аниме'}
+                                    </button>
+                                  </div>
+
+                                  {/* 3 Персонажа */}
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                                    {[0, 1, 2].map((cIdx) => {
+                                      const pGuess = ansData.characters?.[cIdx] || "—";
+                                      const correctCharName = currentQuestion.characterNames?.[cIdx] || `Перс #${cIdx + 1}`;
+                                      const isCharOk = !!charOks[cIdx];
+
+                                      return (
+                                        <div key={cIdx} className="bg-white/5 p-2.5 rounded-xl flex flex-col justify-between gap-1.5 border border-white/5">
+                                          <div>
+                                            <div className="text-[10px] text-gray-400 font-bold truncate" title={correctCharName}>
+                                              {correctCharName}
+                                            </div>
+                                            <div className="text-white font-medium mt-0.5 truncate" title={pGuess}>
+                                              «{pGuess}»
+                                            </div>
+                                          </div>
+                                          <button
+                                            onClick={() => {
+                                              const newCharOks = [...charOks] as [boolean, boolean, boolean];
+                                              newCharOks[cIdx] = !isCharOk;
+                                              setDetailedRound1Score(pId, gameState.currentRound, `q${currentQIdx}`, isAnimeOk, newCharOks);
+                                            }}
+                                            className={`w-full py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                                              isCharOk ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                                            }`}
+                                          >
+                                            {isCharOk ? `✓ Перс #${cIdx + 1} (+1)` : `+1 за Перс #${cIdx + 1}`}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+
+                                  {/* Быстрые кнопки */}
+                                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
+                                    <span className="text-[10px] text-gray-400 font-bold">Быстро:</span>
                                     <button 
-                                      onClick={() => markThreeCharactersAnswer(pId, gameState.currentRound, `q${currentQIdx}`, true, [true, true, true])}
-                                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white text-xs font-bold transition-all cursor-pointer"
+                                      onClick={() => setDetailedRound1Score(pId, gameState.currentRound, `q${currentQIdx}`, true, [true, true, true])}
+                                      className="px-2.5 py-1 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
                                     >
                                       Все верно (+5)
                                     </button>
                                     <button 
-                                      onClick={() => markThreeCharactersAnswer(pId, gameState.currentRound, `q${currentQIdx}`, true, [false, false, false])}
-                                      className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-500 rounded-xl text-white text-xs font-bold transition-all cursor-pointer"
+                                      onClick={() => setDetailedRound1Score(pId, gameState.currentRound, `q${currentQIdx}`, true, [false, false, false])}
+                                      className="px-2.5 py-1 bg-purple-600/30 hover:bg-purple-600 text-purple-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
                                     >
                                       Только аниме (+2)
                                     </button>
                                     <button 
-                                      onClick={() => markThreeCharactersAnswer(pId, gameState.currentRound, `q${currentQIdx}`, false, [false, false, false])}
-                                      className="px-2 py-1.5 bg-red-600 hover:bg-red-500 rounded-xl text-white text-xs font-bold transition-all cursor-pointer"
+                                      onClick={() => setDetailedRound1Score(pId, gameState.currentRound, `q${currentQIdx}`, false, [false, false, false])}
+                                      className="px-2.5 py-1 bg-red-600/30 hover:bg-red-600 text-red-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
                                     >
-                                      0
+                                      Обнулить (0)
                                     </button>
                                   </div>
                                 </div>
@@ -1597,7 +1690,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Раунд 2 & 6: Тест-викторины (ПОЛНОСТЬЮ РАБОТАЕТ И ДЛЯ ИГРОКА, И ДЛЯ ВЕДУЩЕГО!) */}
+                {/* Раунд 2 & 6: Тест-викторины */}
                 {round.type === "quiz_six" && (
                   <div className="space-y-6 max-w-4xl mx-auto">
                     <div className="bg-white/5 p-6 rounded-2xl border border-white/10 text-center shadow-lg">
@@ -1605,7 +1698,6 @@ export default function App() {
                       <h3 className="text-xl md:text-2xl leading-relaxed font-bold text-white">{currentQuestion.text}</h3>
                     </div>
                     
-                    {/* Вид для игроков: кликабельные кнопки ответов */}
                     {!user.isAdmin && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {currentQuestion.options?.map((opt: string, idx: number) => {
@@ -1633,7 +1725,6 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Вид для ведущего: видит все 6 вариантов с зеленым правильным ответом */}
                     {user.isAdmin && (
                       <div className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1688,7 +1779,6 @@ export default function App() {
                     
                     <AudioPlayer src={getAssetPath(currentQuestion.audio || "")} isMuted={isMuted} volume={volume} />
 
-                    {/* Поле для ответа игрока */}
                     {!user.isAdmin && (
                       <div className="space-y-4">
                         <input 
@@ -1710,7 +1800,6 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Подсказка для ведущего */}
                     {user.isAdmin && (
                       <div className="p-4 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl text-center">
                         <span className="text-[11px] font-black uppercase text-emerald-400 tracking-wider">Ответ ведущему:</span>
@@ -1882,9 +1971,9 @@ export default function App() {
                 </button>
                 <button 
                   onClick={resetGame}
-                  className="bg-gray-700 hover:bg-gray-800 px-6 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer"
+                  className="bg-red-700 hover:bg-red-800 px-6 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer"
                 >
-                  <RotateCcw className="w-4 h-4" /> СБРОС
+                  <RotateCcw className="w-4 h-4" /> СБРОС ИГРЫ
                 </button>
               </div>
 
@@ -1946,6 +2035,9 @@ export default function App() {
                             </span>
                           </div>
                           <p className="text-sm text-blue-300 mt-1">Ответ: <span className="font-bold">{ans.answer}</span></p>
+                          {currentRType === "three_characters" && (
+                            <p className="text-[11px] text-gray-400">Персонажи: {(ans.characters || []).join(", ") || "—"}</p>
+                          )}
                           <p className="text-[10px] text-green-400 mt-0.5 uppercase tracking-wider">
                             Правильный: <span className="font-bold">{correctAns || "—"}</span>
                           </p>
