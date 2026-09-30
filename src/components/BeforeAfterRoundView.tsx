@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import { motion } from "motion/react";
 import { Clock, Send, CheckCircle2, XCircle, Image as ImageIcon } from "lucide-react";
 
 interface BeforeAfterRoundViewProps {
@@ -22,7 +21,6 @@ export default function BeforeAfterRoundView({
   globalPause,
 }: BeforeAfterRoundViewProps) {
   const currentQIdx = gameState.currentQuestion ?? 0;
-  // Данные из App.tsx (раунд 6)
   const questionData = gameState.active ? gameState.roundData?.questions?.[currentQIdx] : null;
 
   const [answerInput, setAnswerInput] = useState("");
@@ -60,7 +58,7 @@ export default function BeforeAfterRoundView({
       answered: true,
       answer: text,
       timestamp: Date.now(),
-      potentialPoints: 4, // 4 балла за этот раунд
+      potentialPoints: 4, 
     };
 
     await restPut(answerStoragePath, payload);
@@ -80,8 +78,21 @@ export default function BeforeAfterRoundView({
     });
   };
 
+  // Функция для правильных ссылок на Github Pages
+  const getAssetPath = (path: string) => {
+    if (!path) return "";
+    if (path.startsWith("http")) return path;
+    const base = import.meta.env.BASE_URL || "/";
+    const cleanBase = base.endsWith("/") ? base : base + "/";
+    const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+    return cleanBase + cleanPath;
+  };
+
   const isPaused = !!globalPause?.active || !!gameState?.globalPause?.active;
-  const imageSrc = questionData?.image || `/foto1/round6_${currentQIdx + 1}.jpg`;
+  
+  // ПРАВИЛЬНАЯ ссылка на картинку с пропуском через getAssetPath
+  const rawImageSrc = questionData?.image || `/foto6/round6_${currentQIdx + 1}.jpg`;
+  const imageSrc = getAssetPath(rawImageSrc);
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
@@ -124,9 +135,7 @@ export default function BeforeAfterRoundView({
             src={imageSrc}
             alt={`Кадр вопроса ${currentQIdx + 1}`}
             className="w-full h-full object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = `https://picsum.photos/seed/anime${currentQIdx}/800/450`; // Временная заглушка, если фото не найдено
-            }}
+            // Убрали заглушку с горой, чтобы в случае ошибки сразу видеть проблему!
           />
           <div className="absolute top-4 left-4 bg-black/80 px-4 py-2 rounded-xl text-white font-black text-sm border border-purple-500/40 shadow-lg flex items-center gap-2">
             <ImageIcon className="w-4 h-4 text-purple-400" /> Внимательно изучите кадр!
@@ -185,7 +194,7 @@ export default function BeforeAfterRoundView({
         <div className="bg-slate-900/95 p-6 rounded-3xl border border-purple-500/30 space-y-4 shadow-2xl max-w-4xl mx-auto">
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-              <span>👑 Проверка ответов (Раунд 6)</span>
+              <span>👑 Проверка ответов (Вопрос {currentQIdx + 1})</span>
             </h4>
             <span className="text-xs text-gray-400">Оценивайте вручную!</span>
           </div>
