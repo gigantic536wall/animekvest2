@@ -970,4 +970,3 @@ export default function BingoRoundView({
     </div>
   );
 }
- вот код созрани его у себя для дальнейшего 
