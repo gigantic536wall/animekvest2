@@ -594,7 +594,7 @@ const roundsData: Round[] = [
   }
 ];
 
-// ==================== КОМПОНЕНТ КАРТИНКИ ПЕРСОНАЖА (С АВТОПОДБОРОМ И РЕЗЕРВОМ) ====================
+// ==================== КОМПОНЕНТ КАРТИНКИ ПЕРСОНАЖА ====================
 function Round1CharacterCard({
   src,
   charName,
@@ -615,17 +615,14 @@ function Round1CharacterCard({
   const [candidateIdx, setCandidateIdx] = useState(0);
   const [allFailed, setAllFailed] = useState(false);
 
-  // Формируем список кандидатов на загрузку
   const candidates = React.useMemo(() => {
     const list: string[] = [];
     if (customImage) list.push(customImage);
     if (src) {
       list.push(src);
-      // Пробуем альтернативные расширения
       if (src.includes('.png')) list.push(src.replace('.png', '.jpg'), src.replace('.png', '.jpeg'), src.replace('.png', '.webp'));
       if (src.includes('.jpg')) list.push(src.replace('.jpg', '.png'), src.replace('.jpg', '.webp'));
     }
-    // Локальные варианты, если хостинг заблокирован
     list.push(`/chars/q${qIdx + 1}_${cIdx + 1}.jpg`);
     list.push(`/chars/q${qIdx + 1}_${cIdx + 1}.png`);
     list.push(`/chars/${qIdx + 1}_${cIdx + 1}.jpg`);
@@ -654,9 +651,6 @@ function Round1CharacterCard({
         <span className="text-3xl">👤</span>
         <div className="text-xs font-bold text-white px-2 leading-tight">
           {charName || `Персонаж #${cIdx + 1}`}
-        </div>
-        <div className="text-[10px] text-purple-300/80">
-          Фото персонажа
         </div>
         {isAdmin && onUpload && (
           <label className="mt-1 px-3 py-1 bg-purple-600/50 hover:bg-purple-600 border border-purple-400/50 rounded-xl text-[10px] font-bold text-white cursor-pointer transition-all">
@@ -694,6 +688,232 @@ function Round1CharacterCard({
   );
 }
 
+// ==================== КОМПОНЕНТ ПРОВЕРКИ 1 РАУНДА (С ВКЛАДКАМИ) ====================
+function Round1ReviewPanel({
+  roundQuestions,
+  players,
+  currentLiveQ,
+  selectedTab,
+  onSelectTab,
+  onScoreSave
+}: {
+  roundQuestions: Question[];
+  players: any;
+  currentLiveQ: number;
+  selectedTab: number | 'all';
+  onSelectTab: (tab: number | 'all') => void;
+  onScoreSave: (pId: string, qIdx: number, animeApproved: boolean, charApproved: [boolean, boolean, boolean]) => void;
+}) {
+  return (
+    <div className="bg-slate-900/95 p-5 rounded-3xl border border-purple-500/30 space-y-4 shadow-2xl">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
+        <div>
+          <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+            <span>📋 Проверка ответов 1 раунда</span>
+            {selectedTab !== 'all' ? (
+              <span className="bg-purple-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-md">
+                Вопрос {selectedTab + 1}
+              </span>
+            ) : (
+              <span className="bg-indigo-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-md">
+                Все вопросы
+              </span>
+            )}
+          </h4>
+          <p className="text-[11px] text-gray-400">
+            Ответы сохраняются и доступны для проверки на протяжении всей игры!
+          </p>
+        </div>
+        {selectedTab !== 'all' && (
+          <span className="text-xs text-green-400 font-bold bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/20">
+            Правильный тайтл: {roundQuestions[selectedTab]?.correctAnswer}
+          </span>
+        )}
+      </div>
+
+      {/* Навигационные вкладки между 10 вопросами */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-white/10 pb-3">
+        {roundQuestions.map((_, qIndex) => {
+          const answersCount = Object.values(players).filter((p: any) => 
+            p.roundAnswers?.[1]?.[`q${qIndex}`]?.answered
+          ).length;
+          const hasUnchecked = Object.values(players).some((p: any) => 
+            p.roundAnswers?.[1]?.[`q${qIndex}`]?.answered && !p.roundAnswers?.[1]?.[`q${qIndex}`]?.checked
+          );
+          const isCurrentLive = currentLiveQ === qIndex;
+          const isSelected = selectedTab === qIndex;
+
+          return (
+            <button
+              key={qIndex}
+              onClick={() => onSelectTab(qIndex)}
+              className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                isSelected 
+                  ? "bg-purple-600 text-white shadow-lg ring-2 ring-purple-400" 
+                  : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
+              }`}
+            >
+              <span>В{qIndex + 1}</span>
+              {answersCount > 0 && (
+                <span className={`px-1 rounded-full text-[10px] ${isSelected ? 'bg-black/40 text-purple-200' : 'bg-black/30 text-gray-400'}`}>
+                  {answersCount}
+                </span>
+              )}
+              {hasUnchecked && (
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Есть непроверенные ответы" />
+              )}
+              {isCurrentLive && (
+                <span className="text-[9px] text-emerald-400 font-black" title="Идёт сейчас">⏱</span>
+              )}
+            </button>
+          );
+        })}
+
+        <button
+          onClick={() => onSelectTab('all')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ml-auto ${
+            selectedTab === 'all'
+              ? "bg-indigo-600 text-white shadow-lg ring-2 ring-indigo-400"
+              : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
+          }`}
+        >
+          📊 Все вопросы
+        </button>
+      </div>
+
+      {/* Список ответов */}
+      <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar">
+        {(() => {
+          const targetQList = selectedTab === 'all' 
+            ? Array.from({ length: 10 }, (_, i) => i) 
+            : [selectedTab];
+
+          const questionsWithAnswers = targetQList.flatMap((qI) => {
+            const qObj = roundQuestions[qI];
+            return Object.entries(players)
+              .filter(([_, p]: [string, any]) => p.roundAnswers?.[1]?.[`q${qI}`]?.answered)
+              .map(([pId, p]: [string, any]) => ({
+                pId,
+                p,
+                qI,
+                qObj,
+                ansData: p.roundAnswers[1][`q${qI}`],
+                scoreKey: `1_q${qI}`,
+              }));
+          });
+
+          if (questionsWithAnswers.length === 0) {
+            return (
+              <p className="text-xs text-gray-400 italic py-6 text-center">
+                {selectedTab === 'all' 
+                  ? "Игроки пока не отправили ответов в 1 раунде." 
+                  : `На Вопрос ${selectedTab + 1} ответов пока нет. Выберите вкладку с ответами выше.`}
+              </p>
+            );
+          }
+
+          return questionsWithAnswers.map(({ pId, p, qI, qObj, ansData, scoreKey }) => {
+            const awarded = p.scores?.[scoreKey] || ansData.pointsAwarded || 0;
+            const isAnimeOk = !!ansData.animeApproved;
+            const charOks = ansData.charApproved || [false, false, false];
+
+            return (
+              <div key={`${pId}_${qI}`} className="p-4 bg-black/50 rounded-2xl border border-white/10 space-y-3">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-white">{p.nickname}</span>
+                    <span className="text-[10px] bg-purple-600/30 text-purple-300 px-2 py-0.5 rounded-full font-bold">К#{p.team + 1}</span>
+                    <span className="text-[10px] bg-white/10 text-gray-300 px-2 py-0.5 rounded-full font-mono">Вопрос {qI + 1}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-black text-emerald-400">
+                      Начислено: +{awarded} б.
+                    </span>
+                  </div>
+                </div>
+
+                {/* Аниме */}
+                <div className="flex items-center justify-between gap-2 bg-white/5 p-2.5 rounded-xl text-xs">
+                  <div>
+                    <span className="text-gray-400">Тайтл игрока: </span>
+                    <span className="font-bold text-white">«{ansData.answer || "не указал"}»</span>
+                    <span className="text-[10px] text-gray-400 ml-2">(верно: {qObj.correctAnswer})</span>
+                  </div>
+                  <button
+                    onClick={() => onScoreSave(pId, qI, !isAnimeOk, charOks)}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
+                      isAnimeOk ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                    }`}
+                  >
+                    {isAnimeOk ? '✓ Аниме (+2)' : '+2 за аниме'}
+                  </button>
+                </div>
+
+                {/* 3 Персонажа */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  {[0, 1, 2].map((cIdx) => {
+                    const pGuess = ansData.characters?.[cIdx] || "—";
+                    const correctCharName = qObj.characterNames?.[cIdx] || `Перс #${cIdx + 1}`;
+                    const isCharOk = !!charOks[cIdx];
+
+                    return (
+                      <div key={cIdx} className="bg-white/5 p-2.5 rounded-xl flex flex-col justify-between gap-1.5 border border-white/5">
+                        <div>
+                          <div className="text-[10px] text-gray-400 font-bold truncate" title={correctCharName}>
+                            {correctCharName}
+                          </div>
+                          <div className="text-white font-medium mt-0.5 truncate" title={pGuess}>
+                            «{pGuess}»
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const newCharOks = [...charOks] as [boolean, boolean, boolean];
+                            newCharOks[cIdx] = !isCharOk;
+                            onScoreSave(pId, qI, isAnimeOk, newCharOks);
+                          }}
+                          className={`w-full py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
+                            isCharOk ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
+                          }`}
+                        >
+                          {isCharOk ? `✓ Перс #${cIdx + 1} (+1)` : `+1 за Перс #${cIdx + 1}`}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Быстрые кнопки */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
+                  <span className="text-[10px] text-gray-400 font-bold">Быстро:</span>
+                  <button 
+                    onClick={() => onScoreSave(pId, qI, true, [true, true, true])}
+                    className="px-2.5 py-1 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                  >
+                    Все верно (+5)
+                  </button>
+                  <button 
+                    onClick={() => onScoreSave(pId, qI, true, [false, false, false])}
+                    className="px-2.5 py-1 bg-purple-600/30 hover:bg-purple-600 text-purple-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                  >
+                    Только аниме (+2)
+                  </button>
+                  <button 
+                    onClick={() => onScoreSave(pId, qI, false, [false, false, false])}
+                    className="px-2.5 py-1 bg-red-600/30 hover:bg-red-600 text-red-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
+                  >
+                    Обнулить (0)
+                  </button>
+                </div>
+              </div>
+            );
+          });
+        })()}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [gameState, setGameState] = useState<any>(null);
@@ -723,7 +943,7 @@ export default function App() {
   const gameStateRef = useRef<any>(null);
   const isStartingPauseRef = useRef<boolean>(false);
 
-  // Вкладка для проверки ответов ведущим в 1 раунде (0..9 или 'all')
+  // Вкладка проверки ответов 1 раунда (0..9 или 'all')
   const [r1ReviewQ, setR1ReviewQ] = useState<number | 'all'>(0);
 
   useEffect(() => {
@@ -822,7 +1042,7 @@ export default function App() {
         setGlobalPauseState(gPause);
         setPlayers(allPlayers || {});
 
-        // ЕСЛИ БЫЛ НАЖАТ СБРОС ИГРЫ — СБРАСЫВАЕМ ВСЕХ ИГРОКОВ В ЛОГИН
+        // ЕСЛИ СБРОС ИГРЫ — СБРАСЫВАЕМ ВСЕХ ИГРОКОВ В ЛОГИН
         if (user && !user.isAdmin) {
           const isMissingInDb = !allPlayers || !allPlayers[user.id];
           if (state?.reset || isMissingInDb) {
@@ -1309,21 +1529,20 @@ export default function App() {
     }
   };
 
-  // Раздельное выставление оценки для 1 раунда (Аниме + 3 персонажа)
+  // Раздельная оценка для 1 раунда (Аниме + 3 персонажа)
   const setDetailedRound1Score = async (
     playerId: string, 
-    roundIdx: number, 
-    qKey: string, 
+    qIdx: number, 
     animeApproved: boolean, 
     charApproved: [boolean, boolean, boolean]
   ) => {
-    const scoreKey = `${roundIdx}_${qKey}`;
+    const scoreKey = `1_q${qIdx}`;
     let totalPoints = animeApproved ? 2 : 0;
     charApproved.forEach(ok => { if (ok) totalPoints += 1; });
 
     try {
       await restPut(`players/${playerId}/scores/${scoreKey}`, totalPoints);
-      await restPatch(`players/${playerId}/roundAnswers/${roundIdx}/${qKey}`, {
+      await restPatch(`players/${playerId}/roundAnswers/1/q${qIdx}`, {
         checked: true,
         animeApproved,
         charApproved,
@@ -1512,6 +1731,38 @@ export default function App() {
       {/* Main Content Area */}
       <main className="min-h-[500px]">
         {(() => {
+          // СПЕЦИАЛЬНО ДЛЯ ВЕДУЩЕГО: ЕСЛИ РАУНД 1 ЗАКОНЧИЛСЯ, ПАНЕЛЬ ПРОВЕРКИ ОСТАЕТСЯ, ПОКА ВЕДУЩИЙ НЕ ЗАПУСТИТ СЛЕДУЮЩИЙ РАУНД!
+          const isRound1FinishedWaiting = user?.isAdmin && 
+            gameState?.currentRound === 1 && 
+            (!gameState?.active || gameState?.roundFinished);
+
+          if (isRound1FinishedWaiting) {
+            return (
+              <div className="space-y-6">
+                <div className="p-6 bg-gradient-to-r from-purple-900/80 via-slate-900/90 to-indigo-900/80 rounded-3xl border border-purple-500/40 text-center shadow-2xl backdrop-blur-md">
+                  <div className="inline-flex items-center gap-2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider mb-2">
+                    <CheckCircle2 className="w-4 h-4" /> Все 10 вопросов 1 раунда завершены!
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-white">
+                    Проверьте ответы игроков перед запуском 2-го раунда
+                  </h3>
+                  <p className="text-xs text-purple-200/80 mt-1 max-w-xl mx-auto">
+                    Переключайтесь по вкладкам от В1 до В10 или откройте «Все вопросы». Игроки сейчас находятся на экране ожидания. Когда закончите оценку — нажмите «Раунд 2» в панели управления внизу!
+                  </p>
+                </div>
+
+                <Round1ReviewPanel
+                  roundQuestions={roundsData[1].questions}
+                  players={players}
+                  currentLiveQ={gameState.currentQuestion ?? 9}
+                  selectedTab={r1ReviewQ}
+                  onSelectTab={setR1ReviewQ}
+                  onScoreSave={(pId, qIdx, animeOk, charOks) => setDetailedRound1Score(pId, qIdx, animeOk, charOks)}
+                />
+              </div>
+            );
+          }
+
           const round = gameState?.active ? roundsData[gameState.currentRound] : null;
 
           if (pauseState?.active) {
@@ -1553,7 +1804,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Раунд 1: Три персонажа (с исправленной загрузкой картинок и удобной проверкой) */}
+                {/* Раунд 1: Три персонажа (с исправленной загрузкой картинок и отдельной панелью проверки) */}
                 {round.type === "three_characters" && (
                   <div className="space-y-6 max-w-5xl mx-auto">
                     <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center shadow-lg">
@@ -1565,7 +1816,7 @@ export default function App() {
                       </h3>
                     </div>
 
-                    {/* Сетка картинок с умной защитой от 404 */}
+                    {/* Сетка картинок с защитой */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
                       {currentQuestion.images?.slice(0, 3).map((img, idx) => {
                         const charName = currentQuestion.characterNames?.[idx];
@@ -1668,214 +1919,16 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* ПАНЕЛЬ ПРОВЕРКИ С ВКЛАДКАМИ (ОТВЕТЫ НЕ ПРОПАДАЮТ ПРИ СМЕНЕ ВОПРОСА!) */}
+                    {/* ПАНЕЛЬ ПРОВЕРКИ 1 РАУНДА (ДЛЯ ВЕДУЩЕГО ВО ВРЕМЯ РАУНДА) */}
                     {user.isAdmin && (
-                      <div className="mt-8 bg-slate-900/90 p-5 rounded-3xl border border-purple-500/30 space-y-4 shadow-2xl">
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
-                          <div>
-                            <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                              <span>📋 Проверка ответов 1 раунда</span>
-                              {r1ReviewQ !== 'all' ? (
-                                <span className="bg-purple-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-md">
-                                  Вопрос {r1ReviewQ + 1}
-                                </span>
-                              ) : (
-                                <span className="bg-indigo-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-md">
-                                  Все вопросы
-                                </span>
-                              )}
-                            </h4>
-                            <p className="text-[11px] text-gray-400">
-                              Ответы сохраняются и доступны для проверки на протяжении всей игры!
-                            </p>
-                          </div>
-                          {r1ReviewQ !== 'all' && (
-                            <span className="text-xs text-green-400 font-bold bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/20">
-                              Правильный тайтл: {round.questions[r1ReviewQ]?.correctAnswer}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Навигационные вкладки между 10 вопросами */}
-                        <div className="flex flex-wrap items-center gap-1.5 border-b border-white/10 pb-3">
-                          {round.questions.map((_, qIndex) => {
-                            const answersCount = Object.values(players).filter((p: any) => 
-                              p.roundAnswers?.[1]?.[`q${qIndex}`]?.answered
-                            ).length;
-                            const hasUnchecked = Object.values(players).some((p: any) => 
-                              p.roundAnswers?.[1]?.[`q${qIndex}`]?.answered && !p.roundAnswers?.[1]?.[`q${qIndex}`]?.checked
-                            );
-                            const isCurrentLive = currentQIdx === qIndex;
-                            const isSelected = r1ReviewQ === qIndex;
-
-                            return (
-                              <button
-                                key={qIndex}
-                                onClick={() => setR1ReviewQ(qIndex)}
-                                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                                  isSelected 
-                                    ? "bg-purple-600 text-white shadow-lg ring-2 ring-purple-400" 
-                                    : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
-                                }`}
-                              >
-                                <span>В{qIndex + 1}</span>
-                                {answersCount > 0 && (
-                                  <span className={`px-1 rounded-full text-[10px] ${isSelected ? 'bg-black/40 text-purple-200' : 'bg-black/30 text-gray-400'}`}>
-                                    {answersCount}
-                                  </span>
-                                )}
-                                {hasUnchecked && (
-                                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Есть непроверенные ответы" />
-                                )}
-                                {isCurrentLive && (
-                                  <span className="text-[9px] text-emerald-400 font-black" title="Идёт сейчас">⏱</span>
-                                )}
-                              </button>
-                            );
-                          })}
-
-                          <button
-                            onClick={() => setR1ReviewQ('all')}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ml-auto ${
-                              r1ReviewQ === 'all'
-                                ? "bg-indigo-600 text-white shadow-lg ring-2 ring-indigo-400"
-                                : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
-                            }`}
-                          >
-                            📊 Все вопросы
-                          </button>
-                        </div>
-
-                        {/* Карточки ответов выбранного вопроса (или всех) */}
-                        <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar">
-                          {(() => {
-                            const targetQList = r1ReviewQ === 'all' 
-                              ? Array.from({ length: 10 }, (_, i) => i) 
-                              : [r1ReviewQ];
-
-                            const questionsWithAnswers = targetQList.flatMap((qI) => {
-                              const qObj = round.questions[qI];
-                              return Object.entries(players)
-                                .filter(([_, p]: [string, any]) => p.roundAnswers?.[1]?.[`q${qI}`]?.answered)
-                                .map(([pId, p]: [string, any]) => ({
-                                  pId,
-                                  p,
-                                  qI,
-                                  qObj,
-                                  ansData: p.roundAnswers[1][`q${qI}`],
-                                  scoreKey: `1_q${qI}`,
-                                }));
-                            });
-
-                            if (questionsWithAnswers.length === 0) {
-                              return (
-                                <p className="text-xs text-gray-400 italic py-6 text-center">
-                                  {r1ReviewQ === 'all' 
-                                    ? "Игроки пока не отправили ответов в 1 раунде." 
-                                    : `На Вопрос ${r1ReviewQ + 1} ответов пока нет. Выберите вкладку с ответами выше.`}
-                                </p>
-                              );
-                            }
-
-                            return questionsWithAnswers.map(({ pId, p, qI, qObj, ansData, scoreKey }) => {
-                              const awarded = p.scores?.[scoreKey] || ansData.pointsAwarded || 0;
-                              const isAnimeOk = !!ansData.animeApproved;
-                              const charOks = ansData.charApproved || [false, false, false];
-
-                              return (
-                                <div key={`${pId}_${qI}`} className="p-4 bg-black/50 rounded-2xl border border-white/10 space-y-3">
-                                  <div className="flex items-center justify-between border-b border-white/10 pb-2">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-black text-white">{p.nickname}</span>
-                                      <span className="text-[10px] bg-purple-600/30 text-purple-300 px-2 py-0.5 rounded-full font-bold">К#{p.team + 1}</span>
-                                      <span className="text-[10px] bg-white/10 text-gray-300 px-2 py-0.5 rounded-full font-mono">Вопрос {qI + 1}</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs font-mono font-black text-emerald-400">
-                                        Начислено: +{awarded} б.
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  {/* Аниме */}
-                                  <div className="flex items-center justify-between gap-2 bg-white/5 p-2.5 rounded-xl text-xs">
-                                    <div>
-                                      <span className="text-gray-400">Тайтл игрока: </span>
-                                      <span className="font-bold text-white">«{ansData.answer || "не указал"}»</span>
-                                      <span className="text-[10px] text-gray-400 ml-2">(верно: {qObj.correctAnswer})</span>
-                                    </div>
-                                    <button
-                                      onClick={() => setDetailedRound1Score(pId, 1, `q${qI}`, !isAnimeOk, charOks)}
-                                      className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
-                                        isAnimeOk ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
-                                      }`}
-                                    >
-                                      {isAnimeOk ? '✓ Аниме (+2)' : '+2 за аниме'}
-                                    </button>
-                                  </div>
-
-                                  {/* 3 Персонажа */}
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                                    {[0, 1, 2].map((cIdx) => {
-                                      const pGuess = ansData.characters?.[cIdx] || "—";
-                                      const correctCharName = qObj.characterNames?.[cIdx] || `Перс #${cIdx + 1}`;
-                                      const isCharOk = !!charOks[cIdx];
-
-                                      return (
-                                        <div key={cIdx} className="bg-white/5 p-2.5 rounded-xl flex flex-col justify-between gap-1.5 border border-white/5">
-                                          <div>
-                                            <div className="text-[10px] text-gray-400 font-bold truncate" title={correctCharName}>
-                                              {correctCharName}
-                                            </div>
-                                            <div className="text-white font-medium mt-0.5 truncate" title={pGuess}>
-                                              «{pGuess}»
-                                            </div>
-                                          </div>
-                                          <button
-                                            onClick={() => {
-                                              const newCharOks = [...charOks] as [boolean, boolean, boolean];
-                                              newCharOks[cIdx] = !isCharOk;
-                                              setDetailedRound1Score(pId, 1, `q${qI}`, isAnimeOk, newCharOks);
-                                            }}
-                                            className={`w-full py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
-                                              isCharOk ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
-                                            }`}
-                                          >
-                                            {isCharOk ? `✓ Перс #${cIdx + 1} (+1)` : `+1 за Перс #${cIdx + 1}`}
-                                          </button>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-
-                                  {/* Быстрые кнопки */}
-                                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
-                                    <span className="text-[10px] text-gray-400 font-bold">Быстро:</span>
-                                    <button 
-                                      onClick={() => setDetailedRound1Score(pId, 1, `q${qI}`, true, [true, true, true])}
-                                      className="px-2.5 py-1 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
-                                    >
-                                      Все верно (+5)
-                                    </button>
-                                    <button 
-                                      onClick={() => setDetailedRound1Score(pId, 1, `q${qI}`, true, [false, false, false])}
-                                      className="px-2.5 py-1 bg-purple-600/30 hover:bg-purple-600 text-purple-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
-                                    >
-                                      Только аниме (+2)
-                                    </button>
-                                    <button 
-                                      onClick={() => setDetailedRound1Score(pId, 1, `q${qI}`, false, [false, false, false])}
-                                      className="px-2.5 py-1 bg-red-600/30 hover:bg-red-600 text-red-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
-                                    >
-                                      Обнулить (0)
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            });
-                          })()}
-                        </div>
-                      </div>
+                      <Round1ReviewPanel
+                        roundQuestions={round.questions}
+                        players={players}
+                        currentLiveQ={currentQIdx}
+                        selectedTab={r1ReviewQ}
+                        onSelectTab={setR1ReviewQ}
+                        onScoreSave={(pId, qIdx, animeOk, charOks) => setDetailedRound1Score(pId, qIdx, animeOk, charOks)}
+                      />
                     )}
 
                     {gameState.showAnswer && (
@@ -2174,7 +2227,7 @@ export default function App() {
                 </button>
               </div>
 
-              {/* ОБЩАЯ ОЧЕРЕДЬ ОТВЕТОВ СО ВСЕХ РАУНДОВ */}
+              {/* ОБЩАЯ ОЧЕРЕДЬ ОТВЕТОВ СО ВСЕХ РАУНДОВ (РАУНД 1 ИСКЛЮЧЕН — У НЕГО СВОЯ ПАНЕЛЬ!) */}
               <div className="mt-8">
                 <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">
                   Очередь непроверенных ответов (Все раунды):
@@ -2184,6 +2237,8 @@ export default function App() {
                     const allRoundsAnswers = p.roundAnswers || {};
                     return Object.entries(allRoundsAnswers).flatMap(([rIdxStr, rAnswers]: [string, any]) => {
                       const rIdx = parseInt(rIdxStr);
+                      // ИСКЛЮЧАЕМ 1 РАУНД: ОН ПРОВЕРЯЕТСЯ ТОЛЬКО В СВОЕЙ ПАНЕЛИ
+                      if (rIdx === 1) return [];
                       if (!rAnswers || typeof rAnswers !== 'object') return [];
                       return Object.entries(rAnswers)
                         .filter(([_, ans]: [any, any]) => ans && ans.answered && !ans.checked)
@@ -2232,9 +2287,6 @@ export default function App() {
                             </span>
                           </div>
                           <p className="text-sm text-blue-300 mt-1">Ответ: <span className="font-bold">{ans.answer}</span></p>
-                          {currentRType === "three_characters" && (
-                            <p className="text-[11px] text-gray-400">Персонажи: {(ans.characters || []).join(", ") || "—"}</p>
-                          )}
                           <p className="text-[10px] text-green-400 mt-0.5 uppercase tracking-wider">
                             Правильный: <span className="font-bold">{correctAns || "—"}</span>
                           </p>
@@ -2259,8 +2311,8 @@ export default function App() {
                     );
                   })}
                   {Object.values(players).every((p: any) => 
-                    !p.roundAnswers || Object.values(p.roundAnswers).every((rAns: any) => 
-                      !rAns || Object.values(rAns).every((a: any) => a.checked)
+                    !p.roundAnswers || Object.values(p.roundAnswers).every((rAns: any, rI: any) => 
+                      rI === 1 || !rAns || Object.values(rAns).every((a: any) => a.checked)
                     )
                   ) && (
                     <p className="text-center text-gray-500 py-4 text-xs italic">Нет непроверенных ответов</p>
