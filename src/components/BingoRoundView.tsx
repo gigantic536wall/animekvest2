@@ -1,12 +1,87 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Trophy, CheckCircle2, XCircle, AlertTriangle, 
-  Sparkles, RefreshCw, Send, Eye, ShieldAlert, ArrowRight, Play
+  Sparkles, RefreshCw, Send, Eye, ShieldAlert, ArrowRight, Play, Loader2
 } from "lucide-react";
 import { generateBingoPool32, generateTeamBingoCard } from "../data/bingoData";
 
 const TOTAL_TEAMS = 10;
+
+interface BingoCell {
+  title: string;
+  checked?: boolean;
+  id?: string | number;
+}
+
+// Извлечение чистого названия аниме в виде строки
+function getAnimeTitle(item: any): string {
+  if (!item) return "";
+  if (typeof item === "string") return item;
+  if (typeof item === "object") {
+    return item.title || item.name || item.anime || "";
+  }
+  return String(item);
+}
+
+// Защищенный конвертер карточки в 4x4 сетку (не падает ни от объектов, ни от 1D/2D массивов)
+function to4x4Grid(cardRaw: any): BingoCell[][] {
+  if (!cardRaw) return [];
+
+  let flatCells: BingoCell[] = [];
+
+  if (Array.isArray(cardRaw)) {
+    if (cardRaw.length > 0 && Array.isArray(cardRaw[0])) {
+      return cardRaw.map(row => 
+        (Array.isArray(row) ? row : Object.values(row || {})).map(cell => ({
+          title: getAnimeTitle(cell),
+          checked: typeof cell === 'object' ? !!cell?.checked : false,
+          id: typeof cell === 'object' ? cell?.id : undefined
+        }))
+      );
+    }
+    flatCells = cardRaw.map(c => ({
+      title: getAnimeTitle(c),
+      checked: typeof c === 'object' ? !!c?.checked : false,
+      id: typeof c === 'object' ? c?.id : undefined
+    }));
+  } else if (typeof cardRaw === "object") {
+    const keys = Object.keys(cardRaw).sort((a, b) => Number(a) - Number(b));
+    const firstVal = cardRaw[keys[0]];
+
+    if (Array.isArray(firstVal) || (firstVal && typeof firstVal === 'object' && !('title' in firstVal) && !('checked' in firstVal))) {
+      return keys.map(k => {
+        const rowObj = cardRaw[k];
+        const rowCells = Array.isArray(rowObj) ? rowObj : Object.values(rowObj || {});
+        return rowCells.map((cell: any) => ({
+          title: getAnimeTitle(cell),
+          checked: typeof cell === 'object' ? !!cell?.checked : false,
+          id: typeof cell === 'object' ? cell?.id : undefined
+        }));
+      });
+    } else {
+      flatCells = keys.map(k => {
+        const cell = cardRaw[k];
+        return {
+          title: getAnimeTitle(cell),
+          checked: typeof cell === 'object' ? !!cell?.checked : false,
+          id: typeof cell === 'object' ? cell?.id : undefined
+        };
+      });
+    }
+  }
+
+  const grid: BingoCell[][] = [];
+  for (let r = 0; r < 4; r++) {
+    const row: BingoCell[] = [];
+    for (let c = 0; c < 4; c++) {
+      const idx = r * 4 + c;
+      row.push(flatCells[idx] || { title: "", checked: false });
+    }
+    grid.push(row);
+  }
+  return grid;
+}
 
 interface BingoRoundViewProps {
   user: any;
@@ -23,13 +98,27 @@ export default function BingoRoundView({
   restPatch,
   restPut,
 }: BingoRoundViewProps) {
-  const currentQIdx = gameState?.currentQuestion ?? 0; // 0 = Партия 1, 1 = Партия 2
+  const currentQIdx = gameState?.currentQuestion ?? 0;
   const isGame2 = currentQIdx === 1;
 
   const bingoState = gameState?.bingo || {};
-  const pool32: string[] = bingoState.pool32 || [];
-  const revealedCount: number = bingoState.revealedCount || 0;
-  const lastRevealed: string[] = bingoState.lastRevealed || [];
+  
+  // Безопасное чтение пула 32 тайтлов
+  const rawPool = bingoState.pool32;
+  const poolList: any[] = Array.isArray(rawPool) 
+    ? rawPool 
+    : (rawPool && typeof rawPool === 'object' ? Object.values(rawPool) : []);
+  const pool32: string[] = poolList.map(getAnimeTitle).filter(Boolean);
+
+  const revealedCount = Math.min(32, Math.max(0, Number(bingoState.revealedCount) || 0));
+
+  // Безопасное чтение последних открытых тайтлов
+  const rawLast = bingoState.lastRevealed;
+  const lastList: any[] = Array.isArray(rawLast)
+    ? rawLast
+    : (rawLast && typeof rawLast === 'object' ? Object.values(rawLast) : []);
+  const lastRevealed: string[] = lastList.map(getAnimeTitle).filter(Boolean);
+
   const roundOver: boolean = !!bingoState.roundOver;
   const teamsData: Record<string, any> = bingoState.teams || {};
 
@@ -37,12 +126,40 @@ export default function BingoRoundView({
   const myTeamData = teamsData[teamIdx] || null;
 
   const [adminViewTeam, setAdminViewTeam] = useState<number>(0);
-  const [selectedSubmissionType, setSelectedSubmissionType] = useState<"line" | "full">("line");
 
-  // Открытые тайтлы на текущий момент
-  const revealedAnimeSet = new Set(pool32.slice(0, revealedCount).map((s) => s.toLowerCase().trim()));
+  // Множество названий выпавших тайтлов в нижнем регистре
+  const revealedAnimeSet = new Set(
+    pool32.slice(0, revealedCount).map((s) => s.toLowerCase().trim())
+  );
 
-  // ==================== ДЕЙСТВИЯ ВЕДУЩЕГО ====================
+  // Авто-инициализация, если данных в Firebase ещё нет
+  useEffect(() => {
+    if (user?.isAdmin && (!gameState?.bingo?.pool32 || !gameState?.bingo?.teams)) {
+      const pool = generateBingoPool32();
+      const initialTeams: Record<string, any> = {};
+      for (let t = 0; t < TOTAL_TEAMS; t++) {
+        initialTeams[t] = {
+          teamIdx: t,
+          card: generateTeamBingoCard(t),
+          submittedForReview: false,
+          submissionType: null,
+          submittedAt: null,
+          firstLineApproved: false,
+          fullApproved: false,
+          penaltyTotal: 0,
+          lastPenaltyNotice: null,
+        };
+      }
+      restPatch("gameState/bingo", {
+        gameIndex: currentQIdx,
+        pool32: pool,
+        revealedCount: 0,
+        lastRevealed: [],
+        teams: initialTeams,
+        roundOver: false,
+      });
+    }
+  }, [user?.isAdmin, gameState?.bingo]);
 
   // Выдать следующие 2 аниме
   const handleRevealNextTwo = async () => {
@@ -103,22 +220,19 @@ export default function BingoRoundView({
     const points = type === "line" ? 12 : 24;
     const scoreKey = `bingo_q${currentQIdx}_${type}`;
 
-    // Начисляем очки всем игрокам команды
     const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === targetTeamIdx);
     for (const [pId] of teamPlayers) {
       await restPut(`players/${pId}/scores/${scoreKey}`, points);
     }
 
-    const patchData: any = {
-      submittedForReview: false,
-    };
+    const patchData: any = { submittedForReview: false };
     if (type === "line") patchData.firstLineApproved = true;
     if (type === "full") patchData.fullApproved = true;
 
     await restPatch(`gameState/bingo/teams/${targetTeamIdx}`, patchData);
   };
 
-  // Начисление штрафа (-3 балла)
+  // Штраф (-3 балла)
   const handleRejectSubmissionWithPenalty = async (targetTeamIdx: number) => {
     if (!user.isAdmin) return;
     const scoreKey = `bingo_q${currentQIdx}_penalty_${Date.now()}`;
@@ -136,23 +250,17 @@ export default function BingoRoundView({
     });
   };
 
-  // ==================== ДЕЙСТВИЯ ИГРОКОВ ====================
-
-  // Клик по ячейке 4x4
+  // Клик по ячейке игроком
   const handleCellClick = async (rIdx: number, cIdx: number) => {
     if (user.isAdmin || roundOver || !myTeamData) return;
-    const card = myTeamData.card;
-    if (!card || !card[rIdx] || !card[rIdx][cIdx]) return;
+    const grid = to4x4Grid(myTeamData.card);
+    if (!grid[rIdx] || !grid[rIdx][cIdx]) return;
 
-    const cell = card[rIdx][cIdx];
-    const newChecked = !cell.checked;
-
-    await restPatch(`gameState/bingo/teams/${teamIdx}/card/${rIdx}/${cIdx}`, {
-      checked: newChecked,
-    });
+    grid[rIdx][cIdx].checked = !grid[rIdx][cIdx].checked;
+    await restPut(`gameState/bingo/teams/${teamIdx}/card`, grid);
   };
 
-  // Отправка заявки на проверку (Линия или Полное поле)
+  // Отправка заявки на проверку
   const handleSubmitForReview = async (type: "line" | "full") => {
     if (user.isAdmin || roundOver || !myTeamData) return;
 
@@ -163,29 +271,41 @@ export default function BingoRoundView({
     });
   };
 
-  // Подсчёт совпадений ячеек команды с открытыми тайтлами
+  // Подсчёт совпадений карточки команды
   const calculateCardMatchStats = (tIdx: number) => {
     const tData = teamsData[tIdx];
     if (!tData?.card) return { checkedCount: 0, validMatches: 0, invalidMatches: 0 };
+    const grid = to4x4Grid(tData.card);
     let checkedCount = 0;
     let validMatches = 0;
     let invalidMatches = 0;
 
-    for (let r = 0; r < 4; r++) {
-      for (let c = 0; c < 4; c++) {
-        const cell = tData.card[r]?.[c];
-        if (cell?.checked) {
+    grid.forEach(row => {
+      row.forEach(cell => {
+        if (cell.checked) {
           checkedCount++;
-          if (revealedAnimeSet.has((cell.title || "").toLowerCase().trim())) {
+          const titleLower = cell.title.toLowerCase().trim();
+          if (titleLower && revealedAnimeSet.has(titleLower)) {
             validMatches++;
           } else {
             invalidMatches++;
           }
         }
-      }
-    }
+      });
+    });
     return { checkedCount, validMatches, invalidMatches };
   };
+
+  // Если данные ещё загружаются
+  if (!gameState?.bingo?.teams && !user.isAdmin) {
+    return (
+      <div className="glass p-12 rounded-[2.5rem] border border-white/10 text-center space-y-4 max-w-md mx-auto">
+        <Loader2 className="w-10 h-10 text-purple-400 mx-auto animate-spin" />
+        <h3 className="text-xl font-black text-white">Загрузка раунда Бинго...</h3>
+        <p className="text-gray-400 text-xs">Ведущий подготавливает карточки тайтлов для команд.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -211,7 +331,6 @@ export default function BingoRoundView({
             </h2>
           </div>
 
-          {/* Счётчик открытых тайтлов */}
           <div className="flex items-center gap-3">
             <div className="bg-black/50 border border-white/10 px-5 py-2.5 rounded-2xl text-center">
               <span className="text-[10px] uppercase font-bold text-gray-400 block">Открыто тайтлов</span>
@@ -222,7 +341,7 @@ export default function BingoRoundView({
           </div>
         </div>
 
-        {/* Последние выпавшие 2 тайтла */}
+        {/* Последние открытые 2 тайтла */}
         <div className="mt-4 pt-4 border-t border-white/10">
           <div className="text-[11px] font-black uppercase tracking-wider text-purple-300 mb-2 flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-yellow-400" /> Последние открытые тайтлы ведущим:
@@ -271,7 +390,7 @@ export default function BingoRoundView({
       )}
 
       {/* ==================== ИНТЕРФЕЙС ИГРОКА (КАРТОЧКА 4X4) ==================== */}
-      {!user.isAdmin && myTeamData?.card && (
+      {!user.isAdmin && myTeamData && (
         <div className="bg-slate-900/90 border-2 border-purple-500/30 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-5 backdrop-blur-xl">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -283,7 +402,6 @@ export default function BingoRoundView({
               </p>
             </div>
 
-            {/* Статус подтверждения */}
             <div className="flex items-center gap-2">
               {myTeamData.firstLineApproved && (
                 <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-1 rounded-full text-xs font-black">
@@ -298,11 +416,11 @@ export default function BingoRoundView({
             </div>
           </div>
 
-          {/* Сетка 4x4 */}
+          {/* Безопасный рендер сетки 4x4 */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            {myTeamData.card.map((row: any[], rIdx: number) =>
-              row.map((cell: any, cIdx: number) => {
-                const isRevealedByHost = revealedAnimeSet.has((cell.title || "").toLowerCase().trim());
+            {to4x4Grid(myTeamData.card).map((row, rIdx) =>
+              row.map((cell, cIdx) => {
+                const isRevealedByHost = cell.title ? revealedAnimeSet.has(cell.title.toLowerCase().trim()) : false;
                 const isChecked = !!cell.checked;
 
                 return (
@@ -318,7 +436,7 @@ export default function BingoRoundView({
                           : "bg-white/5 border-white/10 hover:bg-white/10 text-gray-300"
                     } disabled:cursor-not-allowed`}
                   >
-                    <span className="leading-snug line-clamp-2">{cell.title}</span>
+                    <span className="leading-snug line-clamp-2">{cell.title || "—"}</span>
                     <div className="flex items-center justify-between mt-1 text-[10px] font-mono">
                       <span>{isChecked ? "✅ Отмечено" : isRevealedByHost ? "🔔 Выпало!" : ""}</span>
                       <span className="opacity-50">#{rIdx * 4 + cIdx + 1}</span>
@@ -329,7 +447,6 @@ export default function BingoRoundView({
             )}
           </div>
 
-          {/* Кнопки сдачи на проверку */}
           {!roundOver && (
             <div className="pt-2 flex flex-col sm:flex-row gap-3">
               <button
@@ -395,7 +512,6 @@ export default function BingoRoundView({
                 </button>
               )}
 
-              {/* КНОПКА ЗАПУСКА 2-Й ПАРТИИ (ТОЛЬКО ДЛЯ ПАРТИИ 1) */}
               {!isGame2 && (
                 <button
                   onClick={handleStartGame2}
@@ -408,7 +524,7 @@ export default function BingoRoundView({
             </div>
           </div>
 
-          {/* Переключатель просмотра карточек команд */}
+          {/* Список команд */}
           <div className="space-y-3">
             <span className="text-xs font-black uppercase tracking-wider text-purple-300">
               Команды и поданные заявки на проверку:
@@ -432,7 +548,7 @@ export default function BingoRoundView({
                   >
                     <div className="flex items-center justify-between text-[11px] font-black uppercase">
                       <span>Команда #{idx + 1}</span>
-                      {isPending && <span className="text-amber-400">🔔 ЗАЯВКА</span>}
+                      {isPending && <span className="text-amber-400 font-bold">🔔 ЗАЯВКА</span>}
                       {tData?.firstLineApproved && <span className="text-emerald-400">✓ 12</span>}
                       {tData?.fullApproved && <span className="text-yellow-400">🏆 24</span>}
                     </div>
@@ -448,7 +564,7 @@ export default function BingoRoundView({
             </div>
           </div>
 
-          {/* Детальный просмотр выбранной команды */}
+          {/* Детальный просмотр карточки команды */}
           {teamsData[adminViewTeam] && (
             <div className="p-5 bg-black/40 rounded-2xl border border-white/10 space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -461,7 +577,6 @@ export default function BingoRoundView({
                   </div>
                 </div>
 
-                {/* Блок проверки заявки */}
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     onClick={() => handleApproveSubmission(adminViewTeam, "line")}
@@ -484,11 +599,10 @@ export default function BingoRoundView({
                 </div>
               </div>
 
-              {/* Сетка карточки выбранной команды для проверки */}
               <div className="grid grid-cols-4 gap-2">
-                {teamsData[adminViewTeam].card?.map((row: any[], rI: number) =>
-                  row.map((cell: any, cI: number) => {
-                    const isRevealed = revealedAnimeSet.has((cell.title || "").toLowerCase().trim());
+                {to4x4Grid(teamsData[adminViewTeam].card).map((row, rI) =>
+                  row.map((cell, cI) => {
+                    const isRevealed = cell.title ? revealedAnimeSet.has(cell.title.toLowerCase().trim()) : false;
                     const isChecked = !!cell.checked;
                     const isCorrectMatch = isChecked && isRevealed;
                     const isFalseMark = isChecked && !isRevealed;
@@ -506,7 +620,7 @@ export default function BingoRoundView({
                                 : "bg-black/30 border-white/5 text-gray-500"
                         }`}
                       >
-                        <div className="font-bold truncate" title={cell.title}>{cell.title}</div>
+                        <div className="font-bold truncate" title={cell.title}>{cell.title || "—"}</div>
                         <div className="text-[9px] mt-1 opacity-70">
                           {isCorrectMatch ? "✓ Совпало" : isFalseMark ? "❌ Ошибка!" : isRevealed ? "Выпадало" : "Не выпадало"}
                         </div>
