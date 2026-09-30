@@ -15,6 +15,8 @@ interface AkinatorRoundViewProps {
   restPut: (path: string, data: any) => Promise<any>;
   timeLeft?: number;
   globalPause?: any;
+  isLeader?: boolean;
+  leaderNickname?: string;
 }
 
 export default function AkinatorRoundView({
@@ -25,6 +27,8 @@ export default function AkinatorRoundView({
   restPut,
   timeLeft = 90,
   globalPause,
+  isLeader,
+  leaderNickname,
 }: AkinatorRoundViewProps) {
   const [questionInput, setQuestionInput] = useState("");
   const [guessInput, setGuessInput] = useState("");
@@ -127,6 +131,7 @@ export default function AkinatorRoundView({
   };
 
   const handleAskQuestion = async (customQ?: string) => {
+    if (isLeader === false) return;
     const qText = (customQ || questionInput).trim();
     if (!qText || isAsking) return;
     if (!currentTeamData?.animeTitle) {
@@ -175,6 +180,7 @@ export default function AkinatorRoundView({
   };
 
   const handleMakeGuess = async () => {
+    if (isLeader === false) return;
     const gText = guessInput.trim();
     if (!gText || isGuessing || !currentTeamData?.animeTitle) return;
 
@@ -515,7 +521,18 @@ export default function AkinatorRoundView({
         )}
 
         {/* Question Input Form */}
-        {!currentTeamData.guessed && (
+        {!currentTeamData.guessed && isLeader === false && (
+          <div className="p-4 bg-purple-950/40 border border-purple-500/30 rounded-2xl text-center space-y-1">
+            <p className="text-sm font-bold text-purple-200">
+              👑 Вопросы и догадки Акинатору отправляет капитан вашей команды: <strong className="text-white underline">{leaderNickname || "Не назначен"}</strong>
+            </p>
+            <p className="text-xs text-gray-400">
+              Предлагайте вопросы капитану в голосовом чате!
+            </p>
+          </div>
+        )}
+
+        {!currentTeamData.guessed && isLeader !== false && (
           <div className="pt-2 space-y-3">
             <div className="flex gap-3">
               <div className="relative flex-1">
@@ -574,7 +591,7 @@ export default function AkinatorRoundView({
       </div>
 
       {/* Guess Attempt Section */}
-      {!currentTeamData.guessed && (
+      {!currentTeamData.guessed && isLeader !== false && (
         <div className="glass-dark p-6 md:p-8 rounded-[2.5rem] border-2 border-purple-500/30 shadow-2xl space-y-4">
           <div className="flex items-center gap-3">
             <Trophy className="w-6 h-6 text-yellow-400" />
