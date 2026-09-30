@@ -2330,4 +2330,4 @@ export default function App() {
       </div>
     </div>
   );
-} вот это тоже самое
+} 
