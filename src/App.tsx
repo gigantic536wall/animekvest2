@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, 
   Play, Pause, SkipForward, Trash2, RotateCcw, CheckCircle2, 
-  XCircle, Users, Eye, HelpCircle, ShieldCheck, Trophy 
+  XCircle, Users, Eye, HelpCircle, ShieldCheck, Trophy, Upload, ArrowRight 
 } from 'lucide-react';
 import { AudioPlayer } from './components/AudioPlayer';
 import { AKINATOR_ANIME_LIST } from './data/akinatorAnime';
@@ -594,6 +594,106 @@ const roundsData: Round[] = [
   }
 ];
 
+// ==================== КОМПОНЕНТ КАРТИНКИ ПЕРСОНАЖА (С АВТОПОДБОРОМ И РЕЗЕРВОМ) ====================
+function Round1CharacterCard({
+  src,
+  charName,
+  qIdx,
+  cIdx,
+  customImage,
+  isAdmin,
+  onUpload
+}: {
+  src: string;
+  charName?: string;
+  qIdx: number;
+  cIdx: number;
+  customImage?: string;
+  isAdmin?: boolean;
+  onUpload?: (dataUrl: string) => void;
+}) {
+  const [candidateIdx, setCandidateIdx] = useState(0);
+  const [allFailed, setAllFailed] = useState(false);
+
+  // Формируем список кандидатов на загрузку
+  const candidates = React.useMemo(() => {
+    const list: string[] = [];
+    if (customImage) list.push(customImage);
+    if (src) {
+      list.push(src);
+      // Пробуем альтернативные расширения
+      if (src.includes('.png')) list.push(src.replace('.png', '.jpg'), src.replace('.png', '.jpeg'), src.replace('.png', '.webp'));
+      if (src.includes('.jpg')) list.push(src.replace('.jpg', '.png'), src.replace('.jpg', '.webp'));
+    }
+    // Локальные варианты, если хостинг заблокирован
+    list.push(`/chars/q${qIdx + 1}_${cIdx + 1}.jpg`);
+    list.push(`/chars/q${qIdx + 1}_${cIdx + 1}.png`);
+    list.push(`/chars/${qIdx + 1}_${cIdx + 1}.jpg`);
+    list.push(`/chars/${qIdx + 1}_${cIdx + 1}.png`);
+    return list;
+  }, [customImage, src, qIdx, cIdx]);
+
+  useEffect(() => {
+    setCandidateIdx(0);
+    setAllFailed(false);
+  }, [src, customImage, qIdx, cIdx]);
+
+  const currentSrc = candidates[candidateIdx];
+
+  const handleImgError = () => {
+    if (candidateIdx < candidates.length - 1) {
+      setCandidateIdx((prev) => prev + 1);
+    } else {
+      setAllFailed(true);
+    }
+  };
+
+  if (allFailed || !currentSrc) {
+    return (
+      <div className="w-full h-full flex flex-col items-center justify-center p-4 bg-gradient-to-b from-purple-950/70 to-slate-950 text-center space-y-2 border border-purple-500/20">
+        <span className="text-3xl">👤</span>
+        <div className="text-xs font-bold text-white px-2 leading-tight">
+          {charName || `Персонаж #${cIdx + 1}`}
+        </div>
+        <div className="text-[10px] text-purple-300/80">
+          Фото персонажа
+        </div>
+        {isAdmin && onUpload && (
+          <label className="mt-1 px-3 py-1 bg-purple-600/50 hover:bg-purple-600 border border-purple-400/50 rounded-xl text-[10px] font-bold text-white cursor-pointer transition-all">
+            Загрузить фото
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const reader = new FileReader();
+                  reader.onload = (ev) => {
+                    if (ev.target?.result) onUpload(ev.target.result as string);
+                  };
+                  reader.readAsDataURL(file);
+                }
+              }}
+            />
+          </label>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      key={currentSrc}
+      src={currentSrc}
+      alt={charName || `Персонаж ${cIdx + 1}`}
+      referrerPolicy="no-referrer"
+      className="w-full h-full object-cover object-top transition-all"
+      onError={handleImgError}
+    />
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState<any>(null);
   const [gameState, setGameState] = useState<any>(null);
@@ -622,6 +722,9 @@ export default function App() {
   const isFreshTransitionRef = useRef<boolean>(false);
   const gameStateRef = useRef<any>(null);
   const isStartingPauseRef = useRef<boolean>(false);
+
+  // Вкладка для проверки ответов ведущим в 1 раунде (0..9 или 'all')
+  const [r1ReviewQ, setR1ReviewQ] = useState<number | 'all'>(0);
 
   useEffect(() => {
     gameStateRef.current = gameState;
@@ -653,20 +756,15 @@ export default function App() {
   const [isDoubleChoice, setIsDoubleChoice] = useState(false);
   const [preloaderStatus, setPreloaderStatus] = useState("");
 
-  const videoRef = useRef<HTMLVideoElement>(null);
   const testAudioRef = useRef<HTMLAudioElement>(null);
   const [isTestingSound, setIsTestingSound] = useState(false);
 
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.volume = volume;
-      videoRef.current.muted = isMuted;
-    }
     if (testAudioRef.current) {
       testAudioRef.current.volume = volume;
       testAudioRef.current.muted = isMuted;
     }
-  }, [volume, isMuted, gameState?.currentQuestion, gameState?.revealMode]);
+  }, [volume, isMuted]);
 
   useEffect(() => {
     const saved = localStorage.getItem('quizUser');
@@ -681,6 +779,7 @@ export default function App() {
     preloadAssets();
   }, []);
 
+  // Синхронизация Firebase
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -723,11 +822,14 @@ export default function App() {
         setGlobalPauseState(gPause);
         setPlayers(allPlayers || {});
 
-        // ЕСЛИ СБРОС ИГРЫ — СБРАСЫВАЕМ ВСЕХ ИГРОКОВ НА ЭКРАН ВХОДА
-        if (state?.reset && user && !user.isAdmin) {
-          localStorage.removeItem('quizUser');
-          setUser(null);
-          window.location.reload();
+        // ЕСЛИ БЫЛ НАЖАТ СБРОС ИГРЫ — СБРАСЫВАЕМ ВСЕХ ИГРОКОВ В ЛОГИН
+        if (user && !user.isAdmin) {
+          const isMissingInDb = !allPlayers || !allPlayers[user.id];
+          if (state?.reset || isMissingInDb) {
+            localStorage.removeItem('quizUser');
+            setUser(null);
+            window.location.reload();
+          }
         }
       } catch (e) {
         console.warn("Polling error:", e);
@@ -736,6 +838,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [user]);
 
+  // Таймер раунда
   useEffect(() => {
     if (!gameState?.active || !user || gameState.roundFinished) {
       setTimeLeft(0);
@@ -792,6 +895,7 @@ export default function App() {
     return () => clearInterval(interval);
   }, [gameState?.active, gameState?.currentRound, gameState?.currentQuestion, gameState?.endTime, gameState?.timeLeft, globalPause?.active, pauseState?.active, gameState?.roundFinished, user?.isAdmin]);
 
+  // Проверка сданного ответа
   useEffect(() => {
     if (!gameState?.active || !user || user.isAdmin) return;
     
@@ -855,15 +959,15 @@ export default function App() {
     }
   };
 
-  // ПОЛНЫЙ СБРОС ИГРЫ (Очищает всех игроков во всех командах)
+  // ПОЛНЫЙ СБРОС ИГРЫ: ОЧИЩАЕТ ВСЕХ ИГРОКОВ ВО ВСЕХ КОМАНДАХ
   const resetGame = async () => {
-    if (!confirm("Вы уверены, что хотите полностью сбросить игру? Все игроки и баллы во всех командах будут удалены!")) return;
+    if (!confirm("Вы уверены, что хотите полностью сбросить игру? Все игроки во всех командах будут удалены!")) return;
     
-    // 1. Полностью удаляем ветку players из Firebase
+    // 1. Полностью очищаем ветку игроков в Firebase
     await restDelete('players');
     setPlayers({});
 
-    // 2. Сбрасываем игру и выставляем флаг reset: true для отключения сессий игроков
+    // 2. Сбрасываем gameState и даем сигнал reset: true
     await restPut('gameState', {
       active: false,
       currentRound: 0,
@@ -1205,7 +1309,7 @@ export default function App() {
     }
   };
 
-  // Раздельная оценка для 1 раунда (Аниме + 3 персонажа)
+  // Раздельное выставление оценки для 1 раунда (Аниме + 3 персонажа)
   const setDetailedRound1Score = async (
     playerId: string, 
     roundIdx: number, 
@@ -1303,7 +1407,7 @@ export default function App() {
     <div className="min-h-screen p-4 md:p-8">
       <div className="max-w-[1600px] mx-auto">
         {/* Header */}
-        <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8 glass p-8 rounded-[2.5rem] neon-border">
+        <header className="flex flex-col md:flex-row justify-between items-center gap-6 mb-6 glass p-8 rounded-[2.5rem] neon-border">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg shadow-purple-500/20">
               <Users className="w-8 h-8 text-white" />
@@ -1370,28 +1474,28 @@ export default function App() {
           </div>
         </header>
 
-      {/* ПАНЕЛЬ БАЛЛОВ ВСЕХ КОМАНД ДЛЯ ВЕДУЩЕГО (Всегда видна в игре) */}
+      {/* ПАНЕЛЬ БАЛЛОВ ВСЕХ КОМАНД ДЛЯ ВЕДУЩЕГО (Видна всегда) */}
       {user.isAdmin && (
-        <div className="mb-8 p-4 md:p-5 rounded-[2rem] bg-gradient-to-r from-purple-950/60 via-slate-900/80 to-indigo-950/60 border border-purple-500/30 backdrop-blur-md shadow-2xl">
+        <div className="mb-6 p-4 md:p-5 rounded-[2rem] bg-gradient-to-r from-purple-950/70 via-slate-900/80 to-indigo-950/70 border border-purple-500/30 backdrop-blur-md shadow-2xl">
           <div className="flex items-center justify-between mb-3 px-1">
             <span className="text-xs font-black uppercase tracking-wider text-purple-300 flex items-center gap-2">
-              <Trophy className="w-4 h-4 text-yellow-400" /> Текущие баллы команд в игре:
+              <Trophy className="w-4 h-4 text-yellow-400" /> Счёт всех команд:
             </span>
             <span className="text-[11px] text-gray-400">
-              Подключено игроков: {Object.keys(players).length}
+              Всего игроков: {Object.keys(players).length}
             </span>
           </div>
           <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
             {Array.from({ length: TOTAL_TEAMS }).map((_, tIdx) => {
-              const tScore = Object.values(players)
-                .filter((p: any) => p.team === tIdx)
-                .reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
-              const pCount = Object.values(players).filter((p: any) => p.team === tIdx).length;
+              const tPlayers = Object.values(players).filter((p: any) => p.team === tIdx);
+              const tScore = tPlayers.reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
               return (
-                <div key={tIdx} className="bg-black/40 border border-white/10 rounded-2xl p-2.5 text-center transition-all hover:border-purple-500/50">
+                <div key={tIdx} className="bg-black/50 border border-white/10 rounded-2xl p-2.5 text-center transition-all hover:border-purple-500/50">
                   <div className="text-[10px] font-bold text-gray-400">К#{tIdx + 1}</div>
                   <div className="text-lg font-black text-purple-300">{tScore}</div>
-                  <div className="text-[9px] text-gray-500">{pCount > 0 ? `${pCount} игр.` : 'пусто'}</div>
+                  <div className="text-[9px] text-gray-500 truncate">
+                    {tPlayers.length > 0 ? `${tPlayers.length} игр.` : 'пусто'}
+                  </div>
                 </div>
               );
             })}
@@ -1449,7 +1553,7 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Раунд 1: Три персонажа (с исправленными картинками и раздельной оценкой) */}
+                {/* Раунд 1: Три персонажа (с исправленной загрузкой картинок и удобной проверкой) */}
                 {round.type === "three_characters" && (
                   <div className="space-y-6 max-w-5xl mx-auto">
                     <div className="bg-white/5 p-4 rounded-2xl border border-white/10 text-center shadow-lg">
@@ -1461,24 +1565,27 @@ export default function App() {
                       </h3>
                     </div>
 
+                    {/* Сетка картинок с умной защитой от 404 */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6">
                       {currentQuestion.images?.slice(0, 3).map((img, idx) => {
                         const charName = currentQuestion.characterNames?.[idx];
+                        const customImg = gameState?.round1Images?.[`${currentQIdx}_${idx}`];
+
                         return (
                           <div 
                             key={`${currentQIdx}_${idx}`}
-                            className="glass-dark rounded-3xl overflow-hidden border-2 border-purple-500/30 shadow-2xl relative flex flex-col"
+                            className="glass-dark rounded-3xl overflow-hidden border-2 border-purple-500/30 shadow-2xl relative flex flex-col min-h-[300px]"
                           >
-                            <div className="aspect-[3/4] w-full overflow-hidden bg-black/40 relative">
-                              <img 
-                                src={getAssetPath(img)} 
-                                alt={`Персонаж ${idx + 1}`} 
-                                referrerPolicy="no-referrer"
-                                crossOrigin="anonymous"
-                                className="w-full h-full object-cover object-top"
-                                onError={(e) => { 
-                                  // Заглушка с подписью вместо случайных ручек и столов
-                                  (e.target as HTMLElement).style.display = 'none';
+                            <div className="aspect-[3/4] w-full overflow-hidden bg-black/60 relative">
+                              <Round1CharacterCard
+                                src={getAssetPath(img)}
+                                charName={charName}
+                                qIdx={currentQIdx}
+                                cIdx={idx}
+                                customImage={customImg}
+                                isAdmin={user.isAdmin}
+                                onUpload={async (dataUrl) => {
+                                  await restPut(`gameState/round1Images/${currentQIdx}_${idx}`, dataUrl);
                                 }}
                               />
                               <div className="absolute top-3 left-3 bg-black/80 backdrop-blur-md px-3 py-1 rounded-xl text-xs font-black text-purple-300 border border-purple-500/30 shadow-lg">
@@ -1561,39 +1668,127 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Раздельная оценка ответов для ведущего */}
+                    {/* ПАНЕЛЬ ПРОВЕРКИ С ВКЛАДКАМИ (ОТВЕТЫ НЕ ПРОПАДАЮТ ПРИ СМЕНЕ ВОПРОСА!) */}
                     {user.isAdmin && (
                       <div className="mt-8 bg-slate-900/90 p-5 rounded-3xl border border-purple-500/30 space-y-4 shadow-2xl">
                         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-3">
                           <div>
-                            <h4 className="text-sm font-black text-white uppercase tracking-wider">
-                              📋 Проверка ответов игроков (Вопрос {currentQIdx + 1})
+                            <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                              <span>📋 Проверка ответов 1 раунда</span>
+                              {r1ReviewQ !== 'all' ? (
+                                <span className="bg-purple-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-md">
+                                  Вопрос {r1ReviewQ + 1}
+                                </span>
+                              ) : (
+                                <span className="bg-indigo-600 text-white text-[11px] font-bold px-2 py-0.5 rounded-md">
+                                  Все вопросы
+                                </span>
+                              )}
                             </h4>
                             <p className="text-[11px] text-gray-400">
-                              Оценивайте аниме и каждого персонажа отдельно!
+                              Ответы сохраняются и доступны для проверки на протяжении всей игры!
                             </p>
                           </div>
-                          <span className="text-xs text-green-400 font-bold bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/20">
-                            Правильный тайтл: {currentQuestion.correctAnswer}
-                          </span>
+                          {r1ReviewQ !== 'all' && (
+                            <span className="text-xs text-green-400 font-bold bg-green-500/10 px-3 py-1 rounded-xl border border-green-500/20">
+                              Правильный тайтл: {round.questions[r1ReviewQ]?.correctAnswer}
+                            </span>
+                          )}
                         </div>
 
-                        <div className="space-y-4">
-                          {Object.entries(players)
-                            .filter(([_, p]: [string, any]) => p.roundAnswers?.[gameState.currentRound]?.[`q${currentQIdx}`]?.answered)
-                            .map(([pId, p]: [string, any]) => {
-                              const ansData = p.roundAnswers[gameState.currentRound][`q${currentQIdx}`];
-                              const scoreKey = `${gameState.currentRound}_q${currentQIdx}`;
+                        {/* Навигационные вкладки между 10 вопросами */}
+                        <div className="flex flex-wrap items-center gap-1.5 border-b border-white/10 pb-3">
+                          {round.questions.map((_, qIndex) => {
+                            const answersCount = Object.values(players).filter((p: any) => 
+                              p.roundAnswers?.[1]?.[`q${qIndex}`]?.answered
+                            ).length;
+                            const hasUnchecked = Object.values(players).some((p: any) => 
+                              p.roundAnswers?.[1]?.[`q${qIndex}`]?.answered && !p.roundAnswers?.[1]?.[`q${qIndex}`]?.checked
+                            );
+                            const isCurrentLive = currentQIdx === qIndex;
+                            const isSelected = r1ReviewQ === qIndex;
+
+                            return (
+                              <button
+                                key={qIndex}
+                                onClick={() => setR1ReviewQ(qIndex)}
+                                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                  isSelected 
+                                    ? "bg-purple-600 text-white shadow-lg ring-2 ring-purple-400" 
+                                    : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
+                                }`}
+                              >
+                                <span>В{qIndex + 1}</span>
+                                {answersCount > 0 && (
+                                  <span className={`px-1 rounded-full text-[10px] ${isSelected ? 'bg-black/40 text-purple-200' : 'bg-black/30 text-gray-400'}`}>
+                                    {answersCount}
+                                  </span>
+                                )}
+                                {hasUnchecked && (
+                                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Есть непроверенные ответы" />
+                                )}
+                                {isCurrentLive && (
+                                  <span className="text-[9px] text-emerald-400 font-black" title="Идёт сейчас">⏱</span>
+                                )}
+                              </button>
+                            );
+                          })}
+
+                          <button
+                            onClick={() => setR1ReviewQ('all')}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ml-auto ${
+                              r1ReviewQ === 'all'
+                                ? "bg-indigo-600 text-white shadow-lg ring-2 ring-indigo-400"
+                                : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10"
+                            }`}
+                          >
+                            📊 Все вопросы
+                          </button>
+                        </div>
+
+                        {/* Карточки ответов выбранного вопроса (или всех) */}
+                        <div className="space-y-4 max-h-[380px] overflow-y-auto pr-1 custom-scrollbar">
+                          {(() => {
+                            const targetQList = r1ReviewQ === 'all' 
+                              ? Array.from({ length: 10 }, (_, i) => i) 
+                              : [r1ReviewQ];
+
+                            const questionsWithAnswers = targetQList.flatMap((qI) => {
+                              const qObj = round.questions[qI];
+                              return Object.entries(players)
+                                .filter(([_, p]: [string, any]) => p.roundAnswers?.[1]?.[`q${qI}`]?.answered)
+                                .map(([pId, p]: [string, any]) => ({
+                                  pId,
+                                  p,
+                                  qI,
+                                  qObj,
+                                  ansData: p.roundAnswers[1][`q${qI}`],
+                                  scoreKey: `1_q${qI}`,
+                                }));
+                            });
+
+                            if (questionsWithAnswers.length === 0) {
+                              return (
+                                <p className="text-xs text-gray-400 italic py-6 text-center">
+                                  {r1ReviewQ === 'all' 
+                                    ? "Игроки пока не отправили ответов в 1 раунде." 
+                                    : `На Вопрос ${r1ReviewQ + 1} ответов пока нет. Выберите вкладку с ответами выше.`}
+                                </p>
+                              );
+                            }
+
+                            return questionsWithAnswers.map(({ pId, p, qI, qObj, ansData, scoreKey }) => {
                               const awarded = p.scores?.[scoreKey] || ansData.pointsAwarded || 0;
                               const isAnimeOk = !!ansData.animeApproved;
                               const charOks = ansData.charApproved || [false, false, false];
 
                               return (
-                                <div key={pId} className="p-4 bg-black/50 rounded-2xl border border-white/10 space-y-3">
+                                <div key={`${pId}_${qI}`} className="p-4 bg-black/50 rounded-2xl border border-white/10 space-y-3">
                                   <div className="flex items-center justify-between border-b border-white/10 pb-2">
                                     <div className="flex items-center gap-2">
                                       <span className="text-sm font-black text-white">{p.nickname}</span>
                                       <span className="text-[10px] bg-purple-600/30 text-purple-300 px-2 py-0.5 rounded-full font-bold">К#{p.team + 1}</span>
+                                      <span className="text-[10px] bg-white/10 text-gray-300 px-2 py-0.5 rounded-full font-mono">Вопрос {qI + 1}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <span className="text-xs font-mono font-black text-emerald-400">
@@ -1607,9 +1802,10 @@ export default function App() {
                                     <div>
                                       <span className="text-gray-400">Тайтл игрока: </span>
                                       <span className="font-bold text-white">«{ansData.answer || "не указал"}»</span>
+                                      <span className="text-[10px] text-gray-400 ml-2">(верно: {qObj.correctAnswer})</span>
                                     </div>
                                     <button
-                                      onClick={() => setDetailedRound1Score(pId, gameState.currentRound, `q${currentQIdx}`, !isAnimeOk, charOks)}
+                                      onClick={() => setDetailedRound1Score(pId, 1, `q${qI}`, !isAnimeOk, charOks)}
                                       className={`px-3 py-1.5 rounded-lg font-bold text-xs transition-all cursor-pointer ${
                                         isAnimeOk ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
                                       }`}
@@ -1622,7 +1818,7 @@ export default function App() {
                                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                                     {[0, 1, 2].map((cIdx) => {
                                       const pGuess = ansData.characters?.[cIdx] || "—";
-                                      const correctCharName = currentQuestion.characterNames?.[cIdx] || `Перс #${cIdx + 1}`;
+                                      const correctCharName = qObj.characterNames?.[cIdx] || `Перс #${cIdx + 1}`;
                                       const isCharOk = !!charOks[cIdx];
 
                                       return (
@@ -1639,7 +1835,7 @@ export default function App() {
                                             onClick={() => {
                                               const newCharOks = [...charOks] as [boolean, boolean, boolean];
                                               newCharOks[cIdx] = !isCharOk;
-                                              setDetailedRound1Score(pId, gameState.currentRound, `q${currentQIdx}`, isAnimeOk, newCharOks);
+                                              setDetailedRound1Score(pId, 1, `q${qI}`, isAnimeOk, newCharOks);
                                             }}
                                             className={`w-full py-1 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
                                               isCharOk ? 'bg-emerald-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/20'
@@ -1656,19 +1852,19 @@ export default function App() {
                                   <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/5">
                                     <span className="text-[10px] text-gray-400 font-bold">Быстро:</span>
                                     <button 
-                                      onClick={() => setDetailedRound1Score(pId, gameState.currentRound, `q${currentQIdx}`, true, [true, true, true])}
+                                      onClick={() => setDetailedRound1Score(pId, 1, `q${qI}`, true, [true, true, true])}
                                       className="px-2.5 py-1 bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
                                     >
                                       Все верно (+5)
                                     </button>
                                     <button 
-                                      onClick={() => setDetailedRound1Score(pId, gameState.currentRound, `q${currentQIdx}`, true, [false, false, false])}
+                                      onClick={() => setDetailedRound1Score(pId, 1, `q${qI}`, true, [false, false, false])}
                                       className="px-2.5 py-1 bg-purple-600/30 hover:bg-purple-600 text-purple-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
                                     >
                                       Только аниме (+2)
                                     </button>
                                     <button 
-                                      onClick={() => setDetailedRound1Score(pId, gameState.currentRound, `q${currentQIdx}`, false, [false, false, false])}
+                                      onClick={() => setDetailedRound1Score(pId, 1, `q${qI}`, false, [false, false, false])}
                                       className="px-2.5 py-1 bg-red-600/30 hover:bg-red-600 text-red-300 hover:text-white rounded-lg text-[10px] font-bold transition-all cursor-pointer"
                                     >
                                       Обнулить (0)
@@ -1676,7 +1872,8 @@ export default function App() {
                                   </div>
                                 </div>
                               );
-                            })}
+                            });
+                          })()}
                         </div>
                       </div>
                     )}
@@ -1977,7 +2174,7 @@ export default function App() {
                 </button>
               </div>
 
-              {/* ОЧЕРЕДЬ ОТВЕТОВ: НЕ ТЕРЯЕТ ОТВЕТЫ ПРИ СМЕНЕ РАУНДОВ! */}
+              {/* ОБЩАЯ ОЧЕРЕДЬ ОТВЕТОВ СО ВСЕХ РАУНДОВ */}
               <div className="mt-8">
                 <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">
                   Очередь непроверенных ответов (Все раунды):
