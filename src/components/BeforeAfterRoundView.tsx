@@ -9,6 +9,8 @@ interface BeforeAfterRoundViewProps {
   restPut: (path: string, data: any) => Promise<any>;
   timeLeft: number;
   globalPause?: any;
+  isLeader?: boolean;
+  leaderNickname?: string;
 }
 
 export default function BeforeAfterRoundView({
@@ -19,6 +21,8 @@ export default function BeforeAfterRoundView({
   restPut,
   timeLeft,
   globalPause,
+  isLeader,
+  leaderNickname,
 }: BeforeAfterRoundViewProps) {
   const currentQIdx = gameState.currentQuestion ?? 0;
   const questionData = gameState.active ? gameState.roundData?.questions?.[currentQIdx] : null;
@@ -52,7 +56,7 @@ export default function BeforeAfterRoundView({
   // Отправка ответа игроком
   const handlePlayerSubmit = async () => {
     const text = answerInput.trim();
-    if (!text || hasSubmitted || user.isAdmin) return;
+    if (!text || hasSubmitted || user.isAdmin || isLeader === false) return;
 
     const payload = {
       answered: true,
@@ -147,11 +151,22 @@ export default function BeforeAfterRoundView({
       </div>
 
       {/* ================= ВВОД ИГРОКА ================= */}
-      {!user.isAdmin && (
+      {!user.isAdmin && isLeader === false && (
+        <div className="bg-purple-950/40 border border-purple-500/30 rounded-3xl p-5 text-center shadow-xl space-y-1.5 max-w-4xl mx-auto">
+          <p className="text-sm font-bold text-purple-200">
+            👑 Ответ на раунд отправляет капитан вашей команды: <strong className="text-white underline">{leaderNickname || "Не назначен"}</strong>
+          </p>
+          <p className="text-xs text-gray-400">
+            Совещайтесь в голосовом чате — ответ в систему вводит только капитан!
+          </p>
+        </div>
+      )}
+
+      {!user.isAdmin && isLeader !== false && (
         <div className="bg-slate-900/90 border-2 border-purple-500/30 rounded-3xl p-6 shadow-2xl space-y-4 backdrop-blur-xl max-w-4xl mx-auto">
           <div className="flex items-center justify-between">
             <label className="text-xs font-black uppercase tracking-wider text-purple-300">
-              Ваш ответ:
+              Ваш ответ (как капитан команды):
             </label>
             {hasSubmitted && (
               <span className="text-emerald-400 text-xs font-bold flex items-center gap-1">
