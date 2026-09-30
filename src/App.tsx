@@ -439,11 +439,11 @@ const roundsData: Round[] = [
     pauseDuration: 10,
     points: 4,
     questions: [
-      { text: "Что произошло ДО (или ПОСЛЕ) этого кадра?", image: "/foto1/round6_1.jpg" },
-      { text: "Что произошло ДО (или ПОСЛЕ) этого кадра?", image: "/foto1/round6_2.jpg" },
-      { text: "Что произошло ДО (или ПОСЛЕ) этого кадра?", image: "/foto1/round6_3.jpg" },
-      { text: "Что произошло ДО (или ПОСЛЕ) этого кадра?", image: "/foto1/round6_4.jpg" },
-      { text: "Что произошло ДО (или ПОСЛЕ) этого кадра?", image: "/foto1/round6_5.jpg" }
+      { text: "Что произошло ДО (или ПОСЛЕ) этого кадра?", image: "/foto6/round6_1.jpg" },
+      { text: "Что произошло ДО (или ПОСЛЕ) этого кадра?", image: "/foto6/round6_2.jpg" },
+      { text: "Что произошло ДО (или ПОСЛЕ) этого кадра?", image: "/foto6/round6_3.jpg" },
+      { text: "Что произошло ДО (или ПОСЛЕ) этого кадра?", image: "/foto6/round6_4.jpg" },
+      { text: "Что произошло ДО (или ПОСЛЕ) этого кадра?", image: "/foto6/round6_5.jpg" }
     ]
   },
   {
