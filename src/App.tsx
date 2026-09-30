@@ -522,7 +522,7 @@ const roundsData: Round[] = [
         correctAnswer: "Роя Мустанга"
       },
       {
-        text: "«Созданный в Бездне»: Какое official название носит Пятый уровень Бездны, где находится исследовательская база Бондрюда — «Идофронт»?",
+        text: "«Созданный в Бездне»: Какое официальное название носит Пятый уровень Бездны, где находится исследовательская база Бондрюда — «Идофронт»?",
         options: [
           "Море трупов",
           "Озеро призраков",
@@ -576,12 +576,8 @@ const roundsData: Round[] = [
     answerTime: 0,
     questions: [
       {
-        text: "Партия 1 из 2: Соберите 4 в ряд (12 баллов) или всё поле (24 балла). Штраф за ошибку: -3 балла.",
-        correctAnswer: "Партия 1 завершена"
-      },
-      {
-        text: "Партия 2 из 2: Новая сетка 4×4 и новый пул тайтлов! Соберите 4 в ряд или всё поле.",
-        correctAnswer: "Партия 2 завершена"
+        text: "Бинго-раунд! Ведущий выдает по 2 аниме за клик из 32 случайных тайтлов. Команды заполняют уникальную карточку 4×4. Собрали 4 в ряд (строка или столбец) — отправляйте на проверку админу за 12 баллов (первая линия)! Закрыли всё поле — 24 балла! Ошибка в ячейке карается штрафом -3 балла.",
+        correctAnswer: "Бинго завершено"
       }
     ]
   },
@@ -622,7 +618,6 @@ function Round1CharacterCard({
   const candidates = React.useMemo(() => {
     const list: string[] = [];
     if (customImage) list.push(customImage);
-    // В первую очередь проверяем файлы по схеме пользователя в foto1
     list.push(`/foto1/image4-1-${qIdx + 1}-${cIdx + 1}.jpg`);
     list.push(`./foto1/image4-1-${qIdx + 1}-${cIdx + 1}.jpg`);
     list.push(`/foto1/image4-1-${qIdx + 1}-${cIdx + 1}.png`);
@@ -1268,11 +1263,9 @@ export default function App() {
       newState.endTime = 0;
     }
 
-    // РАУНД 8: БИНГО (ПАРТИЯ 1)
     if (round.type === "bingo") {
       newState.endTime = 0;
       newState.timeLeft = 0;
-      newState.currentQuestion = 0; // Начинаем строго с 1-й партии
       const pool = generateBingoPool32();
       const initialTeams: Record<string, any> = {};
       for (let t = 0; t < TOTAL_TEAMS; t++) {
@@ -1289,7 +1282,6 @@ export default function App() {
         };
       }
       newState.bingo = {
-        gameIndex: 0,
         pool32: pool,
         revealedCount: 0,
         lastRevealed: [],
@@ -2118,18 +2110,15 @@ export default function App() {
                 )}
 
                 {/* Раунд 8: Бинго */}
-                {/* Раунд 8: Бинго */}
-{round.type === "bingo" && (
-  <React.Suspense fallback={<div className="text-white text-center py-10">Загрузка Бинго...</div>}>
-    <BingoRoundView
-      user={user}
-      gameState={gameState}
-      players={players}
-      restPatch={restPatch}
-      restPut={restPut}
-    />
-  </React.Suspense>
-)}
+                {round.type === "bingo" && (
+                  <BingoRoundView
+                    user={user}
+                    gameState={gameState}
+                    players={players}
+                    restPatch={restPatch}
+                    restPut={restPut}
+                  />
+                )}
               </div>
             );
           }
@@ -2301,6 +2290,9 @@ export default function App() {
                             </span>
                           </div>
                           <p className="text-sm text-blue-300 mt-1">Ответ: <span className="font-bold">{ans.answer}</span></p>
+                          {currentRType === "three_characters" && (
+                            <p className="text-[11px] text-gray-400">Персонажи: {(ans.characters || []).join(", ") || "—"}</p>
+                          )}
                           <p className="text-[10px] text-green-400 mt-0.5 uppercase tracking-wider">
                             Правильный: <span className="font-bold">{correctAns || "—"}</span>
                           </p>
