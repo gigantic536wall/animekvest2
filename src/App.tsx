@@ -1108,80 +1108,83 @@ export default function App() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const [resState, resPause, resReview, resGPause, resPlayers, resTeams, resKey] = await Promise.all([
-          restGet('gameState'),
-          restGet('gameState/pause'),
-          restGet('gameState/answersReview'),
-          restGet('gameState/globalPause'),
-          restGet('players'),
-          restGet('teams'),
-          restGet('appConfig/geminiApiKey')
+        const [resState, resPause, resReview, resGPause, resPlayers, resTeams] = await Promise.all([
+          restGet('gameState').catch(e => { console.warn("gameState poll error:", e); return { data: null, serverTime: null }; }),
+          restGet('gameState/pause').catch(() => ({ data: null })),
+          restGet('gameState/answersReview').catch(() => ({ data: null })),
+          restGet('gameState/globalPause').catch(() => ({ data: null })),
+          restGet('players').catch(e => { console.warn("players poll error:", e); return { data: null }; }),
+          restGet('teams').catch(() => ({ data: null }))
         ]);
 
-        const state = resState.data || {};
-        const pause = resPause.data;
-        const review = resReview.data;
-        const gPause = resGPause.data;
-        const allPlayers = resPlayers.data;
-        const allTeams = resTeams?.data;
-        const serverTime = resState.serverTime;
-        const remoteApiKey = resKey?.data;
-        if (remoteApiKey && typeof remoteApiKey === "string") {
-          state.geminiApiKey = remoteApiKey;
-        }
+        if (resState && resState.data) {
+          const state = resState.data || {};
+          const serverTime = resState.serverTime;
 
-        if (serverTime) {
-          setServerOffset(serverTime - Date.now());
-        }
-
-        if (user?.isAdmin && isDrivingReveal.current) {
-          setGameState((prev: any) => ({
-            ...state,
-            currentQuestion: prev?.currentQuestion,
-            currentRound: prev?.currentRound,
-            revealMode: true
-          }));
-        } else {
-          setGameState(state);
-        }
-        setPauseState(pause);
-        setReviewState(review);
-        setGlobalPauseState(gPause);
-        // Гарантируем, что у каждого игрока всегда проставлен p.id = pId
-        const normalizedPlayers: Record<string, any> = {};
-        if (allPlayers && typeof allPlayers === 'object') {
-          Object.entries(allPlayers).forEach(([pId, pData]: [string, any]) => {
-            if (pData && typeof pData === 'object') {
-              normalizedPlayers[pId] = { ...pData, id: pData.id || pId };
-            }
-          });
-        }
-
-        // Нормализуем данные команд
-        const normalizedTeams: Record<string, any> = {};
-        if (allTeams) {
-          if (Array.isArray(allTeams)) {
-            allTeams.forEach((tData, idx) => {
-              if (tData) normalizedTeams[String(idx)] = tData;
-            });
-          } else if (typeof allTeams === 'object') {
-            Object.entries(allTeams).forEach(([tKey, tData]) => {
-              if (tData) normalizedTeams[tKey] = tData;
-            });
+          if (serverTime) {
+            setServerOffset(serverTime - Date.now());
           }
-        }
 
-        setPlayers(normalizedPlayers);
-        setTeamsData(normalizedTeams);
+          if (user?.isAdmin && isDrivingReveal.current) {
+            setGameState((prev: any) => ({
+              ...state,
+              currentQuestion: prev?.currentQuestion,
+              currentRound: prev?.currentRound,
+              revealMode: true
+            }));
+          } else {
+            setGameState(state);
+          }
 
-        // ЕСЛИ СБРОС ИГРЫ — СБРАСЫВАЕМ ВСЕХ ИГРОКОВ В ЛОГИН
-        if (user && !user.isAdmin) {
-          const isMissingInDb = !allPlayers || !allPlayers[user.id];
-          if (state?.reset || isMissingInDb) {
+          // ЕСЛИ СБРОС ИГРЫ — СБРАСЫВАЕМ ВСЕХ ИГРОКОВ В ЛОГИН
+          if (user && !user.isAdmin && state?.reset) {
             localStorage.removeItem('quizUser');
             setUser(null);
             window.location.reload();
           }
+        }
+
+        if (resPause) setPauseState(resPause.data);
+        if (resReview) setReviewState(resReview.data);
+        if (resGPause) setGlobalPauseState(resGPause.data);
+
+        // Гарантируем, что у каждого игрока всегда проставлен p.id = pId
+        if (resPlayers && resPlayers.data !== null && resPlayers.data !== undefined) {
+          const allPlayers = resPlayers.data;
+          const normalizedPlayers: Record<string, any> = {};
+          if (allPlayers && typeof allPlayers === 'object') {
+            Object.entries(allPlayers).forEach(([pId, pData]: [string, any]) => {
+              if (pData && typeof pData === 'object') {
+                normalizedPlayers[pId] = { ...pData, id: pData.id || pId };
+              }
+            });
+          }
+          setPlayers(normalizedPlayers);
+
+          // Если игрок был удален из базы администратором (после загрузки реального списка)
+          if (user && !user.isAdmin && Object.keys(normalizedPlayers).length > 0 && !normalizedPlayers[user.id]) {
+            localStorage.removeItem('quizUser');
+            setUser(null);
+            window.location.reload();
+          }
+        }
+
+        // Нормализуем данные команд
+        if (resTeams && resTeams.data !== null && resTeams.data !== undefined) {
+          const allTeams = resTeams.data;
+          const normalizedTeams: Record<string, any> = {};
+          if (allTeams) {
+            if (Array.isArray(allTeams)) {
+              allTeams.forEach((tData, idx) => {
+                if (tData) normalizedTeams[String(idx)] = tData;
+              });
+            } else if (typeof allTeams === 'object') {
+              Object.entries(allTeams).forEach(([tKey, tData]) => {
+                if (tData) normalizedTeams[tKey] = tData;
+              });
+            }
+          }
+          setTeamsData(normalizedTeams);
         }
       } catch (e) {
         console.warn("Polling error:", e);
@@ -1518,6 +1521,7 @@ export default function App() {
       newState.endTime = Date.now() + 15 * 1000;
     }
 
+    setGameState((prev: any) => ({ ...(prev || {}), ...newState }));
     await restPatch('gameState', newState);
   };
 
@@ -2108,7 +2112,7 @@ export default function App() {
           // СПЕЦИАЛЬНО ДЛЯ ВЕДУЩЕГО: ЕСЛИ РАУНД 1 ЗАКОНЧИЛСЯ, ПАНЕЛЬ ПРОВЕРКИ ОСТАЕТСЯ, ПОКА ВЕДУЩИЙ НЕ ЗАПУСТИТ СЛЕДУЮЩИЙ РАУНД!
           const isRound1FinishedWaiting = user?.isAdmin && 
             gameState?.currentRound === 1 && 
-            (!gameState?.active || gameState?.roundFinished);
+            Boolean(gameState?.roundFinished);
 
           if (isRound1FinishedWaiting) {
             return (
@@ -3140,6 +3144,7 @@ export default function App() {
                     <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
                       <button
                         onClick={async () => {
+                          setGameState((prev: any) => ({ ...(prev || {}), gameStarted: true, teamSetupUnlocked: true }));
                           await restPatch('gameState', { gameStarted: true, teamSetupUnlocked: true });
                         }}
                         className="bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-600 hover:from-emerald-400 hover:to-green-400 text-black font-black px-8 py-4 sm:py-5 rounded-2xl text-sm sm:text-base uppercase tracking-widest shadow-2xl shadow-emerald-500/30 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-3"
@@ -3675,6 +3680,7 @@ export default function App() {
                 {!isGameStarted ? (
                   <button 
                     onClick={async () => {
+                      setGameState((prev: any) => ({ ...(prev || {}), gameStarted: true, teamSetupUnlocked: true }));
                       await restPatch('gameState', { gameStarted: true, teamSetupUnlocked: true });
                     }}
                     className="bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-400 hover:to-green-400 text-black font-black px-6 py-3 rounded-full flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/40 text-xs uppercase tracking-wider"
@@ -3685,6 +3691,7 @@ export default function App() {
                   <button 
                     onClick={async () => {
                       if (confirm("Вернуться в режим лобби сбора игроков?")) {
+                        setGameState((prev: any) => ({ ...(prev || {}), gameStarted: false, teamSetupUnlocked: false, active: false }));
                         await restPatch('gameState', { gameStarted: false, teamSetupUnlocked: false, active: false });
                       }
                     }}
@@ -3792,7 +3799,7 @@ export default function App() {
                       if (!geminiKeyInput.trim()) return;
                       setIsSavingKey(true);
                       try {
-                        await restPut('appConfig/geminiApiKey', geminiKeyInput.trim());
+                        await restPut('gameState/geminiApiKey', geminiKeyInput.trim());
                         if (typeof window !== "undefined") {
                           try { localStorage.setItem("gemini_api_key", geminiKeyInput.trim()); } catch {}
                         }
