@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  Clock, Send, CheckCircle2, Lock, ChevronRight, Trophy
+  Clock, Send, CheckCircle2, Lock, ChevronRight, Trophy, Sparkles
 } from "lucide-react";
 import { ROUND5_QUESTIONS, ThreeFactsQuestion } from "../data/round5Data";
 
@@ -9,6 +9,7 @@ interface ThreeFactsRoundViewProps {
   user: any;
   gameState: any;
   players: any;
+  teamsData?: Record<string, any>;
   restPatch: (path: string, data: any) => Promise<any>;
   restPut: (path: string, data: any) => Promise<any>;
   timeLeft: number;
@@ -22,6 +23,7 @@ export default function ThreeFactsRoundView({
   user,
   gameState,
   players,
+  teamsData,
   restPatch,
   restPut,
   timeLeft,
@@ -78,6 +80,60 @@ export default function ThreeFactsRoundView({
     : null;
   const teamCaptainAnswerObj = teamMemberWhoAnswered?.roundAnswers?.[roundIdx]?.[storageKey];
   const captainSubmittedAnswer = hasSubmitted ? answerInput : (teamCaptainAnswerObj?.answer || "");
+
+  const [teammateSentNotice, setTeammateSentNotice] = useState(false);
+  const suggestionDebounceRef = useRef<any>(null);
+
+  const getAvatarSrc = (path?: string) => {
+    if (!path) return "";
+    if (path.startsWith("http") || path.startsWith("data:")) return path;
+    const base = import.meta.env.BASE_URL || "/";
+    const cleanBase = base.endsWith("/") ? base : base + "/";
+    const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+    return cleanBase + cleanPath;
+  };
+
+  const syncTeammateSuggestion = (val: string) => {
+    if (!user || user.isAdmin || isLeader || teamId === undefined || teamId < 0) return;
+    if (suggestionDebounceRef.current) clearTimeout(suggestionDebounceRef.current);
+
+    suggestionDebounceRef.current = setTimeout(async () => {
+      try {
+        await restPatch(`teams/${teamId}/suggestions/${user.id}`, {
+          userId: user.id,
+          nickname: user.nickname || "Игрок",
+          avatar: user.avatar || null,
+          round: roundIdx,
+          question: currentQIdx,
+          anime: val.trim(),
+          updatedAt: Date.now()
+        });
+      } catch (e) {
+        console.error("Error syncing teammate suggestion:", e);
+      }
+    }, 400);
+  };
+
+  const submitTeammateSuggestion = async () => {
+    if (!user || user.isAdmin || isLeader || teamId === undefined || teamId < 0) return;
+    if (suggestionDebounceRef.current) clearTimeout(suggestionDebounceRef.current);
+
+    try {
+      await restPatch(`teams/${teamId}/suggestions/${user.id}`, {
+        userId: user.id,
+        nickname: user.nickname || "Игрок",
+        avatar: user.avatar || null,
+        round: roundIdx,
+        question: currentQIdx,
+        anime: answerInput.trim(),
+        updatedAt: Date.now()
+      });
+      setTeammateSentNotice(true);
+      setTimeout(() => setTeammateSentNotice(false), 3500);
+    } catch (e) {
+      console.error("Error submitting teammate suggestion:", e);
+    }
+  };
 
   // Открытие следующего факта ведущим (5 ➔ 4 ➔ 3)
   const handleRevealNextFact = async () => {
@@ -254,30 +310,109 @@ export default function ThreeFactsRoundView({
 
       {/* Поле ввода для игроков */}
       {!user.isAdmin && !isLeader && (
-        <div className="bg-purple-950/40 border border-purple-500/30 rounded-3xl p-5 text-center shadow-xl space-y-3">
-          <p className="text-sm font-bold text-purple-200">
-            👑 Ответ на раунд отправляет капитан вашей команды: <strong className="text-white underline">{leaderNickname || "Не назначен"}</strong>
-          </p>
-          {captainSubmittedAnswer ? (
-            <div className="p-3.5 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl max-w-lg mx-auto shadow-lg space-y-1">
-              <span className="text-xs text-emerald-400 font-black uppercase tracking-wider flex items-center justify-center gap-1.5">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                Капитан отправил ответ на проверку:
-              </span>
-              <span className="text-lg font-black text-white bg-black/40 px-4 py-1.5 rounded-xl border border-emerald-500/30 inline-block">
-                «{captainSubmittedAnswer}»
-              </span>
-            </div>
-          ) : (
-            <p className="text-xs text-gray-400">
-              Совещайтесь в голосовом чате — ответ в игру вводит только капитан!
+        <div className="space-y-4">
+          <div className="bg-purple-950/40 border border-purple-500/30 rounded-3xl p-5 text-center shadow-xl space-y-3">
+            <p className="text-sm font-bold text-purple-200">
+              👑 Итоговый ответ отправляет капитан вашей команды: <strong className="text-white underline">{leaderNickname || "Не назначен"}</strong>
             </p>
-          )}
+            {captainSubmittedAnswer ? (
+              <div className="p-3.5 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl max-w-lg mx-auto shadow-lg space-y-1">
+                <span className="text-xs text-emerald-400 font-black uppercase tracking-wider flex items-center justify-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  Капитан отправил официальный ответ:
+                </span>
+                <span className="text-lg font-black text-white bg-black/40 px-4 py-1.5 rounded-xl border border-emerald-500/30 inline-block">
+                  «{captainSubmittedAnswer}»
+                </span>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400">
+                💡 Введите ваш вариант аниме ниже — капитан сразу увидит его и сможет отправить на проверку!
+              </p>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <input
+              type="text"
+              value={answerInput}
+              onChange={(e) => {
+                const val = e.target.value.slice(0, 80);
+                setAnswerInput(val);
+                syncTeammateSuggestion(val);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitTeammateSuggestion();
+              }}
+              disabled={Boolean(captainSubmittedAnswer)}
+              placeholder="Ваш вариант аниме для капитана..."
+              maxLength={80}
+              className="w-full flex-1 bg-black/60 border border-purple-500/40 rounded-2xl px-5 py-4 text-white text-base placeholder-gray-500 focus:outline-none focus:border-purple-400 disabled:opacity-75 disabled:bg-purple-950/20 font-medium transition-all"
+            />
+            <button
+              onClick={submitTeammateSuggestion}
+              disabled={Boolean(captainSubmittedAnswer) || !answerInput.trim()}
+              className="w-full sm:w-auto px-6 py-4 rounded-2xl font-black text-sm uppercase tracking-wider bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white shadow-lg active:scale-95 cursor-pointer disabled:opacity-40 transition-all flex items-center justify-center gap-2 shrink-0"
+            >
+              <span>💡</span>
+              <span>{teammateSentNotice ? "ВАРИАНТ ОТПРАВЛЕН ✅" : "ПРЕДЛОЖИТЬ КАПИТАНУ"}</span>
+            </button>
+          </div>
         </div>
       )}
 
       {!user.isAdmin && Boolean(isLeader) && (
         <div className="bg-slate-900/90 border-2 border-purple-500/30 rounded-3xl p-6 shadow-2xl space-y-4 backdrop-blur-xl">
+          {/* Подсказки сокомандников для капитана */}
+          {(() => {
+            const otherPlayerSuggestions = isLeader && teamId !== undefined && teamId >= 0 && teamsData
+              ? Object.values(teamsData?.[teamId]?.suggestions || {})
+                  .filter((s: any) =>
+                    s &&
+                    s.round === roundIdx &&
+                    s.question === currentQIdx &&
+                    s.userId !== user?.id &&
+                    s.anime &&
+                    s.anime.trim().length > 0
+                  )
+                  .map((s: any) => ({
+                    userId: s.userId,
+                    nickname: s.nickname || "Игрок",
+                    avatar: s.avatar,
+                    guess: s.anime.trim()
+                  }))
+              : [];
+
+            if (!isLeader || otherPlayerSuggestions.length === 0) return null;
+
+            return (
+              <div className="p-3 bg-purple-950/80 border border-purple-500/40 rounded-2xl space-y-1.5 shadow-md animate-fade-in">
+                <div className="text-xs font-black uppercase text-purple-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Варианты сокомандников:</span>
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-normal">клик = подставить</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {otherPlayerSuggestions.map((s, si) => (
+                    <button
+                      key={si}
+                      type="button"
+                      onClick={() => setAnswerInput(s.guess)}
+                      className="inline-flex items-center gap-2 bg-black/60 hover:bg-purple-800/60 border border-purple-400/40 px-3 py-1.5 rounded-xl text-xs font-bold text-white cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm"
+                    >
+                      {s.avatar && <img src={getAvatarSrc(s.avatar)} alt="" className="w-4 h-4 rounded-full object-cover" />}
+                      <span className="text-gray-300 text-[11px] font-normal">{s.nickname}:</span>
+                      <span className="text-amber-300 font-black">«{s.guess}»</span>
+                      <span className="text-xs text-purple-300">↵</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="flex items-center justify-between">
             <label className="text-xs font-black uppercase tracking-wider text-purple-300">
               Ваш ответ (как капитан команды):
