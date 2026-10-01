@@ -3047,6 +3047,7 @@ export default function App() {
                     user={user}
                     gameState={gameState}
                     players={players}
+                    teamsData={teamsData}
                     restPatch={restPatch}
                     restPut={restPut}
                     timeLeft={timeLeft}
