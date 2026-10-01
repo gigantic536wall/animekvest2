@@ -3697,6 +3697,62 @@ export default function App() {
                 </button>
               </div>
 
+              {/* Настройка ключей Gemini для Акинатора (GitHub Pages) */}
+              <div className="mt-8 bg-slate-900/90 border border-purple-500/30 p-5 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🤖</span>
+                    <h4 className="text-xs font-black text-white uppercase tracking-wider">
+                      API ключи для Акинатора (GitHub Pages)
+                    </h4>
+                  </div>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                    gameState?.geminiApiKey ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
+                  }`}>
+                    {gameState?.geminiApiKey ? "✅ Ключи подключены" : "⚠️ Ключи не заданы"}
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400">
+                  Для игры на GitHub Pages вставьте ваши ключи через запятую. Они сохранятся в базе игры и будут ротироваться по очереди (Round-Robin). В открытом репозитории GitHub их не будет!
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="password"
+                    value={geminiKeyInput}
+                    onChange={(e) => setGeminiKeyInput(e.target.value)}
+                    placeholder="Вставьте ключи через запятую: AQ.Ab8...,AQ.Ab8..."
+                    className="flex-1 bg-black/60 border border-purple-500/40 focus:border-purple-400 rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 outline-none"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!geminiKeyInput.trim()) return;
+                      setIsSavingKey(true);
+                      try {
+                        await restPut('appConfig/geminiApiKey', geminiKeyInput.trim());
+                        if (typeof window !== "undefined") {
+                          try { localStorage.setItem("gemini_api_key", geminiKeyInput.trim()); } catch {}
+                        }
+                        setKeySavedMsg("Ключи сохранены в базе и активны! ✅");
+                        setTimeout(() => setKeySavedMsg(""), 4000);
+                      } catch (e) {
+                        console.error(e);
+                      } finally {
+                        setIsSavingKey(false);
+                      }
+                    }}
+                    disabled={isSavingKey || !geminiKeyInput.trim()}
+                    className="bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-black text-xs uppercase px-5 py-2.5 rounded-xl cursor-pointer transition-all shadow-md shrink-0"
+                  >
+                    <span>{isSavingKey ? "СОХРАНЕНИЕ..." : "💾 СОХРАНИТЬ КЛЮЧИ"}</span>
+                  </button>
+                </div>
+                {keySavedMsg && (
+                  <div className="p-2 bg-emerald-500/20 border border-emerald-500/40 rounded-lg text-emerald-300 text-xs font-bold text-center">
+                    {keySavedMsg}
+                  </div>
+                )}
+              </div>
+
               {/* ОБЩАЯ ОЧЕРЕДЬ ОТВЕТОВ СО ВСЕХ РАУНДОВ (РАУНД 1 ИСКЛЮЧЕН — У НЕГО СВОЯ ПАНЕЛЬ!) */}
               <div className="mt-8">
                 <h4 className="text-sm font-bold text-gray-400 mb-4 uppercase">
