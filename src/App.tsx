@@ -9,7 +9,7 @@ import {
   Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, 
   Play, Pause, SkipForward, Trash2, RotateCcw, CheckCircle2, 
   XCircle, Users, Eye, HelpCircle, ShieldCheck, Trophy, Upload, ArrowRight,
-  ArrowRightLeft, Sparkles, Shield, AlertTriangle
+  ArrowRightLeft, Sparkles, Shield, AlertTriangle, LogOut
 } from 'lucide-react';
 import { AudioPlayer } from './components/AudioPlayer';
 import { AKINATOR_ANIME_LIST } from './data/akinatorAnime';
@@ -1349,6 +1349,24 @@ export default function App() {
     }
   };
 
+  // Выход на главную страницу (для админа и игроков)
+  const handleLogout = async (skipConfirm: boolean = false) => {
+    if (!skipConfirm && !user?.isAdmin) {
+      if (!confirm("Вы уверены, что хотите выйти на главную страницу выбора команды / ника?")) return;
+    }
+    // Если выходит обычный игрок, удаляем его из базы Firebase, чтобы освободить место в команде
+    if (user && !user.isAdmin && user.id) {
+      try {
+        await restDelete(`players/${user.id}`);
+      } catch (e) {
+        console.warn("Error removing player on logout:", e);
+      }
+    }
+    localStorage.removeItem('quizUser');
+    setUser(null);
+    setIsChangingTeam(false);
+  };
+
   // ПОЛНЫЙ СБРОС ИГРЫ: ОЧИЩАЕТ ВСЕХ ИГРОКОВ ВО ВСЕХ КОМАНДАХ
   const resetGame = async () => {
     if (!confirm("Вы уверены, что хотите полностью сбросить игру? Все игроки во всех командах будут удалены!")) return;
@@ -1912,7 +1930,17 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-400">{user.nickname}</span>
                 {user.isAdmin ? (
-                  <span className="bg-yellow-500/20 text-yellow-500 text-[10px] font-black px-2 py-0.5 rounded-full border border-yellow-500/30 uppercase tracking-widest">Админ</span>
+                  <div className="flex items-center gap-2">
+                    <span className="bg-yellow-500/20 text-yellow-500 text-[10px] font-black px-2 py-0.5 rounded-full border border-yellow-500/30 uppercase tracking-widest">Админ</span>
+                    <button
+                      onClick={() => handleLogout(true)}
+                      className="text-[11px] bg-red-600/30 hover:bg-red-600/60 text-red-200 hover:text-white border border-red-500/40 px-2.5 py-1 rounded-xl uppercase tracking-wider font-black flex items-center gap-1.5 cursor-pointer transition-all shadow-md active:scale-95"
+                      title="Выйти из режима админа на главную страницу (для тестирования от лица игрока)"
+                    >
+                      <LogOut className="w-3.5 h-3.5 text-red-400" />
+                      Выйти на главную
+                    </button>
+                  </div>
                 ) : (
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="bg-purple-500/20 text-purple-400 text-[10px] font-black px-2 py-0.5 rounded-full border border-purple-500/30 uppercase tracking-widest">Команда #{user.team + 1}</span>
@@ -1950,7 +1978,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 flex-wrap justify-end">
             <div className="flex items-center gap-2 glass px-4 py-2 rounded-full">
               <button 
                 onClick={() => {
@@ -1982,6 +2010,19 @@ export default function App() {
                 />
               </div>
             </div>
+
+            <button
+              onClick={() => handleLogout(user?.isAdmin ? true : false)}
+              className={`px-4 py-2 rounded-full border font-black text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all shadow-lg active:scale-95 ${
+                user.isAdmin
+                  ? 'bg-red-600/30 hover:bg-red-600/60 text-red-200 hover:text-white border-red-500/50 hover:shadow-red-600/20'
+                  : 'bg-white/5 hover:bg-white/15 text-gray-300 hover:text-white border-white/10'
+              }`}
+              title={user.isAdmin ? "Выйти из режима админа на главный экран выбора команды" : "Выйти на главный экран"}
+            >
+              <LogOut className="w-3.5 h-3.5 text-red-400" />
+              <span>{user.isAdmin ? "Выйти из админки" : "На главную"}</span>
+            </button>
           </div>
         </header>
 
@@ -3096,15 +3137,23 @@ export default function App() {
                     <p className="text-xs sm:text-sm text-gray-300 max-w-xl mx-auto leading-relaxed">
                       Дождитесь, пока игроки распределятся по командам (до 3 человек в каждой). Когда все будут готовы — нажмите кнопку ниже! В каждой команде откроется возможность загрузить аватарку команды с файлов ПК и занять лидера команды.
                     </p>
-                    <div className="pt-2">
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
                       <button
                         onClick={async () => {
                           await restPatch('gameState', { gameStarted: true, teamSetupUnlocked: true });
                         }}
-                        className="bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-600 hover:from-emerald-400 hover:to-green-400 text-black font-black px-8 py-4 sm:py-5 rounded-2xl text-sm sm:text-base uppercase tracking-widest shadow-2xl shadow-emerald-500/30 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-3 mx-auto"
+                        className="bg-gradient-to-r from-emerald-500 via-green-500 to-emerald-600 hover:from-emerald-400 hover:to-green-400 text-black font-black px-8 py-4 sm:py-5 rounded-2xl text-sm sm:text-base uppercase tracking-widest shadow-2xl shadow-emerald-500/30 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-3"
                       >
                         <Play className="w-5 h-5 fill-black" />
                         <span>🚀 ВСЕ ЗАШЛИ — НАЧАТЬ ИГРУ</span>
+                      </button>
+                      <button
+                        onClick={() => handleLogout(true)}
+                        className="bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 hover:text-white font-black px-6 py-4 rounded-2xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-xl active:scale-95"
+                        title="Выйти на главную страницу, чтобы войти как обычный игрок и протестировать"
+                      >
+                        <LogOut className="w-4 h-4 text-red-400" />
+                        <span>ТЕСТИРОВАТЬ КАК ИГРОК (НА ГЛАВНУЮ)</span>
                       </button>
                     </div>
                   </div>
@@ -3452,6 +3501,14 @@ export default function App() {
                       <Trophy className="w-3.5 h-3.5" />
                       <span>{gameState?.showLeaderboard ? 'Скрыть счёт' : 'Показать счёт всем'}</span>
                     </button>
+                    <button
+                      onClick={() => handleLogout(true)}
+                      className="bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 hover:text-white font-bold text-xs uppercase px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                      title="Выйти на главную страницу, чтобы войти под игроком"
+                    >
+                      <LogOut className="w-3.5 h-3.5 text-red-400" />
+                      <span>Выйти на главную (тест)</span>
+                    </button>
                   </div>
                 </div>
               )}
@@ -3694,6 +3751,13 @@ export default function App() {
                   className="bg-red-700 hover:bg-red-800 px-6 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer"
                 >
                   <RotateCcw className="w-4 h-4" /> СБРОС ИГРЫ
+                </button>
+                <button 
+                  onClick={() => handleLogout(true)}
+                  className="bg-red-950 hover:bg-red-900 border-2 border-red-500/70 text-red-200 hover:text-white px-6 py-3 rounded-full font-black flex items-center gap-2 cursor-pointer shadow-lg shadow-red-950/50 active:scale-95 transition-all text-xs uppercase tracking-wider"
+                  title="Выйти из режима админа на главный экран выбора ника и команды для тестирования"
+                >
+                  <LogOut className="w-4 h-4 text-red-400" /> ВЫЙТИ НА ГЛАВНУЮ СТРАНИЦУ
                 </button>
               </div>
 
