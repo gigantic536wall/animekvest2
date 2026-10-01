@@ -834,6 +834,9 @@ export default function App() {
   const [revealIdx, setRevealIdx] = useState(0);
   const [answerText, setAnswerText] = useState("");
   const [charGuesses, setCharGuesses] = useState<string[]>(["", "", ""]);
+  const [teammateSentNotice, setTeammateSentNotice] = useState(false);
+  const lastQKeyRef = useRef<string>("");
+  const suggestionDebounceRef = useRef<any>(null);
   const [serverOffset, setServerOffset] = useState(0);
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
   const [isSavingKey, setIsSavingKey] = useState(false);
@@ -952,6 +955,94 @@ export default function App() {
       setTimeout(() => setLobbyStatusNotice(""), 3500);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const syncTeammateSuggestion = (customAnime?: string, customChars?: string[], customOpt?: string) => {
+    if (!user || user.isAdmin || currentTeamId === null || isCurrentUserLeader) return;
+
+    if (suggestionDebounceRef.current) {
+      clearTimeout(suggestionDebounceRef.current);
+    }
+
+    const round = gameState?.currentRound;
+    const question = gameState?.currentQuestion ?? 0;
+    const animeVal = customAnime !== undefined ? customAnime : answerText;
+    const charsVal = customChars !== undefined ? customChars : charGuesses;
+    const optVal = customOpt;
+
+    suggestionDebounceRef.current = setTimeout(async () => {
+      try {
+        const payload: any = {
+          userId: user.id,
+          nickname: user.nickname || "Игрок",
+          avatar: user.avatar || null,
+          round,
+          question,
+          anime: animeVal ? animeVal.trim() : "",
+          characters: charsVal ? charsVal.map((c: string) => (c || "").trim()) : ["", "", ""],
+          updatedAt: Date.now()
+        };
+        if (optVal !== undefined) {
+          payload.selectedOption = optVal;
+        }
+
+        await restPatch(`teams/${currentTeamId}/suggestions/${user.id}`, payload);
+      } catch (e) {
+        console.error("Error syncing teammate suggestion:", e);
+      }
+    }, 400);
+  };
+
+  const submitTeammateSuggestionDirect = async (options?: {
+    customAnime?: string;
+    customChars?: string[];
+    selectedOption?: string;
+  }) => {
+    if (!user || user.isAdmin || currentTeamId === null || isCurrentUserLeader) return;
+    if (suggestionDebounceRef.current) {
+      clearTimeout(suggestionDebounceRef.current);
+    }
+
+    const round = gameState?.currentRound;
+    const question = gameState?.currentQuestion ?? 0;
+    const animeVal = options?.customAnime !== undefined ? options.customAnime : answerText;
+    const charsVal = options?.customChars !== undefined ? options.customChars : charGuesses;
+    const optVal = options?.selectedOption;
+
+    try {
+      const payload: any = {
+        userId: user.id,
+        nickname: user.nickname || "Игрок",
+        avatar: user.avatar || null,
+        round,
+        question,
+        anime: animeVal ? animeVal.trim() : "",
+        characters: charsVal ? charsVal.map((c: string) => (c || "").trim()) : ["", "", ""],
+        updatedAt: Date.now()
+      };
+      if (optVal !== undefined) {
+        payload.selectedOption = optVal;
+      }
+
+      await restPatch(`teams/${currentTeamId}/suggestions/${user.id}`, payload);
+      setTeammateSentNotice(true);
+      setTimeout(() => setTeammateSentNotice(false), 3500);
+
+      // Optimistic update
+      setTeamsData(prev => {
+        const teamObj = prev[currentTeamId] || {};
+        const suggestions = { ...(teamObj.suggestions || {}), [user.id]: payload };
+        return {
+          ...prev,
+          [currentTeamId]: {
+            ...teamObj,
+            suggestions
+          }
+        };
+      });
+    } catch (e) {
+      console.error("Error sending teammate suggestion:", e);
     }
   };
 
@@ -1156,13 +1247,20 @@ export default function App() {
     return () => clearInterval(interval);
   }, [gameState?.active, gameState?.currentRound, gameState?.currentQuestion, gameState?.endTime, gameState?.timeLeft, globalPause?.active, pauseState?.active, gameState?.roundFinished, user?.isAdmin]);
 
-  // Проверка сданного ответа
+  // Проверка сданного ответа и сброс полей только при переключении вопроса
   useEffect(() => {
     if (!gameState?.active || !user || user.isAdmin) return;
     
-    setHasAnswered(false);
-    setAnswerText("");
-    setCharGuesses(["", "", ""]);
+    const qKey = `${gameState.currentRound}_${gameState.currentQuestion}`;
+    const isNewQuestion = lastQKeyRef.current !== qKey;
+
+    if (isNewQuestion) {
+      lastQKeyRef.current = qKey;
+      setHasAnswered(false);
+      setAnswerText("");
+      setCharGuesses(["", "", ""]);
+      setTeammateSentNotice(false);
+    }
     
     const qIdx = gameState.currentQuestion ?? 0;
     const checkAnswered = async () => {
@@ -1202,7 +1300,7 @@ export default function App() {
       }
     };
     checkAnswered();
-  }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin, currentTeamLeaderId, currentTeamId, teamsData]);
+  }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin, currentTeamLeaderId, currentTeamId]);
 
   const getAssetPath = (path: string) => {
     if (!path) return "";
@@ -2107,29 +2205,100 @@ export default function App() {
 
                     {!user.isAdmin && (
                       <div className="space-y-4 max-w-xl mx-auto">
+                        {/* Подсказки игроков для капитана */}
+                        {(() => {
+                          const testSuggestions = isCurrentUserLeader && currentTeamId !== null
+                            ? Object.values(teamsData?.[currentTeamId]?.suggestions || {})
+                                .filter((s: any) => 
+                                  s && 
+                                  s.round === gameState.currentRound && 
+                                  s.question === currentQIdx && 
+                                  s.userId !== user?.id && 
+                                  s.anime && 
+                                  s.anime.trim().length > 0
+                                )
+                                .map((s: any) => ({
+                                  userId: s.userId,
+                                  nickname: s.nickname || "Игрок",
+                                  avatar: s.avatar,
+                                  guess: s.anime.trim()
+                                }))
+                            : [];
+
+                          if (!isCurrentUserLeader || testSuggestions.length === 0) return null;
+
+                          return (
+                            <div className="p-3 bg-purple-950/80 border border-purple-500/40 rounded-2xl space-y-1.5 shadow-md">
+                              <div className="text-xs font-black uppercase text-purple-300 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>Варианты сокомандников:</span>
+                                </span>
+                                <span className="text-[10px] text-gray-400">клик = подставить</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {testSuggestions.map((s, si) => (
+                                  <button
+                                    key={si}
+                                    type="button"
+                                    onClick={() => setAnswerText(s.guess)}
+                                    className="inline-flex items-center gap-2 bg-black/60 hover:bg-purple-800/60 border border-purple-400/40 px-3 py-1.5 rounded-xl text-xs font-bold text-white cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm"
+                                  >
+                                    {s.avatar && <img src={getAssetPath(s.avatar)} alt="" className="w-4 h-4 rounded-full object-cover" />}
+                                    <span className="text-gray-300 text-[11px] font-normal">{s.nickname}:</span>
+                                    <span className="text-amber-300 font-black">«{s.guess}»</span>
+                                    <span className="text-xs text-purple-300">↵</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         <input 
                           type="text"
                           className="answer-input w-full text-center"
-                          placeholder={!isCurrentUserLeader ? "Ответ вводит только капитан..." : "Ваш тестовый ответ..."}
+                          placeholder={isCurrentUserLeader ? "Ваш итоговый тестовый ответ..." : "Предложите тестовый ответ капитану..."}
                           value={answerText}
-                          onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
-                          onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
-                          disabled={hasAnswered || !isCurrentUserLeader}
+                          onChange={(e) => {
+                            const val = e.target.value.slice(0, 50);
+                            setAnswerText(val);
+                            if (!isCurrentUserLeader) {
+                              syncTeammateSuggestion(val);
+                            }
+                          }}
+                          onKeyDown={(e) => { 
+                            if (e.key === 'Enter') {
+                              if (isCurrentUserLeader) submitAnswer();
+                              else submitTeammateSuggestionDirect();
+                            } 
+                          }}
+                          disabled={hasAnswered}
                           maxLength={50}
                         />
-                        <button 
-                          onClick={() => submitAnswer()}
-                          disabled={hasAnswered || !isCurrentUserLeader || !answerText.trim()}
-                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${
-                            hasAnswered 
-                              ? 'bg-green-600/80 cursor-default text-white' 
-                              : !isCurrentUserLeader
-                              ? 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/10'
-                              : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white cursor-pointer active:scale-95'
-                          }`}
-                        >
-                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : !isCurrentUserLeader ? 'ОТВЕТ ВВОДИТ КАПИТАН 👑' : 'ОТПРАВИТЬ ПРОВЕРКУ (+2 балла)'}
-                        </button>
+
+                        {isCurrentUserLeader ? (
+                          <button 
+                            onClick={() => submitAnswer()}
+                            disabled={hasAnswered || !answerText.trim()}
+                            className={`w-full py-4 rounded-full font-bold text-lg transition-all ${
+                              hasAnswered 
+                                ? 'bg-green-600/80 cursor-default text-white' 
+                                : 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white cursor-pointer active:scale-95'
+                            }`}
+                          >
+                            {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : 'ОТПРАВИТЬ ПРОВЕРКУ (+2 балла)'}
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => submitTeammateSuggestionDirect()}
+                            disabled={hasAnswered || !answerText.trim()}
+                            className="w-full py-3.5 rounded-full font-bold text-base transition-all bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white cursor-pointer active:scale-95 shadow-lg flex items-center justify-center gap-2"
+                          >
+                            <span>💡</span>
+                            <span>{teammateSentNotice ? 'ВАРИАНТ ОТПРАВЛЕН КАПИТАНУ ✅' : 'ПРЕДЛОЖИТЬ ВАРИАНТ КАПИТАНУ'}</span>
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -2192,14 +2361,70 @@ export default function App() {
                             {!user.isAdmin && (
                               <div className="p-3.5 bg-slate-900/95 border-t border-purple-500/30 space-y-1.5 flex-1 flex flex-col justify-end">
                                 <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider">
-                                  <span className="text-purple-300">Имя персонажа:</span>
+                                  <span className="text-purple-300">Имя персонажа #{idx + 1}:</span>
                                   <span className="text-amber-400 font-bold bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20 text-[10px]">
                                     +1 балл
                                   </span>
                                 </div>
+
+                                {/* Ответы сокомандников над персонажем для капитана */}
+                                {(() => {
+                                  const charSuggestions = isCurrentUserLeader && currentTeamId !== null
+                                    ? Object.values(teamsData?.[currentTeamId]?.suggestions || {})
+                                        .filter((s: any) => 
+                                          s && 
+                                          s.round === gameState.currentRound && 
+                                          s.question === currentQIdx && 
+                                          s.userId !== user?.id && 
+                                          Array.isArray(s.characters) && 
+                                          s.characters[idx] && 
+                                          s.characters[idx].trim().length > 0
+                                        )
+                                        .map((s: any) => ({
+                                          userId: s.userId,
+                                          nickname: s.nickname || "Игрок",
+                                          avatar: s.avatar,
+                                          guess: s.characters[idx].trim()
+                                        }))
+                                    : [];
+
+                                  if (!isCurrentUserLeader || charSuggestions.length === 0) return null;
+
+                                  return (
+                                    <div className="p-2 bg-purple-950/90 border border-purple-500/40 rounded-xl space-y-1 animate-fade-in shadow-md">
+                                      <div className="text-[10px] font-black uppercase text-purple-300 flex items-center justify-between">
+                                        <span className="flex items-center gap-1">💬 Ответы игроков:</span>
+                                        <span className="text-[9px] text-gray-400 font-normal">клик = подставить</span>
+                                      </div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {charSuggestions.map((s, si) => (
+                                          <button
+                                            key={si}
+                                            type="button"
+                                            onClick={() => {
+                                              setCharGuesses(prev => {
+                                                const next = [...prev];
+                                                next[idx] = s.guess;
+                                                return next;
+                                              });
+                                            }}
+                                            className="inline-flex items-center gap-1 bg-black/70 hover:bg-purple-800/80 border border-purple-400/50 px-2 py-1 rounded-lg text-xs font-bold text-amber-200 cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm"
+                                            title="Нажмите, чтобы вставить этот вариант"
+                                          >
+                                            {s.avatar && <img src={getAssetPath(s.avatar)} alt="" className="w-3.5 h-3.5 rounded-full object-cover" />}
+                                            <span className="text-gray-300 text-[10px] font-normal">{s.nickname}:</span>
+                                            <span className="text-white font-black underline">«{s.guess}»</span>
+                                            <span className="text-[9px] text-purple-300">↵</span>
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
+
                                 <input
                                   type="text"
-                                  placeholder={!isCurrentUserLeader ? "Ответ вводит капитан..." : "Имя героя..."}
+                                  placeholder={isCurrentUserLeader ? "Имя героя (ответ команды)..." : "Ваш вариант героя для капитана..."}
                                   value={charGuesses[idx] || ""}
                                   onChange={(e) => {
                                     const val = e.target.value.slice(0, 40);
@@ -2208,9 +2433,19 @@ export default function App() {
                                       next[idx] = val;
                                       return next;
                                     });
+                                    if (!isCurrentUserLeader) {
+                                      const updatedChars = [...charGuesses];
+                                      updatedChars[idx] = val;
+                                      syncTeammateSuggestion(undefined, updatedChars);
+                                    }
                                   }}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
-                                  disabled={hasAnswered || !isCurrentUserLeader}
+                                  onKeyDown={(e) => { 
+                                    if (e.key === 'Enter') {
+                                      if (isCurrentUserLeader) submitAnswer();
+                                      else submitTeammateSuggestionDirect();
+                                    } 
+                                  }}
+                                  disabled={hasAnswered}
                                   maxLength={40}
                                   className="w-full bg-black/60 border border-purple-500/30 rounded-xl px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-400 disabled:opacity-75 disabled:bg-purple-950/20 transition-all font-medium"
                                 />
@@ -2231,13 +2466,13 @@ export default function App() {
                     {!user.isAdmin && !isCurrentUserLeader && (
                       <div className="max-w-xl mx-auto p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-2">
                         <p className="text-sm font-bold text-purple-200">
-                          👑 Ответы на тайтл и героев отправляет капитан: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
+                          👑 Итоговые ответы отправляет капитан: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
                         </p>
                         {hasAnswered && (answerText || charGuesses.some(g => g.trim())) ? (
                           <div className="p-3 bg-emerald-950/70 border border-emerald-500/50 rounded-2xl text-center space-y-1.5 shadow-lg">
                             <span className="text-xs font-black uppercase text-emerald-400 flex items-center justify-center gap-1.5">
                               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                              Капитан отправил ответы на проверку:
+                              Капитан отправил официальные ответы команды:
                             </span>
                             {answerText && (
                               <p className="text-base font-black text-white bg-black/50 py-1.5 px-4 rounded-xl border border-emerald-500/30 inline-block">
@@ -2253,18 +2488,78 @@ export default function App() {
                           </div>
                         ) : (
                           <p className="text-xs text-gray-400">
-                            Совещайтесь в голосовом чате — форму заполняет только капитан!
+                            💡 Вводите свои догадки в поля героев и тайтла — капитан сразу видит их и выберет итоговые ответы для проверки ведущим!
                           </p>
+                        )}
+                        {!hasTeamLeader && (
+                          <button
+                            onClick={handleClaimLeaderDirect}
+                            className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-black text-xs uppercase px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 mx-auto shadow-lg active:scale-95 cursor-pointer mt-1"
+                          >
+                            <Crown className="w-3.5 h-3.5" />
+                            <span>Стать капитаном команды</span>
+                          </button>
                         )}
                       </div>
                     )}
 
                     {!user.isAdmin && (
                       <div className="max-w-xl mx-auto space-y-3">
+                        {/* Подсказки игроков над полем ввода аниме ДЛЯ КАПИТАНА */}
+                        {(() => {
+                          const animeSuggestions = isCurrentUserLeader && currentTeamId !== null
+                            ? Object.values(teamsData?.[currentTeamId]?.suggestions || {})
+                                .filter((s: any) => 
+                                  s && 
+                                  s.round === gameState.currentRound && 
+                                  s.question === currentQIdx && 
+                                  s.userId !== user?.id && 
+                                  s.anime && 
+                                  s.anime.trim().length > 0
+                                )
+                                .map((s: any) => ({
+                                  userId: s.userId,
+                                  nickname: s.nickname || "Игрок",
+                                  avatar: s.avatar,
+                                  anime: s.anime.trim()
+                                }))
+                            : [];
+
+                          if (!isCurrentUserLeader || animeSuggestions.length === 0) return null;
+
+                          return (
+                            <div className="bg-gradient-to-r from-purple-950/90 via-slate-900/90 to-purple-950/90 border border-purple-500/40 rounded-2xl p-3 shadow-lg space-y-1.5 animate-fade-in">
+                              <div className="flex items-center justify-between text-xs font-black uppercase text-purple-300">
+                                <span className="flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>Ответы игроков команды на тайтл:</span>
+                                </span>
+                                <span className="text-[10px] text-gray-400 font-normal">кликните чтобы подставить</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {animeSuggestions.map((s, si) => (
+                                  <button
+                                    key={si}
+                                    type="button"
+                                    onClick={() => setAnswerText(s.anime)}
+                                    className="inline-flex items-center gap-2 bg-black/60 hover:bg-purple-800/60 border border-purple-400/40 px-3 py-1.5 rounded-xl text-xs font-bold text-white cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm"
+                                    title="Нажмите, чтобы подставить название аниме"
+                                  >
+                                    {s.avatar && <img src={getAssetPath(s.avatar)} alt="" className="w-4 h-4 rounded-full object-cover" />}
+                                    <span className="text-gray-300 text-[11px] font-normal">{s.nickname}:</span>
+                                    <span className="text-amber-300 font-black">«{s.anime}»</span>
+                                    <span className="text-xs text-purple-300">↵</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         <div className="bg-slate-900/80 p-5 rounded-3xl border border-white/10 shadow-2xl space-y-3">
                           <div className="flex items-center justify-between">
                             <label className="text-xs font-black uppercase tracking-wider text-purple-300">
-                              Название аниме:
+                              {isCurrentUserLeader ? "Название аниме (ответ команды):" : "Ваш вариант названия аниме:"}
                             </label>
                             <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
                               +2 балла
@@ -2273,26 +2568,47 @@ export default function App() {
                           <input 
                             type="text" 
                             className="answer-input w-full"
-                            placeholder={!isCurrentUserLeader ? "Ответ вводит только капитан..." : "Введите название тайтла..."}
+                            placeholder={isCurrentUserLeader ? "Введите итоговое название тайтла..." : "Предложите название тайтла капитану..."}
                             value={answerText}
-                            onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
-                            onKeyDown={(e) => { if (e.key === 'Enter') submitAnswer(); }}
-                            disabled={hasAnswered || !isCurrentUserLeader}
+                            onChange={(e) => {
+                              const val = e.target.value.slice(0, 50);
+                              setAnswerText(val);
+                              if (!isCurrentUserLeader) {
+                                syncTeammateSuggestion(val);
+                              }
+                            }}
+                            onKeyDown={(e) => { 
+                              if (e.key === 'Enter') {
+                                if (isCurrentUserLeader) submitAnswer();
+                                else submitTeammateSuggestionDirect();
+                              } 
+                            }}
+                            disabled={hasAnswered}
                             maxLength={50}
                           />
-                          <button 
-                            onClick={() => submitAnswer()}
-                            disabled={hasAnswered || !isCurrentUserLeader || (!answerText.trim() && !charGuesses.some(g => g.trim()))}
-                            className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition-all shadow-lg ${
-                              hasAnswered 
-                                ? 'bg-green-600/80 text-white cursor-default' 
-                                : !isCurrentUserLeader
-                                ? 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/10'
-                                : 'bg-gradient-to-r from-red-500 via-pink-600 to-purple-600 hover:from-red-600 hover:to-purple-700 active:scale-95 text-white disabled:opacity-40 cursor-pointer'
-                            }`}
-                          >
-                            {hasAnswered ? 'ОТВЕТЫ ПРИНЯТЫ ✅' : !isCurrentUserLeader ? 'ОТВЕТ ВВОДИТ КАПИТАН 👑' : 'ОТПРАВИТЬ ОТВЕТЫ (+2 б. за аниме, +1 б. за героя)'}
-                          </button>
+
+                          {isCurrentUserLeader ? (
+                            <button 
+                              onClick={() => submitAnswer()}
+                              disabled={hasAnswered || (!answerText.trim() && !charGuesses.some(g => g.trim()))}
+                              className={`w-full py-4 rounded-2xl font-black text-sm uppercase tracking-wider transition-all shadow-lg ${
+                                hasAnswered 
+                                  ? 'bg-green-600/80 text-white cursor-default' 
+                                  : 'bg-gradient-to-r from-red-500 via-pink-600 to-purple-600 hover:from-red-600 hover:to-purple-700 active:scale-95 text-white disabled:opacity-40 cursor-pointer'
+                              }`}
+                            >
+                              {hasAnswered ? 'ОТВЕТЫ ПРИНЯТЫ ✅' : 'ОТПРАВИТЬ ОТВЕТЫ КОМАНДЫ (+2 б. за аниме, +1 б. за героя)'}
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => submitTeammateSuggestionDirect()}
+                              disabled={hasAnswered || (!answerText.trim() && !charGuesses.some(g => g.trim()))}
+                              className="w-full py-3.5 rounded-2xl font-black text-xs sm:text-sm uppercase tracking-wider bg-gradient-to-r from-purple-700 via-indigo-600 to-purple-800 hover:from-purple-600 hover:to-indigo-500 text-white shadow-lg active:scale-95 cursor-pointer disabled:opacity-40 transition-all flex items-center justify-center gap-2"
+                            >
+                              <span>💡</span>
+                              <span>{teammateSentNotice ? 'ВАРИАНТЫ ОТПРАВЛЕНЫ КАПИТАНУ ✅' : 'ПРЕДЛОЖИТЬ ВАРИАНТЫ КАПИТАНУ'}</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     )}
@@ -2339,13 +2655,13 @@ export default function App() {
                           {!user.isAdmin && !isCurrentUserLeader && (
                             <div className="p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-2 mb-2">
                               <p className="text-sm font-bold text-purple-200">
-                                👑 Вариант ответа выбирает капитан команды: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
+                                👑 Итоговый ответ выбирает капитан команды: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
                               </p>
                               {captainQuizPick ? (
                                 <div className="p-2.5 bg-emerald-950/70 border border-emerald-500/50 rounded-xl max-w-md mx-auto shadow-md">
                                   <span className="text-xs text-emerald-400 font-black uppercase flex items-center justify-center gap-1.5">
                                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                                    Капитан выбрал вариант:
+                                    Капитан выбрал официальный ответ:
                                   </span>
                                   <span className="text-sm font-black text-white mt-0.5 block">
                                     «{captainQuizPick}»
@@ -2353,8 +2669,17 @@ export default function App() {
                                 </div>
                               ) : (
                                 <p className="text-xs text-gray-400">
-                                  Совещайтесь в голосовом чате — ответ кликает только капитан!
+                                  💡 Нажмите на вариант ниже, чтобы проголосовать — ваш выбор увидит только капитан команды!
                                 </p>
+                              )}
+                              {!hasTeamLeader && (
+                                <button
+                                  onClick={handleClaimLeaderDirect}
+                                  className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-black text-xs uppercase px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 mx-auto shadow-lg active:scale-95 cursor-pointer mt-1"
+                                >
+                                  <Crown className="w-3.5 h-3.5" />
+                                  <span>Стать капитаном команды</span>
+                                </button>
                               )}
                             </div>
                           )}
@@ -2363,11 +2688,27 @@ export default function App() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               {currentQuestion.options?.map((opt: string, idx: number) => {
                                 const isCaptainChoice = captainQuizPick === opt;
+                                const myVote = currentTeamId !== null ? teamsData?.[currentTeamId]?.suggestions?.[user?.id] : null;
+                                const isMyVote = !isCurrentUserLeader && myVote && myVote.round === gameState.currentRound && myVote.question === currentQIdx && myVote.selectedOption === opt;
+
+                                // Голоса сокомандников ВИДИТ ТОЛЬКО КАПИТАН!
+                                const teammatesWhoVoted = isCurrentUserLeader && currentTeamId !== null
+                                  ? Object.values(teamsData?.[currentTeamId]?.suggestions || {}).filter(
+                                      (s: any) => s && s.round === gameState.currentRound && s.question === currentQIdx && s.selectedOption === opt && s.userId !== user?.id
+                                    )
+                                  : [];
+
                                 return (
                                   <button
                                     key={idx}
                                     onClick={() => {
-                                      if (hasAnswered || user.isAdmin || !isCurrentUserLeader) return;
+                                      if (hasAnswered || user.isAdmin) return;
+                                      if (!isCurrentUserLeader) {
+                                        submitTeammateSuggestionDirect({ selectedOption: opt });
+                                        return;
+                                      }
+
+                                      // Капитан выбирает и отправляет официальный ответ
                                       setAnswerText(opt);
                                       if (currentTeamId !== null) {
                                         restPatch(`teams/${currentTeamId}`, {
@@ -2393,17 +2734,21 @@ export default function App() {
                                       }
                                       submitAnswer(opt);
                                     }}
-                                    disabled={hasAnswered || user.isAdmin || !isCurrentUserLeader}
+                                    disabled={hasAnswered || user.isAdmin}
                                     className={`p-5 rounded-2xl text-left font-medium text-base transition-all border-2 flex items-start gap-3 cursor-pointer ${
                                       isCaptainChoice
                                         ? 'bg-purple-600/40 border-purple-400 text-purple-100 shadow-[0_0_25px_rgba(168,85,247,0.4)] scale-[1.01]' 
-                                        : !isCurrentUserLeader
-                                        ? 'bg-white/5 border-white/5 text-gray-400 opacity-60 cursor-not-allowed'
+                                        : isMyVote
+                                        ? 'bg-sky-950/60 border-sky-400 text-sky-100 shadow-[0_0_15px_rgba(56,189,248,0.3)] scale-[1.01]'
                                         : 'bg-white/5 border-white/10 hover:bg-white/10 text-gray-200 active:scale-95'
                                     }`}
                                   >
                                     <div className={`w-6 h-6 rounded-full border flex items-center justify-center font-mono text-xs shrink-0 ${
-                                      isCaptainChoice ? 'bg-purple-500 border-purple-300 text-white font-black' : 'border-white/20'
+                                      isCaptainChoice 
+                                        ? 'bg-purple-500 border-purple-300 text-white font-black' 
+                                        : isMyVote
+                                        ? 'bg-sky-500 border-sky-300 text-white font-black'
+                                        : 'border-white/20'
                                     }`}>
                                       {idx + 1}
                                     </div>
@@ -2412,7 +2757,27 @@ export default function App() {
                                       {isCaptainChoice && (
                                         <div className="mt-1 flex items-center gap-1 text-[11px] font-black text-amber-300">
                                           <span>👑</span>
-                                          <span>Выбор капитана команды</span>
+                                          <span>Выбор капитана команды (официальный ответ)</span>
+                                        </div>
+                                      )}
+                                      {isMyVote && !isCaptainChoice && (
+                                        <div className="mt-1 flex items-center gap-1 text-[11px] font-bold text-sky-400">
+                                          <span>💡</span>
+                                          <span>Ваш голос (видит только капитан)</span>
+                                        </div>
+                                      )}
+                                      {/* Голоса сокомандников видит ТОЛЬКО капитан */}
+                                      {isCurrentUserLeader && teammatesWhoVoted.length > 0 && (
+                                        <div className="mt-2 pt-2 border-t border-purple-500/20 flex flex-wrap items-center gap-1.5 animate-fade-in">
+                                          <span className="text-[10px] font-black uppercase text-purple-300">
+                                            👥 Выбор команды ({teammatesWhoVoted.length}):
+                                          </span>
+                                          {teammatesWhoVoted.map((v: any, vi: number) => (
+                                            <span key={vi} className="inline-flex items-center gap-1 bg-purple-900/80 border border-purple-400/40 text-purple-200 text-xs px-2 py-0.5 rounded-full font-bold shadow-sm">
+                                              {v.avatar && <img src={getAssetPath(v.avatar)} alt="" className="w-3.5 h-3.5 rounded-full object-cover" />}
+                                              <span>{v.nickname}</span>
+                                            </span>
+                                          ))}
                                         </div>
                                       )}
                                     </div>
@@ -2503,29 +2868,101 @@ export default function App() {
                     )}
 
                     {!user.isAdmin && (
-                      <div className="space-y-4">
+                      <div className="space-y-4 max-w-xl mx-auto">
+                        {/* Подсказки игроков для капитана */}
+                        {(() => {
+                          const audioSuggestions = isCurrentUserLeader && currentTeamId !== null
+                            ? Object.values(teamsData?.[currentTeamId]?.suggestions || {})
+                                .filter((s: any) => 
+                                  s && 
+                                  s.round === gameState.currentRound && 
+                                  s.question === currentQIdx && 
+                                  s.userId !== user?.id && 
+                                  s.anime && 
+                                  s.anime.trim().length > 0
+                                )
+                                .map((s: any) => ({
+                                  userId: s.userId,
+                                  nickname: s.nickname || "Игрок",
+                                  avatar: s.avatar,
+                                  guess: s.anime.trim()
+                                }))
+                            : [];
+
+                          if (!isCurrentUserLeader || audioSuggestions.length === 0) return null;
+
+                          return (
+                            <div className="p-3 bg-purple-950/80 border border-purple-500/40 rounded-2xl space-y-1.5 shadow-md">
+                              <div className="text-xs font-black uppercase text-purple-300 flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>Варианты сокомандников:</span>
+                                </span>
+                                <span className="text-[10px] text-gray-400">клик = подставить</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {audioSuggestions.map((s, si) => (
+                                  <button
+                                    key={si}
+                                    type="button"
+                                    onClick={() => setAnswerText(s.guess)}
+                                    className="inline-flex items-center gap-2 bg-black/60 hover:bg-purple-800/60 border border-purple-400/40 px-3 py-1.5 rounded-xl text-xs font-bold text-white cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm"
+                                  >
+                                    {s.avatar && <img src={getAssetPath(s.avatar)} alt="" className="w-4 h-4 rounded-full object-cover" />}
+                                    <span className="text-gray-300 text-[11px] font-normal">{s.nickname}:</span>
+                                    <span className="text-amber-300 font-black">«{s.guess}»</span>
+                                    <span className="text-xs text-purple-300">↵</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         <input 
-                          type="text"
+                          type="text" 
                           className="answer-input w-full text-center"
-                          placeholder={!isCurrentUserLeader ? "Ответ вводит только капитан..." : "Ваш ответ (название аниме)..."}
+                          placeholder={isCurrentUserLeader ? "Ваш итоговый ответ (название аниме)..." : "Предложите ответ капитану..."}
                           value={answerText}
-                          onChange={(e) => setAnswerText(e.target.value.slice(0, 50))}
-                          disabled={hasAnswered || !isCurrentUserLeader}
+                          onChange={(e) => {
+                            const val = e.target.value.slice(0, 50);
+                            setAnswerText(val);
+                            if (!isCurrentUserLeader) {
+                              syncTeammateSuggestion(val);
+                            }
+                          }}
+                          onKeyDown={(e) => { 
+                            if (e.key === 'Enter') {
+                              if (isCurrentUserLeader) submitAnswer();
+                              else submitTeammateSuggestionDirect();
+                            } 
+                          }}
+                          disabled={hasAnswered}
                           maxLength={50}
                         />
-                        <button 
-                          onClick={() => submitAnswer()}
-                          disabled={hasAnswered || !isCurrentUserLeader || !answerText.trim()}
-                          className={`w-full py-4 rounded-full font-bold text-lg transition-all ${
-                            hasAnswered 
-                              ? 'bg-green-600/80 cursor-default text-white' 
-                              : !isCurrentUserLeader
-                              ? 'bg-white/10 text-gray-500 cursor-not-allowed border border-white/10'
-                              : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer active:scale-95'
-                          }`}
-                        >
-                          {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : !isCurrentUserLeader ? 'ОТВЕТ ВВОДИТ КАПИТАН 👑' : 'ОТПРАВИТЬ ОТВЕТ'}
-                        </button>
+
+                        {isCurrentUserLeader ? (
+                          <button 
+                            onClick={() => submitAnswer()}
+                            disabled={hasAnswered || !answerText.trim()}
+                            className={`w-full py-4 rounded-full font-bold text-lg transition-all ${
+                              hasAnswered 
+                                ? 'bg-green-600/80 cursor-default text-white' 
+                                : 'bg-red-500 hover:bg-red-600 text-white cursor-pointer active:scale-95'
+                            }`}
+                          >
+                            {hasAnswered ? 'ОТВЕТ ПРИНЯТ ✅' : 'ОТПРАВИТЬ ОТВЕТ КОМАНДЫ'}
+                          </button>
+                        ) : (
+                          <button 
+                            onClick={() => submitTeammateSuggestionDirect()}
+                            disabled={hasAnswered || !answerText.trim()}
+                            className="w-full py-3.5 rounded-full font-bold text-base transition-all bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-600 hover:to-indigo-600 text-white cursor-pointer active:scale-95 shadow-lg flex items-center justify-center gap-2"
+                          >
+                            <span>💡</span>
+                            <span>{teammateSentNotice ? 'ВАРИАНТ ОТПРАВЛЕН КАПИТАНУ ✅' : 'ПРЕДЛОЖИТЬ ВАРИАНТ КАПИТАНУ'}</span>
+                          </button>
+                        )}
                       </div>
                     )}
 
