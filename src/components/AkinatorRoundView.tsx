@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Bot, Send, HelpCircle, CheckCircle2, XCircle, 
-  Sparkles, Loader2, Trophy, MessageSquare, AlertCircle, RefreshCw, Eye, Trash2, Clock
+  Sparkles, Loader2, Trophy, MessageSquare, AlertCircle, RefreshCw, Eye, Trash2, Clock, Users, Crown
 } from "lucide-react";
 import { AKINATOR_ANIME_LIST } from "../data/akinatorAnime";
 import { askAkinator, checkAkinatorGuess } from "../utils/akinatorClient";
@@ -11,6 +11,7 @@ interface AkinatorRoundViewProps {
   user: any;
   gameState: any;
   players: any;
+  teamsData?: any;
   restPatch: (path: string, data: any) => Promise<any>;
   restPut: (path: string, data: any) => Promise<any>;
   timeLeft?: number;
@@ -23,6 +24,7 @@ export default function AkinatorRoundView({
   user,
   gameState,
   players,
+  teamsData: mainTeamsData,
   restPatch,
   restPut,
   timeLeft = 90,
@@ -32,6 +34,9 @@ export default function AkinatorRoundView({
 }: AkinatorRoundViewProps) {
   const [questionInput, setQuestionInput] = useState("");
   const [guessInput, setGuessInput] = useState("");
+  const [teammateQuestionSuggestion, setTeammateQuestionSuggestion] = useState("");
+  const [teammateGuessSuggestion, setTeammateGuessSuggestion] = useState("");
+  const [suggestionSentType, setSuggestionSentType] = useState<"question" | "guess" | null>(null);
   const [isAsking, setIsAsking] = useState(false);
   const [isGuessing, setIsGuessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -51,13 +56,92 @@ export default function AkinatorRoundView({
   const teamBasePath = hasQKey ? `gameState/akinator/${qKey}/teams/${teamIdx}` : `gameState/akinator/teams/${teamIdx}`;
   const allTeamsBasePath = hasQKey ? `gameState/akinator/${qKey}/teams` : `gameState/akinator/teams`;
 
+  const getAvatarSrc = (path?: string) => {
+    if (!path) return "";
+    if (path.startsWith("http") || path.startsWith("data:")) return path;
+    const base = import.meta.env.BASE_URL || "/";
+    const cleanBase = base.endsWith("/") ? base : `${base}/`;
+    const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+    return `${cleanBase}${cleanPath}`;
+  };
+
+  // Ротация игроков в 7 раунде (команды до 3 человек):
+  // 3 человека: вопрос 1 -> игрок 1, вопрос 2 -> игрок 2, вопрос 3 -> игрок 3
+  // 2 человека: вопрос 1 -> игрок 1, вопрос 2 -> игрок 2, вопрос 3 -> игрок 1
+  // 1 человек: все 3 вопроса играет этот один игрок
+  const teamMembers: any[] = Object.values(players || {})
+    .filter((p: any) => p && !p.isAdmin && p.team === teamIdx)
+    .sort((a: any, b: any) => {
+      const leaderId = mainTeamsData?.[teamIdx]?.leaderId;
+      if (leaderId) {
+        if (a.id === leaderId) return -1;
+        if (b.id === leaderId) return 1;
+      }
+      return (a.nickname || "").localeCompare(b.nickname || "");
+    });
+
+  const getPlayerForQuestion = (questionIndex: number) => {
+    if (teamMembers.length === 0) return null;
+    if (teamMembers.length === 1) return teamMembers[0];
+    if (teamMembers.length === 2) {
+      return questionIndex === 1 ? teamMembers[1] : teamMembers[0];
+    }
+    return teamMembers[questionIndex % teamMembers.length];
+  };
+
+  const activePlayer = getPlayerForQuestion(qIdx);
+  const isCurrentPlayerTurn = Boolean(
+    user.isAdmin || 
+    (activePlayer ? user.id === activePlayer.id : isLeader)
+  );
+
   useEffect(() => {
     setQuestionInput("");
     setGuessInput("");
+    setTeammateQuestionSuggestion("");
+    setTeammateGuessSuggestion("");
     setErrorMsg("");
     setLastFailedQuestion("");
     setWrongGuessAlert("");
   }, [gameState?.currentQuestion]);
+
+  const submitTeammateQuestionSuggestion = async (qText?: string) => {
+    const text = (qText || teammateQuestionSuggestion).trim();
+    if (!text || !user || user.isAdmin) return;
+    try {
+      await restPatch(`${teamBasePath}/suggestions/${user.id}`, {
+        userId: user.id,
+        nickname: user.nickname,
+        avatar: user.avatar,
+        questionSuggestion: text,
+        timestamp: Date.now()
+      });
+      setSuggestionSentType("question");
+      setTimeout(() => setSuggestionSentType(null), 3000);
+      setTeammateQuestionSuggestion("");
+    } catch (err) {
+      console.error("Submit question suggestion error:", err);
+    }
+  };
+
+  const submitTeammateGuessSuggestion = async (gText?: string) => {
+    const text = (gText || teammateGuessSuggestion).trim();
+    if (!text || !user || user.isAdmin) return;
+    try {
+      await restPatch(`${teamBasePath}/suggestions/${user.id}`, {
+        userId: user.id,
+        nickname: user.nickname,
+        avatar: user.avatar,
+        guessSuggestion: text,
+        timestamp: Date.now()
+      });
+      setSuggestionSentType("guess");
+      setTimeout(() => setSuggestionSentType(null), 3000);
+      setTeammateGuessSuggestion("");
+    } catch (err) {
+      console.error("Submit guess suggestion error:", err);
+    }
+  };
 
   // Auto-recovery: if team has no secret anime assigned yet, host or player automatically assigns one
   useEffect(() => {
@@ -131,7 +215,7 @@ export default function AkinatorRoundView({
   };
 
   const handleAskQuestion = async (customQ?: string) => {
-    if (!isLeader) return;
+    if (!isCurrentPlayerTurn) return;
     const qText = (customQ || questionInput).trim();
     if (!qText || isAsking) return;
     if (!currentTeamData?.animeTitle) {
@@ -180,7 +264,7 @@ export default function AkinatorRoundView({
   };
 
   const handleMakeGuess = async () => {
-    if (!isLeader) return;
+    if (!isCurrentPlayerTurn) return;
     const gText = guessInput.trim();
     if (!gText || isGuessing || !currentTeamData?.animeTitle) return;
 
@@ -420,6 +504,64 @@ export default function AkinatorRoundView({
         </div>
       </div>
 
+      {/* Team Question Roster for Round 7 */}
+      <div className="bg-slate-900/90 border border-purple-500/30 rounded-3xl p-5 shadow-xl backdrop-blur-md">
+        <div className="text-xs font-black uppercase tracking-wider text-purple-300 mb-3 flex items-center justify-between">
+          <span className="flex items-center gap-2">
+            <Users className="w-4 h-4 text-purple-400" />
+            <span>Очередь игроков на 7 раунд (3 вопроса Акинатора):</span>
+          </span>
+          <span className="text-[11px] text-gray-400 font-normal">
+            {teamMembers.length} {teamMembers.length === 1 ? "игрок" : teamMembers.length <= 4 ? "игрока" : "игроков"} в команде
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {[0, 1, 2].map((qNumber) => {
+            const assignedPlayer = getPlayerForQuestion(qNumber);
+            const isCurrentQ = qIdx === qNumber;
+            const isMe = assignedPlayer?.id === user?.id;
+            return (
+              <div 
+                key={qNumber}
+                className={`p-3.5 rounded-2xl border flex items-center justify-between gap-2.5 transition-all ${
+                  isCurrentQ
+                    ? "bg-purple-950/90 border-purple-400 ring-2 ring-purple-500/50 shadow-lg shadow-purple-900/40"
+                    : "bg-black/40 border-white/10 opacity-75"
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  {assignedPlayer?.avatar ? (
+                    <img 
+                      src={getAvatarSrc(assignedPlayer.avatar)} 
+                      alt="" 
+                      className="w-9 h-9 rounded-full object-cover shrink-0 border border-purple-400/50" 
+                    />
+                  ) : (
+                    <div className="w-9 h-9 rounded-full bg-purple-800/80 border border-purple-400/40 flex items-center justify-center text-xs font-black text-white shrink-0">
+                      {assignedPlayer?.nickname?.[0]?.toUpperCase() || "?"}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-black uppercase text-purple-300">
+                      Вопрос {qNumber + 1}
+                    </div>
+                    <div className="text-sm font-black text-white truncate flex items-center gap-1.5">
+                      <span>{assignedPlayer?.nickname || "Игрок"}</span>
+                      {isMe && <span className="text-amber-300 font-black text-xs">(Вы)</span>}
+                    </div>
+                  </div>
+                </div>
+                {isCurrentQ && (
+                  <span className="bg-emerald-500 text-slate-950 font-black text-[10px] uppercase px-2.5 py-1 rounded-full shrink-0 animate-pulse shadow-sm">
+                    ИГРАЕТ
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Victory Banner if already guessed */}
       {currentTeamData?.guessed && (
         <motion.div
@@ -520,20 +662,142 @@ export default function AkinatorRoundView({
           </div>
         )}
 
-        {/* Question Input Form */}
-        {!currentTeamData.guessed && !isLeader && (
-          <div className="p-4 bg-purple-950/40 border border-purple-500/30 rounded-2xl text-center space-y-1">
-            <p className="text-sm font-bold text-purple-200">
-              👑 Вопросы и догадки Акинатору отправляет капитан вашей команды: <strong className="text-white underline">{leaderNickname || "Не назначен"}</strong>
-            </p>
-            <p className="text-xs text-gray-400">
-              Предлагайте вопросы капитану в голосовом чате!
-            </p>
+        {/* Question Input / Teammate suggestions */}
+        {!currentTeamData.guessed && !isCurrentPlayerTurn && (
+          <div className="p-5 bg-purple-950/60 border border-purple-500/40 rounded-3xl space-y-4 shadow-xl">
+            <div className="flex items-center gap-3 text-left">
+              {activePlayer?.avatar ? (
+                <img 
+                  src={getAvatarSrc(activePlayer.avatar)} 
+                  alt="" 
+                  className="w-11 h-11 rounded-full object-cover border-2 border-purple-400 shrink-0 shadow-md" 
+                />
+              ) : (
+                <div className="w-11 h-11 rounded-full bg-purple-700 border-2 border-purple-400 flex items-center justify-center font-black text-white shrink-0 text-base shadow-md">
+                  {activePlayer?.nickname?.[0]?.toUpperCase() || "?"}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-white flex items-center gap-1.5 flex-wrap">
+                  <span>🎮 В этом вопросе (#{qIdx + 1}) играет:</span>
+                  <span className="text-amber-300 font-black underline">{activePlayer?.nickname || "Игрок команды"}</span>
+                </p>
+                <p className="text-xs text-purple-200/80 mt-0.5">
+                  Вы можете подсказывать вопросы и названия аниме ниже — игрок сразу увидит их на своём экране!
+                </p>
+              </div>
+            </div>
+
+            {/* Предложить вопрос */}
+            <div className="space-y-1.5 pt-1 border-t border-purple-500/20">
+              <label className="text-[11px] font-black uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
+                <span>Предложить вопрос для Акинатора:</span>
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={teammateQuestionSuggestion}
+                  onChange={(e) => setTeammateQuestionSuggestion(e.target.value.slice(0, 120))}
+                  onKeyDown={(e) => { if (e.key === "Enter") submitTeammateQuestionSuggestion(); }}
+                  placeholder="Например: Главный герой школьник?.."
+                  className="flex-1 bg-black/60 border border-purple-500/40 focus:border-purple-400 rounded-2xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition-all"
+                />
+                <button
+                  onClick={() => submitTeammateQuestionSuggestion()}
+                  disabled={!teammateQuestionSuggestion.trim()}
+                  className="bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-black text-xs uppercase px-5 py-3 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-all shadow-md active:scale-95"
+                >
+                  <span>💡</span>
+                  <span>{suggestionSentType === "question" ? "ОТПРАВЛЕНО ✅" : "ПРЕДЛОЖИТЬ ВОПРОС"}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Предложить аниме */}
+            <div className="space-y-1.5 pt-1 border-t border-purple-500/20">
+              <label className="text-[11px] font-black uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Предложить догадку аниме:</span>
+              </label>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={teammateGuessSuggestion}
+                  onChange={(e) => setTeammateGuessSuggestion(e.target.value.slice(0, 80))}
+                  onKeyDown={(e) => { if (e.key === "Enter") submitTeammateGuessSuggestion(); }}
+                  placeholder="Например: Тетрадь смерти / Death Note..."
+                  className="flex-1 bg-black/60 border border-amber-500/40 focus:border-yellow-400 rounded-2xl px-4 py-3 text-sm text-white placeholder-gray-500 outline-none transition-all"
+                />
+                <button
+                  onClick={() => submitTeammateGuessSuggestion()}
+                  disabled={!teammateGuessSuggestion.trim()}
+                  className="bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-black font-black text-xs uppercase px-5 py-3 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer shrink-0 transition-all shadow-md active:scale-95"
+                >
+                  <span>🎯</span>
+                  <span>{suggestionSentType === "guess" ? "ОТПРАВЛЕНО ✅" : "ПРЕДЛОЖИТЬ АНИМЕ"}</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
-        {!currentTeamData.guessed && Boolean(isLeader) && (
+        {!currentTeamData.guessed && Boolean(isCurrentPlayerTurn) && (
           <div className="pt-2 space-y-3">
+            {/* Баннер активного игрока */}
+            <div className="p-3 bg-gradient-to-r from-amber-500/20 via-purple-600/20 to-amber-500/20 border border-amber-500/40 rounded-2xl flex items-center justify-between gap-2 shadow-md">
+              <div className="flex items-center gap-2">
+                <Crown className="w-5 h-5 text-amber-400 animate-bounce" />
+                <span className="text-xs sm:text-sm font-black text-amber-300 uppercase tracking-wider">
+                  Ваша очередь играть! (Вопрос {qIdx + 1} из 3)
+                </span>
+              </div>
+              <span className="text-[11px] text-gray-300 hidden sm:inline">
+                Вы задаете вопросы и называете итоговый тайтл
+              </span>
+            </div>
+
+            {/* Подсказки вопросов от сокомандников для активного игрока */}
+            {(() => {
+              const suggestionsList = Object.values(currentTeamData?.suggestions || {})
+                .filter((s: any) => s && s.userId !== user?.id && s.questionSuggestion && s.questionSuggestion.trim().length > 0)
+                .map((s: any) => ({
+                  userId: s.userId,
+                  nickname: s.nickname || "Игрок",
+                  avatar: s.avatar,
+                  question: s.questionSuggestion.trim()
+                }));
+
+              if (suggestionsList.length === 0) return null;
+
+              return (
+                <div className="p-3 bg-purple-950/80 border border-purple-500/40 rounded-2xl space-y-1.5 shadow-md animate-fade-in">
+                  <div className="text-xs font-black uppercase text-purple-300 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Вопросы от сокомандников:</span>
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-normal">клик = подставить в поле</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestionsList.map((s, si) => (
+                      <button
+                        key={si}
+                        type="button"
+                        onClick={() => setQuestionInput(s.question)}
+                        className="inline-flex items-center gap-2 bg-black/60 hover:bg-purple-800/60 border border-purple-400/40 px-3 py-1.5 rounded-xl text-xs font-bold text-white cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm"
+                      >
+                        {s.avatar && <img src={getAvatarSrc(s.avatar)} alt="" className="w-4 h-4 rounded-full object-cover" />}
+                        <span className="text-gray-300 text-[11px] font-normal">{s.nickname}:</span>
+                        <span className="text-purple-300 font-bold">«{s.question}»</span>
+                        <span className="text-xs text-purple-300">↵</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="flex gap-3">
               <div className="relative flex-1">
                 <input
@@ -591,7 +855,7 @@ export default function AkinatorRoundView({
       </div>
 
       {/* Guess Attempt Section */}
-      {!currentTeamData.guessed && isLeader !== false && (
+      {!currentTeamData.guessed && (
         <div className="glass-dark p-6 md:p-8 rounded-[2.5rem] border-2 border-purple-500/30 shadow-2xl space-y-4">
           <div className="flex items-center gap-3">
             <Trophy className="w-6 h-6 text-yellow-400" />
@@ -600,42 +864,93 @@ export default function AkinatorRoundView({
                 Готовы назвать аниме?
               </h4>
               <p className="text-xs text-gray-400">
-                Если команда уверена в ответе — введите название тайтла (на русском или английском).
+                {isCurrentPlayerTurn 
+                  ? "Если уверены в ответе — введите название тайтла (на русском или английском)."
+                  : `Итоговый ответ отправляет текущий игрок (${activePlayer?.nickname || "Игрок"}). Предлагайте варианты выше!`}
               </p>
             </div>
           </div>
 
-          <div className="flex gap-3">
-            <input
-              type="text"
-              value={guessInput}
-              onChange={(e) => setGuessInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !isGuessing) handleMakeGuess();
-              }}
-              placeholder="Например: Тетрадь смерти / Death Note..."
-              disabled={isGuessing}
-              maxLength={80}
-              className="flex-1 bg-black/40 border-2 border-white/10 focus:border-yellow-500 rounded-2xl px-5 py-4 text-white text-base placeholder-gray-500 outline-none transition-all disabled:opacity-50"
-            />
-            <button
-              onClick={handleMakeGuess}
-              disabled={isGuessing || !guessInput.trim()}
-              className="bg-yellow-500 hover:bg-yellow-600 disabled:opacity-40 text-black font-black px-6 md:px-8 rounded-2xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-yellow-500/20 cursor-pointer"
-            >
-              {isGuessing ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span className="hidden md:inline">ПРОВЕРКА...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-5 h-5" />
-                  <span className="hidden md:inline">НАЗВАТЬ АНИМЕ</span>
-                </>
-              )}
-            </button>
-          </div>
+          {/* Подсказки аниме от сокомандников для активного игрока */}
+          {Boolean(isCurrentPlayerTurn) && (() => {
+            const guessSuggestionsList = Object.values(currentTeamData?.suggestions || {})
+              .filter((s: any) => s && s.userId !== user?.id && s.guessSuggestion && s.guessSuggestion.trim().length > 0)
+              .map((s: any) => ({
+                userId: s.userId,
+                nickname: s.nickname || "Игрок",
+                avatar: s.avatar,
+                guess: s.guessSuggestion.trim()
+              }));
+
+            if (guessSuggestionsList.length === 0) return null;
+
+            return (
+              <div className="p-3 bg-purple-950/80 border border-purple-500/40 rounded-2xl space-y-1.5 shadow-md animate-fade-in">
+                <div className="text-xs font-black uppercase text-purple-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Варианты аниме от сокомандников:</span>
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-normal">клик = подставить в поле</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {guessSuggestionsList.map((s, si) => (
+                    <button
+                      key={si}
+                      type="button"
+                      onClick={() => setGuessInput(s.guess)}
+                      className="inline-flex items-center gap-2 bg-black/60 hover:bg-purple-800/60 border border-purple-400/40 px-3 py-1.5 rounded-xl text-xs font-bold text-white cursor-pointer transition-all hover:scale-105 active:scale-95 shadow-sm"
+                    >
+                      {s.avatar && <img src={getAvatarSrc(s.avatar)} alt="" className="w-4 h-4 rounded-full object-cover" />}
+                      <span className="text-gray-300 text-[11px] font-normal">{s.nickname}:</span>
+                      <span className="text-amber-300 font-black">«{s.guess}»</span>
+                      <span className="text-xs text-purple-300">↵</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {Boolean(isCurrentPlayerTurn) ? (
+            <div className="flex gap-3">
+              <input
+                type="text"
+                value={guessInput}
+                onChange={(e) => setGuessInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isGuessing) handleMakeGuess();
+                }}
+                placeholder="Например: Тетрадь смерти / Death Note..."
+                disabled={isGuessing}
+                maxLength={80}
+                className="flex-1 bg-black/40 border-2 border-white/10 focus:border-yellow-500 rounded-2xl px-5 py-4 text-white text-base placeholder-gray-500 outline-none transition-all disabled:opacity-50"
+              />
+              <button
+                onClick={handleMakeGuess}
+                disabled={isGuessing || !guessInput.trim()}
+                className="bg-yellow-500 hover:bg-yellow-600 disabled:opacity-40 text-black font-black px-6 md:px-8 rounded-2xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-yellow-500/20 cursor-pointer"
+              >
+                {isGuessing ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span className="hidden md:inline">ПРОВЕРКА...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    <span className="hidden md:inline">НАЗВАТЬ АНИМЕ</span>
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="p-4 bg-purple-950/40 border border-purple-500/30 rounded-2xl text-center">
+              <p className="text-sm font-bold text-purple-200">
+                👑 Отправить окончательную догадку может текущий игрок: <strong className="text-white underline">{activePlayer?.nickname || "Игрок"}</strong>
+              </p>
+            </div>
+          )}
 
           <AnimatePresence>
             {wrongGuessAlert && (
