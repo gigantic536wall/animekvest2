@@ -467,12 +467,16 @@ const roundsData: Round[] = [
     answerTime: 0,
     questions: [
       {
-        text: "Партия 1 из 2: Соберите 4 в ряд (12 баллов) или всё поле (24 балла). Штраф за ошибку: -3 балла.",
+        text: "Партия 1 из 3: Соберите 4 в ряд (12 баллов) или всё поле (24 балла). Штраф за ошибку: -3 балла.",
         correctAnswer: "Партия 1 завершена"
       },
       {
-        text: "Партия 2 из 2: Новая сетка 4×4 и новый пул тайтлов! Соберите 4 в ряд или всё поле.",
+        text: "Партия 2 из 3: Новая сетка 4×4 и новый пул тайтлов! Соберите 4 в ряд или всё поле.",
         correctAnswer: "Партия 2 завершена"
+      },
+      {
+        text: "Партия 3 из 3: Финальная партия Бинго! Соберите 4 в ряд или всё поле. Все баллы суммируются в копилку команды!",
+        correctAnswer: "Партия 3 завершена"
       }
     ]
   },
@@ -855,11 +859,16 @@ export default function App() {
 
   // Вычисление данных текущей команды и статуса лидера
   const currentTeamId = user && !user.isAdmin && user.team !== undefined && user.team >= 0 ? user.team : null;
-  const currentTeamInfo = currentTeamId !== null ? (teamsData[currentTeamId] || {}) : null;
+  const currentTeamInfo = currentTeamId !== null ? (teamsData[currentTeamId] || teamsData[String(currentTeamId)] || {}) : null;
   const currentTeamLeaderId = currentTeamInfo?.leaderId;
   const currentTeamLeaderName = currentTeamInfo?.leaderNickname;
   const hasTeamLeader = !!currentTeamLeaderId;
-  const isCurrentUserLeader = !user?.isAdmin && currentTeamId !== null ? (hasTeamLeader ? currentTeamLeaderId === user?.id : false) : true;
+  const isCurrentUserLeader = !user?.isAdmin && currentTeamId !== null 
+    ? (hasTeamLeader 
+        ? (String(currentTeamLeaderId) === String(user?.id) || 
+           (!!currentTeamLeaderName && !!user?.nickname && currentTeamLeaderName.trim().toLowerCase() === user.nickname.trim().toLowerCase()))
+        : false)
+    : false;
   const currentTeamMembers: any[] = currentTeamId !== null 
     ? Object.values(players || {}).filter((p: any) => p.team === currentTeamId) 
     : [];
@@ -869,10 +878,22 @@ export default function App() {
   const handleLobbyAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || currentTeamId === null) return;
+    if (!isCurrentUserLeader) {
+      setLobbyStatusNotice("🔒 Только капитан может менять аватарку команды!");
+      setTimeout(() => setLobbyStatusNotice(""), 3500);
+      return;
+    }
     setIsUploadingLobbyAvatar(true);
     try {
       const compressed = await compressTeamAvatar(file, 256);
       await restPatch(`teams/${currentTeamId}`, { avatar: compressed });
+      setTeamsData(prev => ({
+        ...prev,
+        [currentTeamId]: {
+          ...(prev[currentTeamId] || {}),
+          avatar: compressed
+        }
+      }));
       setLobbyStatusNotice("✅ Аватарка команды успешно обновлена!");
       setTimeout(() => setLobbyStatusNotice(""), 3500);
     } catch (err) {
@@ -892,6 +913,14 @@ export default function App() {
         leaderId: user.id,
         leaderNickname: user.nickname
       });
+      setTeamsData(prev => ({
+        ...prev,
+        [currentTeamId]: {
+          ...(prev[currentTeamId] || {}),
+          leaderId: user.id,
+          leaderNickname: user.nickname
+        }
+      }));
       setLobbyStatusNotice("👑 Вы стали капитаном команды!");
       setTimeout(() => setLobbyStatusNotice(""), 3500);
     } catch (err) {
@@ -901,11 +930,24 @@ export default function App() {
 
   const handleTransferLeaderDirect = async (target: any) => {
     if (currentTeamId === null || !target) return;
+    const targetId = target.id || target._id;
+    if (!targetId) {
+      console.error("Target player has no id:", target);
+      return;
+    }
     try {
       await restPatch(`teams/${currentTeamId}`, {
-        leaderId: target.id,
+        leaderId: targetId,
         leaderNickname: target.nickname
       });
+      setTeamsData(prev => ({
+        ...prev,
+        [currentTeamId]: {
+          ...(prev[currentTeamId] || {}),
+          leaderId: targetId,
+          leaderNickname: target.nickname
+        }
+      }));
       setLobbyStatusNotice(`👑 Лидерство передано игроку ${target.nickname}!`);
       setTimeout(() => setLobbyStatusNotice(""), 3500);
     } catch (err) {
@@ -1014,8 +1056,32 @@ export default function App() {
         setPauseState(pause);
         setReviewState(review);
         setGlobalPauseState(gPause);
-        setPlayers(allPlayers || {});
-        setTeamsData(allTeams || {});
+        // Гарантируем, что у каждого игрока всегда проставлен p.id = pId
+        const normalizedPlayers: Record<string, any> = {};
+        if (allPlayers && typeof allPlayers === 'object') {
+          Object.entries(allPlayers).forEach(([pId, pData]: [string, any]) => {
+            if (pData && typeof pData === 'object') {
+              normalizedPlayers[pId] = { ...pData, id: pData.id || pId };
+            }
+          });
+        }
+
+        // Нормализуем данные команд
+        const normalizedTeams: Record<string, any> = {};
+        if (allTeams) {
+          if (Array.isArray(allTeams)) {
+            allTeams.forEach((tData, idx) => {
+              if (tData) normalizedTeams[String(idx)] = tData;
+            });
+          } else if (typeof allTeams === 'object') {
+            Object.entries(allTeams).forEach(([tKey, tData]) => {
+              if (tData) normalizedTeams[tKey] = tData;
+            });
+          }
+        }
+
+        setPlayers(normalizedPlayers);
+        setTeamsData(normalizedTeams);
 
         // ЕСЛИ СБРОС ИГРЫ — СБРАСЫВАЕМ ВСЕХ ИГРОКОВ В ЛОГИН
         if (user && !user.isAdmin) {
@@ -1105,12 +1171,23 @@ export default function App() {
         const targetId = teamLeaderId || user.id;
         let ansData: any = null;
 
-        const { data: userAns } = await restGet(`players/${user.id}/roundAnswers/${gameState.currentRound}/q${qIdx}`);
-        if (userAns?.answered) {
-          ansData = userAns;
-        } else if (targetId !== user.id) {
-          const { data: leaderAns } = await restGet(`players/${targetId}/roundAnswers/${gameState.currentRound}/q${qIdx}`);
-          if (leaderAns?.answered) ansData = leaderAns;
+        // 1. Проверяем командный ответ из teamsData
+        const teamAns = currentTeamId !== null
+          ? (teamsData?.[currentTeamId]?.answers?.[`r${gameState.currentRound}_q${qIdx}`] || 
+             (teamsData?.[currentTeamId]?.lastAnswer?.round === gameState.currentRound && teamsData?.[currentTeamId]?.lastAnswer?.question === qIdx ? teamsData?.[currentTeamId]?.lastAnswer : null))
+          : null;
+
+        if (teamAns?.answer) {
+          ansData = { answered: true, answer: teamAns.answer, characters: teamAns.characters };
+        } else {
+          // 2. Проверяем ответы игроков
+          const { data: userAns } = await restGet(`players/${user.id}/roundAnswers/${gameState.currentRound}/q${qIdx}`);
+          if (userAns?.answered) {
+            ansData = userAns;
+          } else if (targetId !== user.id) {
+            const { data: leaderAns } = await restGet(`players/${targetId}/roundAnswers/${gameState.currentRound}/q${qIdx}`);
+            if (leaderAns?.answered) ansData = leaderAns;
+          }
         }
 
         if (ansData?.answered) {
@@ -1125,7 +1202,7 @@ export default function App() {
       }
     };
     checkAnswered();
-  }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin, currentTeamLeaderId]);
+  }, [gameState?.currentQuestion, gameState?.currentRound, gameState?.active, user?.id, user?.isAdmin, currentTeamLeaderId, currentTeamId, teamsData]);
 
   const getAssetPath = (path: string) => {
     if (!path) return "";
@@ -1156,7 +1233,7 @@ export default function App() {
     const id = isChangingTeam && user ? user.id : `${nickname}_${Date.now()}`;
     const newUser = { nickname, team: selectedTeam, isAdmin: false, id };
     
-    await restPut(`players/${id}`, { nickname, team: selectedTeam, score: (isChangingTeam ? getPlayerScore(players[user?.id]) : 0), isAdmin: false });
+    await restPut(`players/${id}`, { id, nickname, team: selectedTeam, score: (isChangingTeam ? getPlayerScore(players[user?.id]) : 0), isAdmin: false });
     setUser(newUser);
     localStorage.setItem('quizUser', JSON.stringify(newUser));
     setIsChangingTeam(false);
@@ -1504,14 +1581,35 @@ export default function App() {
     setIsDoubleChoice(false);
 
     if (currentTeamId !== null) {
+      const teamAnsPayload: any = {
+        round: gameState.currentRound,
+        question: gameState.currentQuestion,
+        answer: finalAnswer,
+        timestamp: Date.now(),
+        by: user.nickname
+      };
+      if (round.type === "three_characters") {
+        teamAnsPayload.characters = charGuesses.map(g => g.trim());
+      }
+      if (round.type === "quiz_six") {
+        teamAnsPayload.selectedOption = finalAnswer;
+      }
       restPatch(`teams/${currentTeamId}`, {
-        lastAnswer: {
-          round: gameState.currentRound,
-          question: gameState.currentQuestion,
-          answer: finalAnswer,
-          timestamp: Date.now()
-        }
+        lastAnswer: teamAnsPayload,
+        [`answers/r${gameState.currentRound}_q${gameState.currentQuestion}`]: teamAnsPayload
       }).catch(console.error);
+
+      setTeamsData(prev => ({
+        ...prev,
+        [currentTeamId]: {
+          ...(prev[currentTeamId] || {}),
+          lastAnswer: teamAnsPayload,
+          answers: {
+            ...((prev[currentTeamId] || {}).answers || {}),
+            [`r${gameState.currentRound}_q${gameState.currentQuestion}`]: teamAnsPayload
+          }
+        }
+      }));
     }
   };
 
@@ -1691,6 +1789,17 @@ export default function App() {
         players={players}
         teamsData={teamsData}
         restPatch={restPatch}
+        onLeaderUpdate={(newLeaderId, newLeaderNick) => {
+          if (currentTeamId === null) return;
+          setTeamsData(prev => ({
+            ...prev,
+            [currentTeamId]: {
+              ...(prev[currentTeamId] || {}),
+              leaderId: newLeaderId,
+              leaderNickname: newLeaderNick
+            }
+          }));
+        }}
       />
 
       <div className="max-w-[1600px] mx-auto">
@@ -1721,14 +1830,16 @@ export default function App() {
                         Сменить команду
                       </button>
                     )}
-                    <button
-                      onClick={() => setIsPlayerLeaderboardOpen(true)}
-                      className="text-[10px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-lg uppercase tracking-wider font-black flex items-center gap-1 cursor-pointer transition-all"
-                      title="Посмотреть текущий счёт всех команд"
-                    >
-                      <Trophy className="w-3 h-3 text-amber-400" />
-                      Счёт команд
-                    </button>
+                    {(user?.isAdmin || !!gameState?.showLeaderboard) && (
+                      <button
+                        onClick={() => setIsPlayerLeaderboardOpen(true)}
+                        className="text-[10px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-lg uppercase tracking-wider font-black flex items-center gap-1 cursor-pointer transition-all"
+                        title="Посмотреть текущий счёт всех команд"
+                      >
+                        <Trophy className="w-3 h-3 text-amber-400" />
+                        Счёт команд
+                      </button>
+                    )}
                     <button
                       onClick={() => setIsTeamSetupOpen(true)}
                       className="text-[10px] bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 hover:text-white border border-purple-500/40 px-2.5 py-0.5 rounded-lg uppercase tracking-wider font-black flex items-center gap-1 cursor-pointer transition-all"
@@ -1803,7 +1914,9 @@ export default function App() {
                     )}
                   </div>
                   <div className="text-[10px] font-bold text-gray-400">К#{tIdx + 1}</div>
-                  <div className="text-base font-black text-purple-300">{tScore}</div>
+                  <div className="text-base font-black text-purple-300">
+                    {user?.isAdmin || gameState?.showLeaderboard ? tScore : '❓'}
+                  </div>
                   <div className="text-[9px] text-gray-500 truncate max-w-full">
                     {tPlayers.length > 0 ? `${tPlayers.length} игр.` : 'пусто'}
                   </div>
@@ -1834,7 +1947,19 @@ export default function App() {
           onOpenTeamSetup={() => setIsTeamSetupOpen(true)}
           onOpenLeaderboard={() => setIsPlayerLeaderboardOpen(true)}
           isTeamSetupUnlocked={!!gameState?.gameStarted || !!gameState?.teamSetupUnlocked}
+          isScoreVisible={!!gameState?.showLeaderboard}
           restPatch={restPatch}
+          onLeaderUpdate={(newLeaderId, newLeaderNick) => {
+            if (currentTeamId === null) return;
+            setTeamsData(prev => ({
+              ...prev,
+              [currentTeamId]: {
+                ...(prev[currentTeamId] || {}),
+                leaderId: newLeaderId,
+                leaderNickname: newLeaderNick
+              }
+            }));
+          }}
         />
       )}
 
@@ -1953,9 +2078,21 @@ export default function App() {
                         <p className="text-sm font-bold text-purple-200">
                           👑 Ответ вводит капитан команды: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
                         </p>
-                        <p className="text-xs text-gray-400">
-                          Совещайтесь в голосовом чате — ответ отправляет только капитан!
-                        </p>
+                        {hasAnswered && answerText ? (
+                          <div className="p-2.5 bg-emerald-950/70 border border-emerald-500/50 rounded-xl max-w-md mx-auto shadow-md">
+                            <span className="text-xs text-emerald-400 font-black uppercase flex items-center justify-center gap-1.5">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                              Капитан отправил ответ на проверку:
+                            </span>
+                            <span className="text-sm font-black text-white mt-0.5 block">
+                              «{answerText}»
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400">
+                            Совещайтесь в голосовом чате — ответ отправляет только капитан!
+                          </p>
+                        )}
                         {!hasTeamLeader && (
                           <button
                             onClick={handleClaimLeaderDirect}
@@ -2092,13 +2229,33 @@ export default function App() {
                     </div>
                     
                     {!user.isAdmin && !isCurrentUserLeader && (
-                      <div className="max-w-xl mx-auto p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-1">
+                      <div className="max-w-xl mx-auto p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-2">
                         <p className="text-sm font-bold text-purple-200">
                           👑 Ответы на тайтл и героев отправляет капитан: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
                         </p>
-                        <p className="text-xs text-gray-400">
-                          Совещайтесь в голосовом чате — форму заполняет только капитан!
-                        </p>
+                        {hasAnswered && (answerText || charGuesses.some(g => g.trim())) ? (
+                          <div className="p-3 bg-emerald-950/70 border border-emerald-500/50 rounded-2xl text-center space-y-1.5 shadow-lg">
+                            <span className="text-xs font-black uppercase text-emerald-400 flex items-center justify-center gap-1.5">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                              Капитан отправил ответы на проверку:
+                            </span>
+                            {answerText && (
+                              <p className="text-base font-black text-white bg-black/50 py-1.5 px-4 rounded-xl border border-emerald-500/30 inline-block">
+                                Тайтл: «{answerText}»
+                              </p>
+                            )}
+                            {charGuesses.some(g => g.trim()) && (
+                              <div className="text-xs text-purple-200">
+                                <span className="font-bold">Герои: </span>
+                                {charGuesses.map((g, i) => g.trim() ? `#${i + 1} ${g.trim()}` : null).filter(Boolean).join(" • ")}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400">
+                            Совещайтесь в голосовом чате — форму заполняет только капитан!
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -2169,45 +2326,104 @@ export default function App() {
                       <h3 className="text-xl md:text-2xl leading-relaxed font-bold text-white">{currentQuestion.text}</h3>
                     </div>
                     
-                    {!user.isAdmin && !isCurrentUserLeader && (
-                      <div className="p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-1 mb-2">
-                        <p className="text-sm font-bold text-purple-200">
-                          👑 Вариант ответа выбирает капитан команды: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          Совещайтесь в голосовом чате — ответ кликает только капитан!
-                        </p>
-                      </div>
-                    )}
+                    {(() => {
+                      const captainQuizPick = currentTeamId !== null
+                        ? (teamsData?.[currentTeamId]?.selectedQuizOption?.round === gameState.currentRound &&
+                           teamsData?.[currentTeamId]?.selectedQuizOption?.question === currentQIdx
+                            ? teamsData?.[currentTeamId]?.selectedQuizOption?.opt
+                            : (teamsData?.[currentTeamId]?.answers?.[`r${gameState.currentRound}_q${currentQIdx}`]?.answer || answerText || null))
+                        : (answerText || null);
 
-                    {!user.isAdmin && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {currentQuestion.options?.map((opt: string, idx: number) => {
-                          const isSelected = answerText === opt;
-                          return (
-                            <button
-                              key={idx}
-                              onClick={() => {
-                                if (hasAnswered || user.isAdmin || !isCurrentUserLeader) return;
-                                setAnswerText(opt);
-                                submitAnswer(opt);
-                              }}
-                              disabled={hasAnswered || user.isAdmin || !isCurrentUserLeader}
-                              className={`p-5 rounded-2xl text-left font-medium text-base transition-all border-2 flex items-start gap-3 cursor-pointer ${
-                                hasAnswered && isSelected 
-                                  ? 'bg-purple-600/30 border-purple-400 text-purple-200' 
-                                  : !isCurrentUserLeader
-                                  ? 'bg-white/5 border-white/5 text-gray-400 opacity-60 cursor-not-allowed'
-                                  : 'bg-white/5 border-white/10 hover:bg-white/10 text-gray-200 active:scale-95'
-                              }`}
-                            >
-                              <div className="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center font-mono text-xs shrink-0">{idx + 1}</div>
-                              <span>{opt}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                      return (
+                        <>
+                          {!user.isAdmin && !isCurrentUserLeader && (
+                            <div className="p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-2 mb-2">
+                              <p className="text-sm font-bold text-purple-200">
+                                👑 Вариант ответа выбирает капитан команды: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
+                              </p>
+                              {captainQuizPick ? (
+                                <div className="p-2.5 bg-emerald-950/70 border border-emerald-500/50 rounded-xl max-w-md mx-auto shadow-md">
+                                  <span className="text-xs text-emerald-400 font-black uppercase flex items-center justify-center gap-1.5">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                    Капитан выбрал вариант:
+                                  </span>
+                                  <span className="text-sm font-black text-white mt-0.5 block">
+                                    «{captainQuizPick}»
+                                  </span>
+                                </div>
+                              ) : (
+                                <p className="text-xs text-gray-400">
+                                  Совещайтесь в голосовом чате — ответ кликает только капитан!
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {!user.isAdmin && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {currentQuestion.options?.map((opt: string, idx: number) => {
+                                const isCaptainChoice = captainQuizPick === opt;
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={() => {
+                                      if (hasAnswered || user.isAdmin || !isCurrentUserLeader) return;
+                                      setAnswerText(opt);
+                                      if (currentTeamId !== null) {
+                                        restPatch(`teams/${currentTeamId}`, {
+                                          selectedQuizOption: {
+                                            opt,
+                                            round: gameState.currentRound,
+                                            question: currentQIdx,
+                                            timestamp: Date.now()
+                                          }
+                                        }).catch(console.error);
+                                        setTeamsData(prev => ({
+                                          ...prev,
+                                          [currentTeamId]: {
+                                            ...(prev[currentTeamId] || {}),
+                                            selectedQuizOption: {
+                                              opt,
+                                              round: gameState.currentRound,
+                                              question: currentQIdx,
+                                              timestamp: Date.now()
+                                            }
+                                          }
+                                        }));
+                                      }
+                                      submitAnswer(opt);
+                                    }}
+                                    disabled={hasAnswered || user.isAdmin || !isCurrentUserLeader}
+                                    className={`p-5 rounded-2xl text-left font-medium text-base transition-all border-2 flex items-start gap-3 cursor-pointer ${
+                                      isCaptainChoice
+                                        ? 'bg-purple-600/40 border-purple-400 text-purple-100 shadow-[0_0_25px_rgba(168,85,247,0.4)] scale-[1.01]' 
+                                        : !isCurrentUserLeader
+                                        ? 'bg-white/5 border-white/5 text-gray-400 opacity-60 cursor-not-allowed'
+                                        : 'bg-white/5 border-white/10 hover:bg-white/10 text-gray-200 active:scale-95'
+                                    }`}
+                                  >
+                                    <div className={`w-6 h-6 rounded-full border flex items-center justify-center font-mono text-xs shrink-0 ${
+                                      isCaptainChoice ? 'bg-purple-500 border-purple-300 text-white font-black' : 'border-white/20'
+                                    }`}>
+                                      {idx + 1}
+                                    </div>
+                                    <div className="flex-1">
+                                      <span>{opt}</span>
+                                      {isCaptainChoice && (
+                                        <div className="mt-1 flex items-center gap-1 text-[11px] font-black text-amber-300">
+                                          <span>👑</span>
+                                          <span>Выбор капитана команды</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
 
                     {user.isAdmin && (
                       <div className="space-y-4">
@@ -2264,13 +2480,25 @@ export default function App() {
                     <AudioPlayer src={getAssetPath(currentQuestion.audio || "")} isMuted={isMuted} volume={volume} />
 
                     {!user.isAdmin && !isCurrentUserLeader && (
-                      <div className="p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-1 mb-2">
+                      <div className="p-4 bg-purple-950/50 border border-purple-500/30 rounded-2xl text-center space-y-2 mb-2">
                         <p className="text-sm font-bold text-purple-200">
                           👑 Ответ на звук отправляет капитан команды: <strong className="text-white underline">{currentTeamLeaderName || "Не назначен"}</strong>
                         </p>
-                        <p className="text-xs text-gray-400">
-                          Совещайтесь в голосовом чате — ответ отправляет только капитан!
-                        </p>
+                        {hasAnswered && answerText ? (
+                          <div className="p-2.5 bg-emerald-950/70 border border-emerald-500/50 rounded-xl max-w-md mx-auto shadow-md">
+                            <span className="text-xs text-emerald-400 font-black uppercase flex items-center justify-center gap-1.5">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                              Капитан отправил ответ:
+                            </span>
+                            <span className="text-sm font-black text-white mt-0.5 block">
+                              «{answerText}»
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400">
+                            Совещайтесь в голосовом чате — ответ отправляет только капитан!
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -2567,9 +2795,18 @@ export default function App() {
                     <div className="flex items-center gap-4">
                       {/* Avatar with click-to-upload */}
                       <div
-                        onClick={() => fileInputLobbyRef.current?.click()}
-                        className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-purple-400 bg-black/60 shrink-0 flex items-center justify-center shadow-xl relative group cursor-pointer transition-all hover:scale-105 hover:border-purple-300"
-                        title="Нажмите, чтобы загрузить аватарку команды с вашего ПК"
+                        onClick={() => {
+                          if (!isCurrentUserLeader) {
+                            setLobbyStatusNotice("🔒 Только капитан может менять аватарку команды!");
+                            setTimeout(() => setLobbyStatusNotice(""), 3500);
+                            return;
+                          }
+                          fileInputLobbyRef.current?.click();
+                        }}
+                        className={`w-20 h-20 rounded-2xl overflow-hidden border-2 bg-black/60 shrink-0 flex items-center justify-center shadow-xl relative group transition-all ${
+                          isCurrentUserLeader ? "border-purple-400 cursor-pointer hover:scale-105 hover:border-purple-300" : "border-gray-600"
+                        }`}
+                        title={isCurrentUserLeader ? "Нажмите, чтобы загрузить аватарку команды с вашего ПК" : "Только капитан может менять аватарку"}
                       >
                         {currentTeamInfo?.avatar ? (
                           <img
@@ -2583,10 +2820,12 @@ export default function App() {
                             <span className="text-[10px] font-black">#{currentTeamId + 1}</span>
                           </div>
                         )}
-                        <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity text-[10px] font-bold">
-                          <Upload className="w-5 h-5 mb-0.5" />
-                          <span>С ПК</span>
-                        </div>
+                        {isCurrentUserLeader && (
+                          <div className="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white transition-opacity text-[10px] font-bold">
+                            <Upload className="w-5 h-5 mb-0.5" />
+                            <span>С ПК</span>
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -2603,14 +2842,21 @@ export default function App() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => fileInputLobbyRef.current?.click()}
-                        disabled={isUploadingLobbyAvatar}
-                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-xs uppercase px-4 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-purple-900/40 active:scale-95 transition-all cursor-pointer"
-                      >
-                        <Upload className="w-4 h-4" />
-                        <span>{isUploadingLobbyAvatar ? "Загрузка..." : currentTeamInfo?.avatar ? "Сменить аватарку" : "Загрузить аватарку с ПК"}</span>
-                      </button>
+                      {isCurrentUserLeader ? (
+                        <button
+                          onClick={() => fileInputLobbyRef.current?.click()}
+                          disabled={isUploadingLobbyAvatar}
+                          className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-black text-xs uppercase px-4 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-purple-900/40 active:scale-95 transition-all cursor-pointer"
+                        >
+                          <Upload className="w-4 h-4" />
+                          <span>{isUploadingLobbyAvatar ? "Загрузка..." : currentTeamInfo?.avatar ? "Сменить аватарку" : "Загрузить аватарку с ПК"}</span>
+                        </button>
+                      ) : (
+                        <div className="bg-white/5 border border-white/10 px-4 py-2.5 rounded-2xl text-xs text-amber-300 font-bold flex items-center gap-1.5">
+                          <Crown className="w-4 h-4 text-amber-400" />
+                          <span>Только капитан может менять аватарку</span>
+                        </div>
+                      )}
                       <button
                         onClick={() => setIsTeamSetupOpen(true)}
                         className="bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase px-4 py-3 rounded-2xl border border-white/10 flex items-center gap-2 transition-all cursor-pointer"
@@ -2766,16 +3012,22 @@ export default function App() {
                     <Trophy className="w-4 h-4 text-amber-400" />
                     Команды викторины (аватарки, капитаны и состав):
                   </h3>
-                  <button
-                    onClick={() => {
-                      if (user?.isAdmin) toggleLeaderboard();
-                      else setIsPlayerLeaderboardOpen(true);
-                    }}
-                    className="text-xs font-bold text-amber-300 hover:text-white flex items-center gap-1 underline cursor-pointer"
-                  >
-                    <Trophy className="w-3.5 h-3.5" />
-                    <span>Открыть полную таблицу счёта</span>
-                  </button>
+                  {(user?.isAdmin || !!gameState?.showLeaderboard) ? (
+                    <button
+                      onClick={() => {
+                        if (user?.isAdmin) toggleLeaderboard();
+                        else setIsPlayerLeaderboardOpen(true);
+                      }}
+                      className="text-xs font-bold text-amber-300 hover:text-white flex items-center gap-1 underline cursor-pointer"
+                    >
+                      <Trophy className="w-3.5 h-3.5" />
+                      <span>Открыть полную таблицу счёта</span>
+                    </button>
+                  ) : (
+                    <span className="text-xs text-gray-400 italic flex items-center gap-1">
+                      <span>🔒 Счёт команд скрыт ведущим</span>
+                    </span>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -2819,7 +3071,7 @@ export default function App() {
                                 Команда #{t + 1}
                               </span>
                               <span className="text-base font-black text-purple-300 font-mono">
-                                {tScore}б.
+                                {user?.isAdmin || gameState?.showLeaderboard ? `${tScore}б.` : '❓'}
                               </span>
                             </div>
                             <span className="text-[10px] text-gray-400 block font-mono">
@@ -3004,8 +3256,8 @@ export default function App() {
                     const allRoundsAnswers = p.roundAnswers || {};
                     return Object.entries(allRoundsAnswers).flatMap(([rIdxStr, rAnswers]: [string, any]) => {
                       const rIdx = parseInt(rIdxStr);
-                      // ИСКЛЮЧАЕМ 1 РАУНД и 6 РАУНД (У НИХ СВОЯ ПАНЕЛЬ)
-                      if (rIdx === 1 || rIdx === 5) return [];
+                      // ИСКЛЮЧАЕМ ТОЛЬКО 1 РАУНД (У НЕГО СВОЯ ПАНЕЛЬ С ДЕТАЛЬНОЙ ПРОВЕРКОЙ ГЕРОЕВ)
+                      if (rIdx === 1) return [];
                       if (!rAnswers || typeof rAnswers !== 'object') return [];
                       return Object.entries(rAnswers)
                         .filter(([_, ans]: [any, any]) => ans && ans.answered && !ans.checked)
@@ -3103,7 +3355,7 @@ export default function App() {
                   })}
                   {Object.values(players).every((p: any) => 
                     !p.roundAnswers || Object.values(p.roundAnswers).every((rAns: any, rI: any) => 
-                      rI === 1 || rI === 5 || !rAns || Object.values(rAns).every((a: any) => a.checked)
+                      rI === 1 || !rAns || Object.values(rAns).every((a: any) => a.checked)
                     )
                   ) && (
                     <p className="text-center text-gray-500 py-4 text-xs italic">Нет непроверенных ответов</p>
