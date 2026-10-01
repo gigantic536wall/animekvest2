@@ -131,7 +131,7 @@ export default function AkinatorRoundView({
   };
 
   const handleAskQuestion = async (customQ?: string) => {
-    if (isLeader === false) return;
+    if (!isLeader) return;
     const qText = (customQ || questionInput).trim();
     if (!qText || isAsking) return;
     if (!currentTeamData?.animeTitle) {
@@ -180,7 +180,7 @@ export default function AkinatorRoundView({
   };
 
   const handleMakeGuess = async () => {
-    if (isLeader === false) return;
+    if (!isLeader) return;
     const gText = guessInput.trim();
     if (!gText || isGuessing || !currentTeamData?.animeTitle) return;
 
@@ -521,7 +521,7 @@ export default function AkinatorRoundView({
         )}
 
         {/* Question Input Form */}
-        {!currentTeamData.guessed && isLeader === false && (
+        {!currentTeamData.guessed && !isLeader && (
           <div className="p-4 bg-purple-950/40 border border-purple-500/30 rounded-2xl text-center space-y-1">
             <p className="text-sm font-bold text-purple-200">
               👑 Вопросы и догадки Акинатору отправляет капитан вашей команды: <strong className="text-white underline">{leaderNickname || "Не назначен"}</strong>
@@ -532,7 +532,7 @@ export default function AkinatorRoundView({
           </div>
         )}
 
-        {!currentTeamData.guessed && isLeader !== false && (
+        {!currentTeamData.guessed && Boolean(isLeader) && (
           <div className="pt-2 space-y-3">
             <div className="flex gap-3">
               <div className="relative flex-1">
