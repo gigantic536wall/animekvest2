@@ -30,6 +30,7 @@ export default function ThreeFactsRoundView({
   leaderNickname,
 }: ThreeFactsRoundViewProps) {
   const currentQIdx = gameState.currentQuestion ?? 0;
+  const roundIdx = gameState.currentRound ?? 5;
   const questionData: ThreeFactsQuestion = ROUND5_QUESTIONS[currentQIdx] || ROUND5_QUESTIONS[0];
   
   // factsRevealed: 1 (5 б.), 2 (4 б.), 3 (3 б.)
@@ -39,9 +40,15 @@ export default function ThreeFactsRoundView({
   const [answerInput, setAnswerInput] = useState("");
   const [hasSubmitted, setHasSubmitted] = useState(false);
   const [submittedPoints, setSubmittedPoints] = useState<number | null>(null);
+  const [adminTabQ, setAdminTabQ] = useState<number>(currentQIdx);
+
+  // Sync adminTabQ with live currentQIdx
+  useEffect(() => {
+    setAdminTabQ(currentQIdx);
+  }, [currentQIdx]);
 
   const storageKey = `q${currentQIdx}`;
-  const answerStoragePath = `players/${user?.id}/roundAnswers/${gameState.currentRound || 4}/${storageKey}`;
+  const answerStoragePath = `players/${user?.id}/roundAnswers/${roundIdx}/${storageKey}`;
 
   // СБРОС ТОЛЬКО ПРИ СМЕНЕ ВОПРОСА (больше не стирает текст во время ввода!)
   const prevQIdxRef = useRef<number>(currentQIdx);
@@ -56,13 +63,21 @@ export default function ThreeFactsRoundView({
 
   // Проверка: отправил ли игрок уже ответ (не перезаписывает ввод, если игрок еще пишет)
   useEffect(() => {
-    const existing = players?.[user?.id]?.roundAnswers?.[gameState.currentRound || 4]?.[storageKey];
+    const existing = players?.[user?.id]?.roundAnswers?.[roundIdx]?.[storageKey];
     if (existing?.answered) {
       setHasSubmitted(true);
       setAnswerInput(existing.answer || "");
       setSubmittedPoints(existing.potentialPoints || 5);
     }
-  }, [players, user?.id, gameState.currentRound, storageKey]);
+  }, [players, user?.id, roundIdx, storageKey]);
+
+  // Проверка ответа команды для участников (чтобы тиммейты видели ответ капитана)
+  const teamId = user?.team;
+  const teamMemberWhoAnswered: any = teamId !== undefined && teamId >= 0
+    ? Object.values(players).find((p: any) => p.team === teamId && p.roundAnswers?.[roundIdx]?.[storageKey]?.answered)
+    : null;
+  const teamCaptainAnswerObj = teamMemberWhoAnswered?.roundAnswers?.[roundIdx]?.[storageKey];
+  const captainSubmittedAnswer = hasSubmitted ? answerInput : (teamCaptainAnswerObj?.answer || "");
 
   // Открытие следующего факта ведущим (5 ➔ 4 ➔ 3)
   const handleRevealNextFact = async () => {
@@ -72,12 +87,12 @@ export default function ThreeFactsRoundView({
   };
 
   // Оценка ответа ведущим
-  const handleMarkAnswer = async (playerId: string, isCorrect: boolean, basePoints: number) => {
+  const handleMarkAnswer = async (playerId: string, isCorrect: boolean, basePoints: number, targetQKey: string = storageKey) => {
     if (!user.isAdmin) return;
-    const scoreKey = `${gameState.currentRound || 4}_${storageKey}`;
+    const scoreKey = `${roundIdx}_${targetQKey}`;
     const pts = isCorrect ? basePoints : 0;
     await restPut(`players/${playerId}/scores/${scoreKey}`, pts);
-    await restPatch(`players/${playerId}/roundAnswers/${gameState.currentRound || 4}/${storageKey}`, {
+    await restPatch(`players/${playerId}/roundAnswers/${roundIdx}/${targetQKey}`, {
       checked: true,
       pointsAwarded: pts,
     });
@@ -86,7 +101,7 @@ export default function ThreeFactsRoundView({
   // Отправка ответа игроком
   const handlePlayerSubmit = async () => {
     const text = answerInput.trim();
-    if (!text || hasSubmitted || user.isAdmin || isLeader === false) return;
+    if (!text || hasSubmitted || user.isAdmin || !isLeader) return;
 
     const clean = text.toLowerCase();
     const isAutoMatch = questionData.acceptableAnswers.some((acc) => clean.includes(acc.toLowerCase()));
@@ -98,11 +113,29 @@ export default function ThreeFactsRoundView({
       potentialPoints: currentPoints,
       factsRevealedAtAnswer: factsRevealed,
       isAutoMatch,
+      checked: false, // Чтобы ответ попадал в нижнюю очередь проверки у ведущего!
+      pointsAwarded: 0
     };
 
     await restPut(answerStoragePath, payload);
     setHasSubmitted(true);
     setSubmittedPoints(currentPoints);
+
+    if (teamId !== undefined && teamId >= 0) {
+      const teamAns = {
+        round: roundIdx,
+        question: currentQIdx,
+        answer: text,
+        potentialPoints: currentPoints,
+        factsRevealedAtAnswer: factsRevealed,
+        timestamp: Date.now(),
+        by: user.nickname
+      };
+      restPatch(`teams/${teamId}`, {
+        lastAnswer: teamAns,
+        [`answers/r${roundIdx}_q${currentQIdx}`]: teamAns
+      }).catch(console.error);
+    }
   };
 
   const isPaused = !!globalPause?.active || !!gameState?.globalPause?.active;
@@ -220,18 +253,30 @@ export default function ThreeFactsRoundView({
       </div>
 
       {/* Поле ввода для игроков */}
-      {!user.isAdmin && isLeader === false && (
-        <div className="bg-purple-950/40 border border-purple-500/30 rounded-3xl p-5 text-center shadow-xl space-y-1.5">
+      {!user.isAdmin && !isLeader && (
+        <div className="bg-purple-950/40 border border-purple-500/30 rounded-3xl p-5 text-center shadow-xl space-y-3">
           <p className="text-sm font-bold text-purple-200">
             👑 Ответ на раунд отправляет капитан вашей команды: <strong className="text-white underline">{leaderNickname || "Не назначен"}</strong>
           </p>
-          <p className="text-xs text-gray-400">
-            Совещайтесь в голосовом чате — ответ в игру вводит только капитан!
-          </p>
+          {captainSubmittedAnswer ? (
+            <div className="p-3.5 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl max-w-lg mx-auto shadow-lg space-y-1">
+              <span className="text-xs text-emerald-400 font-black uppercase tracking-wider flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                Капитан отправил ответ на проверку:
+              </span>
+              <span className="text-lg font-black text-white bg-black/40 px-4 py-1.5 rounded-xl border border-emerald-500/30 inline-block">
+                «{captainSubmittedAnswer}»
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">
+              Совещайтесь в голосовом чате — ответ в игру вводит только капитан!
+            </p>
+          )}
         </div>
       )}
 
-      {!user.isAdmin && isLeader !== false && (
+      {!user.isAdmin && Boolean(isLeader) && (
         <div className="bg-slate-900/90 border-2 border-purple-500/30 rounded-3xl p-6 shadow-2xl space-y-4 backdrop-blur-xl">
           <div className="flex items-center justify-between">
             <label className="text-xs font-black uppercase tracking-wider text-purple-300">
@@ -331,20 +376,53 @@ export default function ThreeFactsRoundView({
             )}
           </div>
 
+          {/* Вкладки вопросов для ведущего: чтобы оценивать любые вопросы, даже если время вышло */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-white/10">
+            <span className="text-[11px] font-black uppercase text-purple-400 mr-2 shrink-0">
+              Вопрос для проверки:
+            </span>
+            {ROUND5_QUESTIONS.map((_, qIdx) => {
+              const qKey = `q${qIdx}`;
+              const unverifiedCount = Object.values(players).filter(
+                (p: any) => p.roundAnswers?.[roundIdx]?.[qKey]?.answered && !p.roundAnswers?.[roundIdx]?.[qKey]?.checked
+              ).length;
+
+              return (
+                <button
+                  key={qIdx}
+                  onClick={() => setAdminTabQ(qIdx)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                    adminTabQ === qIdx
+                      ? "bg-purple-600 text-white shadow-md shadow-purple-900/50"
+                      : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/5"
+                  }`}
+                >
+                  <span>В{qIdx + 1} {qIdx === currentQIdx ? "🔴 (Сейчас)" : ""}</span>
+                  {unverifiedCount > 0 && (
+                    <span className="bg-amber-400 text-black text-[10px] font-black px-1.5 py-0.2 rounded-full">
+                      {unverifiedCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs">
               <span className="font-black text-purple-300 uppercase tracking-wider">
-                Ответы команд на Вопрос {currentQIdx + 1}:
+                Ответы команд на Вопрос {adminTabQ + 1} ({ROUND5_QUESTIONS[adminTabQ]?.animeTitle}):
               </span>
               <span className="text-gray-400">
-                Всего ответов: {Object.values(players).filter((p: any) => p.roundAnswers?.[gameState.currentRound || 4]?.[storageKey]?.answered).length}
+                Всего ответов: {Object.values(players).filter((p: any) => p.roundAnswers?.[roundIdx]?.[`q${adminTabQ}`]?.answered).length}
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto pr-1 custom-scrollbar">
               {Object.entries(players).map(([pId, pData]: [string, any]) => {
-                const ans = pData?.roundAnswers?.[gameState.currentRound || 4]?.[storageKey];
-                const scoreKey = `${gameState.currentRound || 4}_${storageKey}`;
+                const targetQKey = `q${adminTabQ}`;
+                const ans = pData?.roundAnswers?.[roundIdx]?.[targetQKey];
+                const scoreKey = `${roundIdx}_${targetQKey}`;
                 const awarded = pData?.scores?.[scoreKey] || ans?.pointsAwarded || 0;
                 const ptsForThis = ans?.potentialPoints || 5;
 
@@ -386,7 +464,7 @@ export default function ThreeFactsRoundView({
 
                     <div className="flex items-center gap-1 shrink-0">
                       <button
-                        onClick={() => handleMarkAnswer(pId, true, ptsForThis)}
+                        onClick={() => handleMarkAnswer(pId, true, ptsForThis, targetQKey)}
                         className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
                           awarded > 0
                             ? "bg-emerald-600 text-white"
@@ -396,7 +474,7 @@ export default function ThreeFactsRoundView({
                         +{ptsForThis}
                       </button>
                       <button
-                        onClick={() => handleMarkAnswer(pId, false, 0)}
+                        onClick={() => handleMarkAnswer(pId, false, 0, targetQKey)}
                         className={`px-2.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
                           awarded === 0 && ans?.checked
                             ? "bg-red-600 text-white"
