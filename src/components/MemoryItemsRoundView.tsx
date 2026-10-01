@@ -62,7 +62,8 @@ export default function MemoryItemsRoundView({
   }, [currentStageIdx]);
 
   // Storage key for user answer in Firebase:
-  const answerStoragePath = `players/${user.id}/roundAnswers/${gameState.currentRound || 3}/stage${currentStageIdx}_q${currentSubQIdx}`;
+  const roundIdx = gameState.currentRound ?? 4;
+  const answerStoragePath = `players/${user.id}/roundAnswers/${roundIdx}/stage${currentStageIdx}_q${currentSubQIdx}`;
   const scoreKey = `round4_stage${currentStageIdx}_q${currentSubQIdx}`;
 
   // Unique key identifying the current question
@@ -70,7 +71,7 @@ export default function MemoryItemsRoundView({
 
   // Check if player has already submitted for this specific question
   useEffect(() => {
-    const existingAns = players[user.id]?.roundAnswers?.[gameState.currentRound || 3]?.[`stage${currentStageIdx}_q${currentSubQIdx}`];
+    const existingAns = players[user.id]?.roundAnswers?.[roundIdx]?.[`stage${currentStageIdx}_q${currentSubQIdx}`];
     if (existingAns?.answered) {
       setHasSubmitted(true);
       setAnswerInput(existingAns.answer || "");
@@ -84,8 +85,16 @@ export default function MemoryItemsRoundView({
   }, [
     currentQKey, 
     user.id, 
-    players?.[user.id]?.roundAnswers?.[gameState.currentRound || 3]?.[`stage${currentStageIdx}_q${currentSubQIdx}`]?.answered
+    players?.[user.id]?.roundAnswers?.[roundIdx]?.[`stage${currentStageIdx}_q${currentSubQIdx}`]?.answered
   ]);
+
+  // Проверка ответа капитана для всей команды
+  const teamId = user?.team;
+  const teamMemberWhoAnswered: any = teamId !== undefined && teamId >= 0
+    ? Object.values(players).find((p: any) => p.team === teamId && p.roundAnswers?.[roundIdx]?.[`stage${currentStageIdx}_q${currentSubQIdx}`]?.answered)
+    : null;
+  const teamCaptainAnswerObj = teamMemberWhoAnswered?.roundAnswers?.[roundIdx]?.[`stage${currentStageIdx}_q${currentSubQIdx}`];
+  const captainSubmittedAnswer = hasSubmitted ? answerInput : (teamCaptainAnswerObj?.answer || "");
 
   // Timer countdown hook with pause support
   useEffect(() => {
@@ -304,7 +313,7 @@ export default function MemoryItemsRoundView({
 
   const handlePlayerSubmit = async () => {
     const text = answerInput.trim();
-    if (!text || hasSubmitted || isSubmitting || user.isAdmin || isLeader === false) return;
+    if (!text || hasSubmitted || isSubmitting || user.isAdmin || !isLeader) return;
 
     setIsSubmitting(true);
     try {
@@ -317,10 +326,27 @@ export default function MemoryItemsRoundView({
         timestamp: Date.now(),
         potentialPoints: currentQuestion.points,
         autoCorrect: isAutoCorrect,
+        checked: false,
       };
 
       await restPut(answerStoragePath, payload);
       setHasSubmitted(true);
+
+      if (teamId !== undefined && teamId >= 0) {
+        const teamAns = {
+          round: roundIdx,
+          stage: currentStageIdx,
+          question: currentSubQIdx,
+          answer: text,
+          potentialPoints: currentQuestion.points,
+          timestamp: Date.now(),
+          by: user.nickname
+        };
+        restPatch(`teams/${teamId}`, {
+          lastAnswer: teamAns,
+          [`answers/r${roundIdx}_stage${currentStageIdx}_q${currentSubQIdx}`]: teamAns
+        }).catch(console.error);
+      }
     } catch (err) {
       console.error("Submit error:", err);
     } finally {
@@ -525,18 +551,30 @@ export default function MemoryItemsRoundView({
             )}
 
             {/* Answer Input Section for Players */}
-            {!user.isAdmin && isLeader === false && (
-              <div className="p-4 bg-purple-950/40 border border-purple-500/30 rounded-2xl text-center space-y-1">
+            {!user.isAdmin && !isLeader && (
+              <div className="p-4 bg-purple-950/40 border border-purple-500/30 rounded-2xl text-center space-y-2">
                 <p className="text-sm font-bold text-purple-200">
                   👑 Ответ по памяти отправляет капитан вашей команды: <strong className="text-white underline">{leaderNickname || "Не назначен"}</strong>
                 </p>
-                <p className="text-xs text-gray-400">
-                  Совещайтесь в голосовом чате — ответ в игру вводит капитан!
-                </p>
+                {captainSubmittedAnswer ? (
+                  <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl max-w-lg mx-auto shadow-lg space-y-1">
+                    <span className="text-xs text-emerald-400 font-black uppercase tracking-wider flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      Капитан отправил ответ на проверку:
+                    </span>
+                    <span className="text-base font-black text-white bg-black/40 px-4 py-1.5 rounded-xl border border-emerald-500/30 inline-block">
+                      «{captainSubmittedAnswer}»
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-400">
+                    Совещайтесь в голосовом чате — ответ в игру вводит капитан!
+                  </p>
+                )}
               </div>
             )}
 
-            {!user.isAdmin && isLeader !== false && (
+            {!user.isAdmin && Boolean(isLeader) && (
               <div className="space-y-4 pt-2 border-t border-white/10">
                 <div className="space-y-2">
                   <label className="text-xs font-black uppercase tracking-wider text-purple-300 flex items-center justify-between">
