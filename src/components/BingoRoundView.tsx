@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Trophy, CheckCircle2, XCircle, AlertTriangle, Trash2, 
   Sparkles, Eye, Send, RotateCcw, Award, Layers, Flame,
-  SkipForward, Clock, History, AlertCircle, BookOpen
+  SkipForward, Clock, History, AlertCircle, BookOpen, Users,
+  Check, ChevronRight
 } from "lucide-react";
 import { 
   BingoCell, 
@@ -24,6 +25,7 @@ interface BingoRoundViewProps {
 }
 
 const TOTAL_TEAMS = 10;
+const PARTIES_COUNT = 3;
 
 export default function BingoRoundView({
   user,
@@ -34,14 +36,24 @@ export default function BingoRoundView({
   isLeader,
   leaderNickname,
 }: BingoRoundViewProps) {
+  // Current active party (0, 1, or 2)
+  const currentParty: number = Math.max(0, Math.min(PARTIES_COUNT - 1, gameState?.currentQuestion ?? 0));
+  
   const [selectedAnime, setSelectedAnime] = useState<string | null>(null);
-  const [adminSelectedTeam, setAdminSelectedTeam] = useState<number>(0);
-  const [adminSelectedErrorCells, setAdminSelectedErrorCells] = useState<number[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusNotice, setStatusNotice] = useState<string>("");
   const [dockTab, setDockTab] = useState<"current" | "all">("current");
+  
+  // Teammate tab view for regular players
+  const [viewedPlayerId, setViewedPlayerId] = useState<string>(user?.id || "");
+  
+  // Admin review controls
+  const [adminSelectedPlayerId, setAdminSelectedPlayerId] = useState<string | null>(null);
+  const [adminSelectedTeam, setAdminSelectedTeam] = useState<number>(0);
+  const [adminSelectedErrorCells, setAdminSelectedErrorCells] = useState<number[]>([]);
+  const [showScoreSummary, setShowScoreSummary] = useState<boolean>(false);
+  
   const [showRulesModal, setShowRulesModal] = useState<boolean>(() => {
-    // Auto-show rules when round 8 starts unless closed in current browser session
     const hasSeen = sessionStorage.getItem("bingo_rules_seen_r8");
     return !hasSeen;
   });
@@ -52,66 +64,100 @@ export default function BingoRoundView({
   };
 
   const bingoState = gameState?.bingo || {};
-  const pool32: string[] = bingoState.pool32 || [];
-  const revealedCount: number = bingoState.revealedCount || 0;
+  // Party-specific state (supports parties[currentParty] or root bingoState fallback for party 0)
+  const partyState = bingoState.parties?.[currentParty] || (currentParty === 0 && bingoState.pool32 ? bingoState : {}) || {};
+  const pool32: string[] = partyState.pool32 || [];
+  const revealedCount: number = partyState.revealedCount || 0;
   const revealedAnime = pool32.slice(0, revealedCount);
-  const lastRevealed: string[] = bingoState.lastRevealed || [];
+  const lastRevealed: string[] = partyState.lastRevealed || [];
 
-  // The active pair that can be placed RIGHT NOW (only current drop of 2 anime)
+  // Current active drop of 2 anime
   const currentPair: string[] = (lastRevealed && lastRevealed.length > 0)
     ? lastRevealed
     : pool32.slice(Math.max(0, revealedCount - 2), revealedCount);
 
-  // If selectedAnime is no longer in currentPair, clear it
+  // Clear selected anime if it's no longer in current drop
   useEffect(() => {
     if (selectedAnime && !currentPair.includes(selectedAnime)) {
       setSelectedAnime(null);
     }
   }, [currentPair, selectedAnime]);
 
-  // Determine active team view
-  const currentTeamIdx = user.isAdmin ? adminSelectedTeam : (user.team ?? 0);
-  const teamsData = bingoState.teams || {};
-  const currentTeamData = teamsData[currentTeamIdx] || null;
-  const card: BingoCell[] = currentTeamData?.card || [];
-
-  // Auto-initialize Bingo round if Admin is present and bingo state is missing
+  // Sync viewedPlayerId when user changes
   useEffect(() => {
-    if (user?.isAdmin && (!bingoState.pool32 || bingoState.pool32.length === 0)) {
-      initializeBingoGame();
+    if (user?.id && !user.isAdmin) {
+      setViewedPlayerId(user.id);
     }
-  }, [user?.isAdmin, bingoState?.pool32]);
+  }, [user?.id, user?.isAdmin]);
 
-  const initializeBingoGame = async () => {
+  // Teammates list for regular player
+  const myTeamIdx = user?.team ?? 0;
+  const teamMembers: any[] = !user?.isAdmin && user?.team !== undefined && user?.team >= 0
+    ? Object.values(players || {}).filter((p: any) => p.team === myTeamIdx)
+    : [];
+
+  // Submissions for this party: Record<playerId, submission>
+  const submissions: Record<string, any> = partyState.submissions || {};
+  const partyPlayers: Record<string, any> = partyState.players || {};
+
+  // Auto-initialize Party if Admin is present and party is empty
+  useEffect(() => {
+    if (user?.isAdmin && (!partyState.pool32 || partyState.pool32.length === 0)) {
+      initializeParty(currentParty);
+    }
+  }, [user?.isAdmin, currentParty, partyState.pool32]);
+
+  // Auto-generate player card if missing for current user
+  useEffect(() => {
+    if (!user || user.isAdmin || !user.id || currentParty === undefined) return;
+    
+    const existingPlayerEntry = partyPlayers[user.id];
+    if (!existingPlayerEntry || !existingPlayerEntry.card || existingPlayerEntry.card.length !== 16) {
+      const seed = (user.id.charCodeAt(0) || 1) * 31 + currentParty * 17 + (user.team ?? 0);
+      const newCard = generateTeamBingoCard(seed);
+      restPut(`gameState/bingo/parties/${currentParty}/players/${user.id}`, {
+        card: newCard,
+        submittedForReview: false,
+        submissionType: null,
+        firstLineApproved: false,
+        fullApproved: false,
+        penaltyTotal: 0
+      }).catch(console.error);
+    }
+  }, [user?.id, user?.isAdmin, currentParty, partyPlayers]);
+
+  const initializeParty = async (partyIdx: number) => {
     setIsProcessing(true);
     try {
       const newPool = generateBingoPool32();
-      const initialTeams: Record<string, any> = {};
-      for (let t = 0; t < TOTAL_TEAMS; t++) {
-        initialTeams[t] = {
-          teamIdx: t,
-          card: generateTeamBingoCard(t),
-          submittedForReview: false,
-          submissionType: null,
-          submittedAt: null,
-          firstLineApproved: false,
-          fullApproved: false,
-          penaltyTotal: 0,
-          lastPenaltyNotice: null
-        };
-      }
-
-      await restPatch("gameState/bingo", {
+      await restPatch(`gameState/bingo/parties/${partyIdx}`, {
         pool32: newPool,
         revealedCount: 0,
         lastRevealed: [],
-        teams: initialTeams,
-        roundOver: false
+        roundOver: false,
+        submissions: {},
+        partyName: `Партия ${partyIdx + 1}`
       });
-      setStatusNotice("Бинго инициализировано: 32 тайтла готовы к выдаче!");
+      setStatusNotice(`Партия ${partyIdx + 1} инициализирована: 32 тайтла готовы к выдаче!`);
       setTimeout(() => setStatusNotice(""), 3500);
     } catch (e) {
-      console.error("Failed to initialize bingo:", e);
+      console.error("Failed to initialize party:", e);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Switch party by Admin
+  const handleSwitchParty = async (pIdx: number) => {
+    if (!user.isAdmin || isProcessing) return;
+    setIsProcessing(true);
+    try {
+      await restPatch("gameState", { currentQuestion: pIdx });
+      setSelectedAnime(null);
+      setAdminSelectedPlayerId(null);
+      setAdminSelectedErrorCells([]);
+    } catch (e) {
+      console.error("Failed to switch party:", e);
     } finally {
       setIsProcessing(false);
     }
@@ -119,12 +165,12 @@ export default function BingoRoundView({
 
   // Host: reveal next 2 anime
   const handleRevealNext2 = async () => {
-    if (!user.isAdmin || revealedCount >= pool32.length) return;
+    if (!user.isAdmin || revealedCount >= pool32.length || isProcessing) return;
     setIsProcessing(true);
     try {
       const nextCount = Math.min(revealedCount + 2, pool32.length);
       const newlyRevealed = pool32.slice(revealedCount, nextCount);
-      await restPatch("gameState/bingo", {
+      await restPatch(`gameState/bingo/parties/${currentParty}`, {
         revealedCount: nextCount,
         lastRevealed: newlyRevealed
       });
@@ -136,25 +182,36 @@ export default function BingoRoundView({
     }
   };
 
-  // Set of anime titles placed in this team's card
+  // Active target card to display
+  // For Admin: currently selected submitted player or first in team
+  // For Player: either my card or viewed teammate's card
+  const activeDisplayPlayerId = user.isAdmin
+    ? (adminSelectedPlayerId || Object.keys(submissions)[0] || user.id)
+    : viewedPlayerId;
+
+  const activePlayerData = partyPlayers[activeDisplayPlayerId] || {};
+  const activeCard: BingoCell[] = activePlayerData.card || [];
+  const isViewingSelf = !user.isAdmin && activeDisplayPlayerId === user.id;
+
+  // Set of anime titles placed in active player's card
   const usedAnimeTitles = new Set(
-    card.map(c => c?.placedAnime).filter(Boolean) as string[]
+    activeCard.map(c => c?.placedAnime).filter(Boolean) as string[]
   );
 
   // Map of placed title to cell index
   const placedAnimeCellMap = new Map<string, number>();
-  card.forEach((c, idx) => {
+  activeCard.forEach((c, idx) => {
     if (c?.placedAnime) placedAnimeCellMap.set(c.placedAnime, idx);
   });
 
   // Evaluate card status
-  const cardEvaluation = evaluateBingoCard(card);
+  const cardEvaluation = evaluateBingoCard(activeCard);
 
-  // Placing anime into an empty cell
+  // Placing anime into an empty cell on my card
   const handleCellClick = async (cellIndex: number) => {
     if (user.isAdmin) {
-      // In Admin view, clicking a cell toggles it in the multi-error selection
-      const cell = card[cellIndex];
+      // In Admin view, clicking a cell toggles it in error selection
+      const cell = activeCard[cellIndex];
       if (!cell?.placedAnime) {
         setStatusNotice("В этой ячейке нет аниме — ошибку можно отметить только в заполненной ячейке!");
         setTimeout(() => setStatusNotice(""), 3000);
@@ -168,19 +225,19 @@ export default function BingoRoundView({
       return;
     }
 
-    if (isLeader === false) {
-      setStatusNotice(`Только капитан команды (${leaderNickname || "Не назначен"}) может расставлять аниме!`);
+    if (!isViewingSelf) {
+      setStatusNotice("Вы просматриваете карточку сокомандника. Переключитесь на вкладку «Моя карточка», чтобы играть!");
+      setTimeout(() => setStatusNotice(""), 3500);
+      return;
+    }
+
+    if (activePlayerData?.submittedForReview) {
+      setStatusNotice("Ваша карточка сейчас находится на проверке у ведущего!");
       setTimeout(() => setStatusNotice(""), 3000);
       return;
     }
 
-    if (currentTeamData?.submittedForReview) {
-      setStatusNotice("Ваша карточка сейчас находится на проверке у админа!");
-      setTimeout(() => setStatusNotice(""), 3000);
-      return;
-    }
-
-    const cell = card[cellIndex];
+    const cell = activeCard[cellIndex];
     if (cell.placedAnime) {
       setStatusNotice("Эта ячейка уже занята! Нажмите на 🗑️ в ячейке, чтобы освободить её.");
       setTimeout(() => setStatusNotice(""), 3500);
@@ -193,7 +250,6 @@ export default function BingoRoundView({
       return;
     }
 
-    // Only allow placing anime from the CURRENT drop
     if (!currentPair.includes(selectedAnime)) {
       setStatusNotice("Это аниме уже недоступно (сгорело при переходе к следующей паре тайтлов)!");
       setSelectedAnime(null);
@@ -202,69 +258,72 @@ export default function BingoRoundView({
     }
 
     if (usedAnimeTitles.has(selectedAnime)) {
-      setStatusNotice("Это аниме уже поставлено в другую ячейку!");
+      setStatusNotice("Это аниме уже поставлено в другую ячейку вашей карточки!");
       setTimeout(() => setStatusNotice(""), 3000);
       return;
     }
 
     // Place anime into cell
     try {
-      const newCard = [...card];
+      const newCard = [...activeCard];
       newCard[cellIndex] = {
         ...newCard[cellIndex],
         placedAnime: selectedAnime,
         hasError: false
       };
 
-      await restPut(`gameState/bingo/teams/${currentTeamIdx}/card`, newCard);
+      await restPut(`gameState/bingo/parties/${currentParty}/players/${user.id}/card`, newCard);
       setSelectedAnime(null);
     } catch (e) {
       console.error("Error placing anime:", e);
     }
   };
 
-  // Remove anime from a cell (can only delete, not drag/move)
+  // Remove anime from a cell
   const handleDeleteCellAnime = async (e: React.MouseEvent, cellIndex: number) => {
     e.stopPropagation();
-    if (isLeader === false) {
-      setStatusNotice(`Только капитан команды (${leaderNickname || "Не назначен"}) может менять карточку!`);
-      setTimeout(() => setStatusNotice(""), 3000);
-      return;
-    }
-    if (currentTeamData?.submittedForReview && !user.isAdmin) {
-      setStatusNotice("Нельзя менять карточку, пока идет проверка админом!");
+    if (!isViewingSelf || user.isAdmin) return;
+
+    if (activePlayerData?.submittedForReview) {
+      setStatusNotice("Нельзя менять карточку, пока идет проверка ведущим!");
       setTimeout(() => setStatusNotice(""), 3000);
       return;
     }
 
     try {
-      const newCard = [...card];
+      const newCard = [...activeCard];
       newCard[cellIndex] = {
         ...newCard[cellIndex],
         placedAnime: null,
         hasError: false
       };
-      await restPut(`gameState/bingo/teams/${currentTeamIdx}/card`, newCard);
+      await restPut(`gameState/bingo/parties/${currentParty}/players/${user.id}/card`, newCard);
     } catch (e) {
       console.error("Error clearing cell:", e);
     }
   };
 
-  // Team: submit for review
+  // Player: submit for review (Line or Full)
   const handleSubmitForReview = async (type: "line" | "full") => {
-    if (isLeader === false) {
-      setStatusNotice(`Только капитан команды (${leaderNickname || "Не назначен"}) может отправлять бинго на проверку!`);
-      setTimeout(() => setStatusNotice(""), 3000);
-      return;
-    }
-    if (user.isAdmin || currentTeamData?.submittedForReview) return;
+    if (user.isAdmin || activePlayerData?.submittedForReview) return;
     try {
-      await restPatch(`gameState/bingo/teams/${currentTeamIdx}`, {
-        submittedForReview: true,
+      const submissionObj = {
+        playerId: user.id,
+        playerName: user.nickname,
+        teamIdx: user.team ?? 0,
         submissionType: type,
         submittedAt: Date.now(),
-        lastPenaltyNotice: null
+        card: activeCard
+      };
+
+      await restPatch(`gameState/bingo/parties/${currentParty}/players/${user.id}`, {
+        submittedForReview: true,
+        submissionType: type,
+        submittedAt: Date.now()
       });
+
+      await restPut(`gameState/bingo/parties/${currentParty}/submissions/${user.id}`, submissionObj);
+
       setStatusNotice(
         type === "line" 
           ? "🎉 Заявка на Бинго отправлена ведущему! Ожидайте проверки." 
@@ -278,352 +337,334 @@ export default function BingoRoundView({
 
   // Admin: approve review
   const handleAdminApprove = async () => {
-    if (!user.isAdmin || !currentTeamData?.submittedForReview) return;
+    if (!user.isAdmin || !activeDisplayPlayerId) return;
+    const targetSub = submissions[activeDisplayPlayerId];
+    if (!targetSub) {
+      alert("Выберите игрока с активной заявкой на проверку!");
+      return;
+    }
+
     setIsProcessing(true);
-    const teamIdx = adminSelectedTeam;
-    const isFull = currentTeamData.submissionType === "full" || cardEvaluation.allCompleted;
+    const targetPlayerId = activeDisplayPlayerId;
+    const isFull = targetSub.submissionType === "full" || cardEvaluation.allCompleted;
+    const pts = isFull ? 24 : 12;
+    const scoreKey = `round8_p${currentParty}_${targetSub.submissionType || (isFull ? "full" : "line")}`;
 
     try {
-      const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
+      // Award points directly to this player
+      await restPut(`players/${targetPlayerId}/scores/${scoreKey}`, pts);
 
-      if (isFull) {
-        // Full card completed: +24 points bonus, ends the round
-        const scoreKey = "round8_bingo_full";
-        for (const [pId] of teamPlayers) {
-          await restPut(`players/${pId}/scores/${scoreKey}`, 24);
-        }
-        await restPatch(`gameState/bingo/teams/${teamIdx}`, {
-          submittedForReview: false,
-          fullApproved: true,
-          firstLineApproved: true
-        });
-        await restPatch("gameState/bingo", {
-          roundOver: true
-        });
-        alert(`🎉 Команда ${teamIdx + 1} заполнила ВСЕ ячейки (+24 балла)! Раунд Бинго завершен!`);
-      } else {
-        // Line completed: +12 points for first line
-        const scoreKey = "round8_bingo_line";
-        for (const [pId] of teamPlayers) {
-          await restPut(`players/${pId}/scores/${scoreKey}`, 12);
-        }
-        await restPatch(`gameState/bingo/teams/${teamIdx}`, {
-          submittedForReview: false,
-          firstLineApproved: true
-        });
-        alert(`✅ Бинго подтверждено! Команда ${teamIdx + 1} получает +12 баллов.`);
-      }
+      // Update player state
+      await restPatch(`gameState/bingo/parties/${currentParty}/players/${targetPlayerId}`, {
+        submittedForReview: false,
+        fullApproved: isFull ? true : Boolean(activePlayerData.fullApproved),
+        firstLineApproved: true
+      });
+
+      // Remove submission
+      await restPatch(`gameState/bingo/parties/${currentParty}/submissions`, {
+        [targetPlayerId]: null
+      });
+
+      setAdminSelectedPlayerId(null);
+      setAdminSelectedErrorCells([]);
+      setStatusNotice(`✅ Заявка игрока ${targetSub.playerName} одобрена (+${pts} баллов в копилку команды #${targetSub.teamIdx + 1})!`);
+      setTimeout(() => setStatusNotice(""), 4000);
     } catch (e) {
       console.error("Approve error:", e);
     } finally {
       setIsProcessing(false);
-      setAdminSelectedErrorCells([]);
     }
   };
 
   // Admin: reject review with multiple error cells and -3 penalty per cell
   const handleAdminReject = async () => {
-    if (!user.isAdmin || !currentTeamData) return;
-    if (adminSelectedErrorCells.length === 0) {
-      alert("Сначала нажмите на ячейки с ошибочными аниме на карточке выше, чтобы отметить их (можно несколько)!");
+    if (!user.isAdmin || !activeDisplayPlayerId) return;
+    const targetSub = submissions[activeDisplayPlayerId];
+    if (!targetSub) {
+      alert("Выберите игрока с активной заявкой на проверку!");
       return;
     }
 
-    const invalidIndices = adminSelectedErrorCells.filter(idx => card[idx]?.placedAnime);
+    if (adminSelectedErrorCells.length === 0) {
+      alert("Сначала нажмите на ячейки с ошибочными аниме на карточке игрока выше, чтобы отметить их!");
+      return;
+    }
+
+    const invalidIndices = adminSelectedErrorCells.filter(idx => activeCard[idx]?.placedAnime);
     if (invalidIndices.length === 0) {
       alert("В выбранных ячейках нет аниме!");
       return;
     }
 
     setIsProcessing(true);
-    const teamIdx = adminSelectedTeam;
+    const targetPlayerId = activeDisplayPlayerId;
     const count = invalidIndices.length;
     const penalty = count * 3;
 
     try {
-      // 1. Deduct 3 points per invalid cell from each player of the team
-      const teamPlayers = Object.entries(players).filter(([_, p]: [any, any]) => p.team === teamIdx);
-      const penaltyKey = `round8_penalty_${Date.now()}`;
-      for (const [pId] of teamPlayers) {
-        await restPut(`players/${pId}/scores/${penaltyKey}`, -penalty);
-      }
+      // Deduct penalty from this player
+      const penaltyKey = `round8_p${currentParty}_pen_${Date.now()}`;
+      await restPut(`players/${targetPlayerId}/scores/${penaltyKey}`, -penalty);
 
-      // 2. Remove incorrect anime from each selected cell so cells are free for other anime
-      const newCard = [...card];
-      const rejectedItems: string[] = [];
-      for (const idx of invalidIndices) {
-        const wrongCell = newCard[idx];
-        rejectedItems.push(`#${idx + 1} («${wrongCell.criterion}» → «${wrongCell.placedAnime}»)`);
-        newCard[idx] = {
-          ...newCard[idx],
-          placedAnime: null,
-          hasError: false
-        };
-      }
-
-      const penaltyNotice = `❌ Ошибки при проверке (${count} шт.): ${rejectedItems.join(", ")}. С команды списано ${penalty} б. (-3 б. за каждую ошибку). Ошибочные аниме удалены, ячейки снова свободны для заполнения.`;
-
-      // 3. Update team state in Firebase
-      await restPatch(`gameState/bingo/teams/${teamIdx}`, {
-        submittedForReview: false,
-        lastPenaltyNotice: penaltyNotice,
-        penaltyTotal: (currentTeamData.penaltyTotal || 0) + penalty
+      // Mark error on invalid cells
+      const updatedCard = activeCard.map((cell, idx) => {
+        if (invalidIndices.includes(idx)) {
+          return { ...cell, hasError: true };
+        }
+        return cell;
       });
-      await restPut(`gameState/bingo/teams/${teamIdx}/card`, newCard);
 
+      await restPatch(`gameState/bingo/parties/${currentParty}/players/${targetPlayerId}`, {
+        card: updatedCard,
+        submittedForReview: false,
+        penaltyTotal: (activePlayerData.penaltyTotal || 0) + penalty
+      });
+
+      // Remove submission
+      await restPatch(`gameState/bingo/parties/${currentParty}/submissions`, {
+        [targetPlayerId]: null
+      });
+
+      setAdminSelectedPlayerId(null);
       setAdminSelectedErrorCells([]);
-      alert(`Отклонено ${count} ошибочных ячеек. С команды ${teamIdx + 1} списано ${penalty} баллов (-3 за каждую). Карточка возвращена команде.`);
+      setStatusNotice(`❌ Заявка игрока ${targetSub.playerName} отклонена (-${penalty} баллов штрафа)!`);
+      setTimeout(() => setStatusNotice(""), 4000);
     } catch (e) {
       console.error("Reject error:", e);
-      alert("Ошибка при отклонении ячеек");
     } finally {
       setIsProcessing(false);
     }
   };
 
+  // Calculate team scores for all 3 parties and total
+  const getRound8TeamPartyScore = (teamIdx: number, pIdx: number): number => {
+    const tPlayers: any[] = Object.values(players || {}).filter((p: any) => p.team === teamIdx);
+    return tPlayers.reduce((sum: number, p: any) => {
+      const pScores = p.scores || {};
+      let pSum = 0;
+      Object.entries(pScores).forEach(([key, val]: [string, any]) => {
+        if (key.startsWith(`round8_p${pIdx}_`)) {
+          pSum += typeof val === "number" ? val : 0;
+        }
+      });
+      return sum + pSum;
+    }, 0);
+  };
+
+  const getRound8TeamTotal = (teamIdx: number): number => {
+    return (
+      getRound8TeamPartyScore(teamIdx, 0) +
+      getRound8TeamPartyScore(teamIdx, 1) +
+      getRound8TeamPartyScore(teamIdx, 2)
+    );
+  };
+
   return (
-    <div className="space-y-6 max-w-6xl mx-auto select-none">
-      {/* Top Banner / Notification */}
-      <AnimatePresence>
-        {statusNotice && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className="p-3 bg-purple-600/30 border border-purple-500/50 rounded-2xl text-center text-purple-200 text-sm font-semibold shadow-lg backdrop-blur-md"
-          >
-            {statusNotice}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Penalty Alert for Team */}
-      {currentTeamData?.lastPenaltyNotice && !user.isAdmin && (
-        <motion.div
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="p-4 bg-rose-500/20 border-2 border-rose-500/50 rounded-2xl text-center text-rose-200 text-sm font-bold shadow-xl flex items-center justify-center gap-3"
-        >
-          <AlertTriangle className="w-6 h-6 text-rose-400 shrink-0" />
-          <span>{currentTeamData.lastPenaltyNotice}</span>
-          <button
-            onClick={() => restPatch(`gameState/bingo/teams/${currentTeamIdx}`, { lastPenaltyNotice: null })}
-            className="ml-auto text-xs text-rose-300 hover:text-white underline"
-          >
-            Понятно
-          </button>
-        </motion.div>
-      )}
-
-      {/* Header Info Bar */}
-      <div className="bg-slate-900/80 p-5 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-gradient-to-tr from-amber-500 to-pink-500 rounded-2xl shadow-lg">
-            <Trophy className="w-6 h-6 text-white" />
-          </div>
+    <div className="w-full max-w-6xl mx-auto space-y-4">
+      {/* ================= HEADER & PARTY TABS ================= */}
+      <div className="bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 p-4 sm:p-5 rounded-3xl border border-purple-500/30 shadow-2xl backdrop-blur-xl space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-pink-400 to-purple-400 uppercase tracking-tight">
-                Аниме-Бинго 4×4
-              </h2>
-              <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-white/10 text-gray-300 border border-white/10">
-                Раунд 8
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black text-xs uppercase px-3 py-1 rounded-full tracking-wider shadow-md">
+                Раунд 8: Аниме-Бинго 4×4
+              </span>
+              <span className="bg-amber-500/20 text-amber-300 font-bold text-xs px-3 py-0.5 rounded-full border border-amber-500/30 flex items-center gap-1">
+                <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                Линия: +12 б. • Всё поле: +24 б. • Ошибка: -3 б.
               </span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Соберите 4 в ряд (строка или столбец) — <span className="text-amber-400 font-bold">+12 б.</span> | Все ячейки поля — <span className="text-pink-400 font-bold">+24 б.</span>
+            <p className="text-xs text-purple-200 mt-1">
+              Играет <strong>каждый игрок команды</strong> на своей карточке! В конце раунда все баллы игроков суммируются в общий счёт команды.
             </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowScoreSummary(true)}
+              className="bg-white/10 hover:bg-white/20 text-white font-bold text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all border border-white/10 cursor-pointer shadow-md active:scale-95"
+            >
+              <Award className="w-4 h-4 text-amber-400" />
+              <span>Таблица Бинго (3 партии)</span>
+            </button>
+            <button
+              onClick={() => setShowRulesModal(true)}
+              className="bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 font-bold text-xs px-3 py-2 rounded-xl flex items-center gap-1.5 transition-all border border-purple-500/30 cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>Правила</span>
+            </button>
           </div>
         </div>
 
-        {/* Revealed counter & status & rules button */}
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={() => setShowRulesModal(true)}
-            className="bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 hover:text-white border border-purple-500/40 px-3.5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all hover:scale-105 active:scale-95 shadow-md shadow-purple-950/40 cursor-pointer"
-            title="Открыть правила раунда 8"
-          >
-            <BookOpen className="w-4 h-4 text-purple-300" />
-            <span>📖 Правила раунда</span>
-          </button>
+        {/* 3 Parties Navigation Bar */}
+        <div className="flex items-center gap-2 pt-2 border-t border-white/10 overflow-x-auto">
+          <span className="text-[11px] font-black uppercase text-purple-300 mr-1 shrink-0 flex items-center gap-1">
+            <Layers className="w-3.5 h-3.5" />
+            Партии раунда:
+          </span>
+          {[0, 1, 2].map((pIdx) => {
+            const isActive = currentParty === pIdx;
+            const pSubsCount = Object.keys(bingoState.parties?.[pIdx]?.submissions || {}).length;
 
-          <div className="bg-black/50 px-4 py-2.5 rounded-2xl border border-white/10 flex items-center gap-2.5">
-            <Layers className="w-4 h-4 text-purple-400" />
-            <div className="text-right">
-              <div className="text-[10px] uppercase font-black tracking-wider text-slate-400">Открыто тайтлов</div>
-              <div className="text-base font-black text-white font-mono">
-                <span className="text-purple-400">{revealedCount}</span> / 32
-              </div>
-            </div>
-          </div>
-
-          {currentTeamData?.firstLineApproved && (
-            <div className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 shadow-md">
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Линия +12 б.</span>
-            </div>
-          )}
-
-          {currentTeamData?.fullApproved && (
-            <div className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-2 rounded-2xl text-xs font-black flex items-center gap-1.5 shadow-md animate-pulse">
-              <Award className="w-4 h-4" />
-              <span>Фулл +24 б.!</span>
-            </div>
+            return (
+              <button
+                key={pIdx}
+                onClick={() => user.isAdmin && handleSwitchParty(pIdx)}
+                disabled={!user.isAdmin}
+                className={`px-4 py-2 rounded-2xl text-xs font-black transition-all flex items-center gap-2 shrink-0 ${
+                  isActive
+                    ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-900/50 scale-[1.02]"
+                    : "bg-black/40 text-gray-400 border border-white/5 hover:text-white"
+                } ${user.isAdmin ? "cursor-pointer active:scale-95 hover:border-purple-400" : "cursor-default"}`}
+                title={user.isAdmin ? `Переключить на Партию ${pIdx + 1}` : `Партия ${pIdx + 1}`}
+              >
+                <span>Партия {pIdx + 1} {isActive ? "🔥 (Текущая)" : ""}</span>
+                {pSubsCount > 0 && (
+                  <span className="bg-amber-400 text-black text-[10px] font-black px-1.5 py-0.2 rounded-full">
+                    {pSubsCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {user.isAdmin && (
+            <span className="text-[10px] text-gray-400 ml-auto hidden sm:inline italic">
+              Ведущий может переключать партии кликом по вкладке
+            </span>
           )}
         </div>
       </div>
 
-      {/* Fresh Drop Spotlight (The latest 2 anime revealed) */}
-      {lastRevealed.length > 0 && (
+      {/* Status Notice Toast */}
+      {statusNotice && (
         <motion.div
-          key={lastRevealed.join("-")}
-          initial={{ scale: 0.95, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          className="bg-gradient-to-r from-purple-900/60 via-pink-900/40 to-slate-900/70 p-4 rounded-3xl border border-pink-500/30 shadow-[0_0_25px_rgba(236,72,153,0.15)] flex flex-col md:flex-row items-center justify-between gap-3"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-3 bg-purple-950/90 border border-purple-500/50 rounded-2xl text-center text-xs font-bold text-white shadow-xl flex items-center justify-center gap-2"
         >
-          <div className="flex items-center gap-2.5 text-pink-300 font-bold text-sm shrink-0">
-            <Flame className="w-5 h-5 text-pink-400 animate-bounce" />
-            <span>Новое пополнение пула (последние 2 аниме):</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {lastRevealed.map((title, i) => (
-              <span
-                key={i}
-                className="bg-pink-500/20 border border-pink-400/40 text-pink-200 px-3 py-1.5 rounded-xl font-black text-sm shadow-md"
-              >
-                {title}
-              </span>
-            ))}
-          </div>
+          <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>{statusNotice}</span>
         </motion.div>
       )}
 
-      {/* Admin Quick Reveal Bar */}
-      {user.isAdmin && (
-        <div className="bg-gradient-to-r from-purple-950/70 via-indigo-950/70 to-slate-900/90 p-4 rounded-3xl border border-purple-500/40 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div>
-            <div className="text-xs uppercase font-black text-purple-300 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>Управление выдачей аниме (Ведущий)</span>
+      {/* ================= MAIN PLAYGROUND LAYOUT ================= */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        {/* Left Column: Player's 4x4 Bingo Board (8 cols) */}
+        <div className="lg:col-span-8 space-y-3">
+          {/* Teammates Selector Tabs for regular players */}
+          {!user.isAdmin && teamMembers.length > 1 && (
+            <div className="flex items-center gap-2 p-2 bg-slate-900/80 border border-purple-500/20 rounded-2xl overflow-x-auto shadow-md">
+              <span className="text-[11px] font-bold text-gray-400 ml-1 shrink-0 flex items-center gap-1">
+                <Users className="w-3.5 h-3.5 text-purple-400" />
+                Карточка:
+              </span>
+              <button
+                onClick={() => setViewedPlayerId(user.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer ${
+                  viewedPlayerId === user.id
+                    ? "bg-purple-600 text-white shadow-md shadow-purple-900/50"
+                    : "bg-white/5 hover:bg-white/10 text-gray-300"
+                }`}
+              >
+                Моя карточка {isLeader ? "👑" : ""}
+              </button>
+              {teamMembers
+                .filter((p: any) => p.id !== user.id)
+                .map((teammate: any) => (
+                  <button
+                    key={teammate.id}
+                    onClick={() => setViewedPlayerId(teammate.id)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                      viewedPlayerId === teammate.id
+                        ? "bg-indigo-600 text-white shadow-md"
+                        : "bg-white/5 hover:bg-white/10 text-gray-300"
+                    }`}
+                  >
+                    {teammate.nickname}
+                  </button>
+                ))}
             </div>
-            <p className="text-xs text-slate-300 mt-0.5">
-              Каждое нажатие выдает 2 новых тайтла. Все нерасставленные тайтлы у команд сгорают!
-            </p>
-          </div>
+          )}
 
-          <button
-            onClick={handleRevealNext2}
-            disabled={isProcessing || revealedCount >= pool32.length}
-            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-40 text-white font-black text-xs sm:text-sm px-5 py-3 rounded-2xl shadow-lg shadow-purple-900/40 flex items-center gap-2 transition-all active:scale-95 shrink-0"
-          >
-            <SkipForward className="w-4 h-4" />
-            {revealedCount >= pool32.length
-              ? "Все 32 аниме открыты"
-              : `Выдать следующие 2 аниме (${revealedCount + 2}/32)`}
-          </button>
-        </div>
-      )}
-
-      {/* Admin Team Switcher */}
-      {user.isAdmin && (
-        <div className="bg-slate-900/90 p-4 rounded-3xl border border-purple-500/30 space-y-3">
-          <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-purple-300">
-            <span>Просмотр карточки команды (Администратор):</span>
-            <span className="text-[11px] text-gray-400">
-              {Object.values(teamsData).filter((t: any) => t.submittedForReview).length > 0
-                ? "🔔 Есть команды, заявившие Бинго!"
-                : "Заявок на проверку нет"}
-            </span>
-          </div>
-          <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
-            {Array.from({ length: TOTAL_TEAMS }).map((_, i) => {
-              const tData = teamsData[i];
-              const isSelected = adminSelectedTeam === i;
-              const hasReview = tData?.submittedForReview;
-              const hasWin = tData?.firstLineApproved;
-              const hasFull = tData?.fullApproved;
-
-              return (
-                <button
-                  key={i}
-                  onClick={() => {
-                    setAdminSelectedTeam(i);
-                    setAdminSelectedErrorCells([]);
-                  }}
-                  className={`py-2 px-1 rounded-xl text-xs font-bold transition-all relative ${
-                    isSelected
-                      ? "bg-purple-600 text-white shadow-[0_0_12px_rgba(168,85,247,0.6)] scale-105 border border-purple-400"
-                      : "bg-white/5 hover:bg-white/10 text-gray-300 border border-white/5"
-                  }`}
-                >
-                  <div>К-{i + 1}</div>
-                  {hasReview && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping" />
-                  )}
-                  <div className="text-[9px] opacity-70">
-                    {hasFull ? "Фулл" : hasWin ? "+12" : hasReview ? "БИНГО!" : "В игре"}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Main Play Area: 4x4 Grid + Anime Selection Dock */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: 4x4 Card (lg:col-span-8) */}
-        <div className="lg:col-span-8 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
-              <span>Карточка: Команда {currentTeamIdx + 1}</span>
-              {currentTeamData?.submittedForReview && (
-                <span className="text-xs bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full font-bold animate-pulse">
-                  ⏳ На проверке у ведущего
+          {/* Card Header Info */}
+          <div className="flex items-center justify-between px-2 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+                <span>🎯</span>
+                {user.isAdmin ? (
+                  <span>
+                    Карточка игрока:{" "}
+                    <strong className="text-amber-300">
+                      {players[activeDisplayPlayerId]?.nickname || "Не выбран"}
+                    </strong>{" "}
+                    (Команда #{Number(players[activeDisplayPlayerId]?.team ?? adminSelectedTeam) + 1})
+                  </span>
+                ) : isViewingSelf ? (
+                  <span>Ваша карточка (Партия {currentParty + 1})</span>
+                ) : (
+                  <span>
+                    Карточка сокомандника:{" "}
+                    <strong className="text-amber-300">
+                      {players[activeDisplayPlayerId]?.nickname}
+                    </strong>
+                  </span>
+                )}
+              </span>
+              {activePlayerData.submittedForReview && (
+                <span className="text-[10px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full animate-pulse">
+                  На проверке у ведущего
                 </span>
               )}
-            </h3>
-            <div className="text-xs text-gray-400">
-              Заполнено: <span className="font-bold text-white">{cardEvaluation.placedCount} / 16</span>
-              {cardEvaluation.hasBingo && (
-                <span className="ml-2 text-emerald-400 font-bold">
-                  (Линий: {cardEvaluation.completedLinesCount})
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-gray-400">
+                Заполнено: <strong className="text-white">{cardEvaluation.placedCount}/16</strong>
+              </span>
+              {cardEvaluation.completedLinesCount > 0 && (
+                <span className="bg-emerald-500/20 text-emerald-300 font-black px-2 py-0.5 rounded-lg border border-emerald-500/30">
+                  Линий: {cardEvaluation.completedLinesCount}
                 </span>
               )}
             </div>
           </div>
 
           {/* 4x4 Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 p-3.5 sm:p-4 bg-slate-900/80 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md">
-            {card.map((cell, idx) => {
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3 sm:p-4 bg-slate-900/90 border border-purple-500/30 rounded-3xl shadow-2xl backdrop-blur-xl">
+            {activeCard.map((cell, idx) => {
+              const hasAnime = !!cell.placedAnime;
               const isHighlighted = cardEvaluation.highlightedIndices.has(idx);
-              const isSelectedError = user.isAdmin && adminSelectedErrorCells.includes(idx);
+              const isError = cell.hasError || (user.isAdmin && adminSelectedErrorCells.includes(idx));
+              const row = Math.floor(idx / 4);
+              const col = idx % 4;
 
               return (
-                <div
-                  key={cell.id}
+                <motion.div
+                  key={cell.id ?? idx}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
                   onClick={() => handleCellClick(idx)}
-                  className={`min-h-[110px] sm:min-h-[125px] p-3 rounded-2xl border-2 transition-all relative flex flex-col justify-between cursor-pointer group ${
-                    isSelectedError
-                      ? "bg-rose-950/90 border-rose-500 shadow-[0_0_20px_rgba(244,63,94,0.7)] ring-2 ring-rose-500 scale-[1.02]"
+                  className={`min-h-[105px] sm:min-h-[120px] p-2.5 rounded-2xl border-2 transition-all flex flex-col justify-between relative group cursor-pointer ${
+                    isError
+                      ? "bg-red-950/70 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)]"
                       : isHighlighted
-                        ? "bg-emerald-950/40 border-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.3)] hover:border-emerald-300"
-                        : cell.placedAnime
-                          ? user.isAdmin 
-                            ? "bg-purple-950/40 border-purple-500/40 hover:border-rose-400/80" 
-                            : "bg-purple-950/40 border-purple-500/40 hover:border-purple-400"
-                          : "bg-white/5 border-white/10 hover:border-white/30 hover:bg-white/10"
+                        ? "bg-emerald-950/80 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.35)]"
+                        : hasAnime
+                          ? "bg-purple-950/60 border-purple-400/80 shadow-md"
+                          : "bg-black/50 border-white/10 hover:border-purple-500/50"
                   }`}
                 >
-                  {/* Cell Header: Number + Delete Button */}
-                  <div className="flex items-center justify-between gap-1">
-                    <span className="text-[10px] font-mono font-bold text-gray-500">
+                  {/* Cell Top Header */}
+                  <div className="flex items-center justify-between text-[10px] mb-1">
+                    <span className="font-mono text-gray-500 font-bold">
                       #{idx + 1}
                     </span>
-                    {cell.placedAnime && !user.isAdmin && (
+                    {hasAnime && isViewingSelf && !activePlayerData.submittedForReview && (
                       <button
                         onClick={(e) => handleDeleteCellAnime(e, idx)}
-                        className="opacity-70 group-hover:opacity-100 hover:text-red-400 p-1 hover:bg-red-500/20 rounded-md transition-all text-gray-400"
+                        className="text-gray-400 hover:text-red-400 p-1 rounded-md hover:bg-white/10 transition-colors"
                         title="Удалить аниме из ячейки"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -632,310 +673,347 @@ export default function BingoRoundView({
                   </div>
 
                   {/* Criterion Text */}
-                  <div className="text-[11px] sm:text-xs font-semibold text-slate-200 leading-snug my-1 line-clamp-3">
+                  <p className="text-[11px] sm:text-xs font-semibold text-gray-200 leading-snug line-clamp-3">
                     {cell.criterion}
-                  </div>
+                  </p>
 
                   {/* Placed Anime or Empty Slot */}
-                  {cell.placedAnime ? (
-                    <div className="mt-1 pt-1.5 border-t border-white/10">
-                      <div className={`text-[11px] sm:text-xs font-black leading-tight truncate ${
-                        isSelectedError ? "text-rose-300 line-through" : "text-amber-300"
-                      }`}>
-                        {cell.placedAnime}
+                  <div className="mt-2 pt-1 border-t border-white/10">
+                    {hasAnime ? (
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[11px] sm:text-xs font-black text-amber-300 truncate" title={cell.placedAnime || ""}>
+                          🎬 {cell.placedAnime}
+                        </span>
+                        {isError && (
+                          <span className="text-[9px] font-black text-red-400 shrink-0">
+                            ОШИБКА
+                          </span>
+                        )}
                       </div>
-                      <div className="text-[9px] text-emerald-400 font-bold mt-0.5 flex items-center gap-1">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> Занято
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-1 pt-1 border-t border-dashed border-white/10 text-[9px] text-gray-500 italic">
-                      + Нажмите для выбора
-                    </div>
-                  )}
-
-                  {/* Admin Error Select Badge */}
-                  {user.isAdmin && isSelectedError && (
-                    <div className="absolute top-1 right-1 bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded font-black uppercase flex items-center gap-1 shadow-md">
-                      <span>❌ Ошибка (-3)</span>
-                    </div>
-                  )}
-                </div>
+                    ) : (
+                      <span className="text-[10px] text-gray-500 italic flex items-center gap-1">
+                        <span>+ Пусто</span>
+                      </span>
+                    )}
+                  </div>
+                </motion.div>
               );
             })}
           </div>
 
-          {/* Submission / Verification Action Bar */}
-          {!user.isAdmin && (
-            <div className="bg-slate-900/80 p-4 rounded-3xl border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+          {/* Submission Bar for Current Player */}
+          {isViewingSelf && (
+            <div className="bg-slate-900/90 border border-purple-500/30 p-4 rounded-3xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-3">
               <div>
-                <div className="text-xs font-bold text-slate-300">
-                  Статус Бинго:{" "}
-                  {cardEvaluation.hasBingo ? (
-                    <span className="text-emerald-400 font-black">
-                      Линия собрана ({cardEvaluation.completedLinesCount})!
-                    </span>
-                  ) : (
-                    <span className="text-gray-400">Соберите 4 в ряд (строка или столбец)</span>
-                  )}
-                </div>
-                <div className="text-[11px] text-slate-500">
-                  Диагонали не учитываются. Ошибка при проверке: -3 балла штраф за каждую ошибочную ячейку!
-                </div>
+                <span className="text-xs font-black text-purple-300 uppercase tracking-wider block">
+                  Заявить результат в ведущему:
+                </span>
+                <span className="text-[11px] text-gray-400">
+                  {cardEvaluation.hasBingo
+                    ? "У вас собрана линия! Нажмите «Заявить Бинго», чтобы получить +12 баллов."
+                    : cardEvaluation.allCompleted
+                      ? "Все 16 ячеек заполнены! Нажмите «Заявить всё поле» (+24 балла)."
+                      : "Заполняйте клетки аниме из выдачи справа, собирайте 4 в ряд или всё поле!"}
+                </span>
               </div>
 
-              {/* Submit Button for line (+12 pts) */}
-              {!currentTeamData?.firstLineApproved && (
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <button
                   onClick={() => handleSubmitForReview("line")}
-                  disabled={!cardEvaluation.hasBingo || currentTeamData?.submittedForReview}
-                  className={`px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-xl active:scale-95 flex items-center gap-2 ${
-                    currentTeamData?.submittedForReview
-                      ? "bg-amber-600/50 text-white cursor-default"
-                      : cardEvaluation.hasBingo
-                        ? "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/20"
-                        : "bg-white/5 text-gray-500 cursor-not-allowed border border-white/5"
+                  disabled={!cardEvaluation.hasBingo || activePlayerData.submittedForReview}
+                  className={`flex-1 sm:flex-none px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg flex items-center justify-center gap-2 ${
+                    cardEvaluation.hasBingo && !activePlayerData.submittedForReview
+                      ? "bg-gradient-to-r from-amber-500 to-yellow-500 text-black hover:from-amber-400 hover:to-yellow-400 cursor-pointer active:scale-95 shadow-amber-500/20"
+                      : "bg-white/5 text-gray-500 cursor-not-allowed border border-white/5 opacity-50"
                   }`}
                 >
-                  <Send className="w-4 h-4" />
-                  {currentTeamData?.submittedForReview ? "ЗАЯВКА НА ПРОВЕРКЕ..." : "ЗАЯВИТЬ БИНГО (+12 б.)"}
+                  <Trophy className="w-4 h-4" />
+                  <span>Заявить БИНГО! (+12)</span>
                 </button>
-              )}
 
-              {/* Submit Button for Full Card (+24 pts) */}
-              {currentTeamData?.firstLineApproved && !currentTeamData?.fullApproved && (
                 <button
                   onClick={() => handleSubmitForReview("full")}
-                  disabled={!cardEvaluation.allCompleted || currentTeamData?.submittedForReview}
-                  className={`px-6 py-3 rounded-2xl font-black text-sm transition-all shadow-xl active:scale-95 flex items-center gap-2 ${
-                    currentTeamData?.submittedForReview
-                      ? "bg-amber-600/50 text-white cursor-default"
-                      : cardEvaluation.allCompleted
-                        ? "bg-gradient-to-r from-amber-500 to-pink-600 hover:from-amber-400 hover:to-pink-500 text-white shadow-amber-500/30 animate-pulse"
-                        : "bg-white/5 text-gray-500 cursor-not-allowed border border-white/5"
+                  disabled={!cardEvaluation.allCompleted || activePlayerData.submittedForReview}
+                  className={`flex-1 sm:flex-none px-5 py-3 rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg flex items-center justify-center gap-2 ${
+                    cardEvaluation.allCompleted && !activePlayerData.submittedForReview
+                      ? "bg-gradient-to-r from-purple-600 via-pink-600 to-red-500 text-white cursor-pointer active:scale-95 shadow-purple-500/30"
+                      : "bg-white/5 text-gray-500 cursor-not-allowed border border-white/5 opacity-50"
                   }`}
                 >
-                  <Award className="w-4 h-4" />
-                  {currentTeamData?.submittedForReview ? "ФУЛЛ НА ПРОВЕРКЕ..." : "ФУЛЛ КАРТОЧКА (+24 б.)"}
+                  <Sparkles className="w-4 h-4" />
+                  <span>Всё поле (+24)</span>
                 </button>
-              )}
+              </div>
             </div>
           )}
 
-          {/* Admin Review Verdict Actions */}
+          {/* Admin Verification Action Bar */}
           {user.isAdmin && (
-            <div className="bg-slate-900/90 p-5 rounded-3xl border border-purple-500/30 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/10 pb-3">
-                <div>
-                  <h4 className="text-sm font-black text-purple-300 uppercase tracking-wider flex items-center gap-2">
-                    <span>Панель Верификации: Команда {adminSelectedTeam + 1}</span>
-                    {currentTeamData?.submittedForReview && (
-                      <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black animate-pulse">
-                        ЗАЯВКА АКТИВНА
+            <div className="bg-slate-900/95 border-2 border-amber-500/40 p-4 rounded-3xl shadow-2xl space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 pb-2">
+                <span className="text-xs font-black uppercase text-amber-300 flex items-center gap-2">
+                  <Award className="w-4 h-4 text-amber-400" />
+                  Проверка заявки Бинго (Ведущий)
+                </span>
+                {adminSelectedPlayerId && submissions[adminSelectedPlayerId] && (
+                  <span className="text-xs text-white font-bold bg-purple-600/30 px-2.5 py-0.5 rounded-lg border border-purple-500/40">
+                    Игрок: {submissions[adminSelectedPlayerId].playerName} (Команда #{submissions[adminSelectedPlayerId].teamIdx + 1})
+                  </span>
+                )}
+              </div>
+
+              {adminSelectedPlayerId && submissions[adminSelectedPlayerId] ? (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="text-xs text-gray-300">
+                    <div>
+                      Тип заявки:{" "}
+                      <strong className="text-amber-300 uppercase">
+                        {submissions[adminSelectedPlayerId].submissionType === "full" ? "Всё поле (+24 б.)" : "Бинго 4 в ряд (+12 б.)"}
+                      </strong>
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-0.5">
+                      Кликайте по карточке игрока выше, чтобы отметить ошибочные ячейки при отклонении.
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <button
+                      onClick={handleAdminApprove}
+                      disabled={isProcessing}
+                      className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs uppercase px-5 py-3 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 cursor-pointer transition-all"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>
+                        Подтвердить ({submissions[adminSelectedPlayerId].submissionType === "full" ? "+24 б." : "+12 б."})
                       </span>
-                    )}
-                  </h4>
-                  <div className="text-xs text-gray-400 mt-1">
-                    {adminSelectedErrorCells.length > 0 ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-rose-300 font-bold">
-                          Выбрано ошибочных ячеек: {adminSelectedErrorCells.length} ({adminSelectedErrorCells.map(i => `#${i + 1}`).join(", ")}). Штраф: -{adminSelectedErrorCells.length * 3} б.
-                        </span>
-                        <button
-                          onClick={() => setAdminSelectedErrorCells([])}
-                          className="text-[11px] text-gray-400 hover:text-white underline"
-                        >
-                          Сбросить выбор
-                        </button>
-                      </div>
-                    ) : (
-                      <span>Нажмите на ошибочные ячейки на карточке выше, чтобы отметить их (можно выбрать сразу несколько).</span>
-                    )}
+                    </button>
+
+                    <button
+                      onClick={handleAdminReject}
+                      disabled={isProcessing}
+                      className="flex-1 sm:flex-none bg-red-600 hover:bg-red-500 text-white font-black text-xs uppercase px-4 py-3 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 cursor-pointer transition-all"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      <span>
+                        Отклонить {adminSelectedErrorCells.length > 0 ? `(-${adminSelectedErrorCells.length * 3} б.)` : "(-3 б.)"}
+                      </span>
+                    </button>
                   </div>
                 </div>
-
-                <div className="text-xs text-gray-400">
-                  Штрафов команды: <span className="text-red-400 font-bold">-{currentTeamData?.penaltyTotal || 0} б.</span>
+              ) : (
+                <div className="text-center py-2 text-xs text-gray-400 italic">
+                  Выберите игрока из очереди заявок справа, чтобы проверить его карточку
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  onClick={handleAdminApprove}
-                  disabled={isProcessing || !currentTeamData?.submittedForReview}
-                  className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 py-3.5 px-4 rounded-2xl font-black text-sm text-white shadow-lg shadow-emerald-900/30 flex items-center justify-center gap-2 active:scale-95 transition-all"
-                >
-                  <CheckCircle2 className="w-5 h-5" />
-                  {currentTeamData?.submissionType === "full" ? "ЗАЧЕСТЬ ВСЁ ПОЛЕ (+24 б.)" : "ЗАЧЕСТЬ БИНГО (+12 б.)"}
-                </button>
-
-                <button
-                  onClick={handleAdminReject}
-                  disabled={isProcessing || adminSelectedErrorCells.length === 0}
-                  className="bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 disabled:opacity-40 py-3.5 px-4 rounded-2xl font-black text-sm text-white shadow-lg shadow-rose-900/30 flex items-center justify-center gap-2 active:scale-95 transition-all"
-                >
-                  <XCircle className="w-5 h-5" />
-                  {adminSelectedErrorCells.length > 0
-                    ? `ОТКЛОНИТЬ ВЫБРАННЫЕ (${adminSelectedErrorCells.length} шт. = -${adminSelectedErrorCells.length * 3} б.)`
-                    : "ВЫБЕРИТЕ ОШИБОЧНЫЕ ЯЧЕЙКИ"}
-                </button>
-              </div>
+              )}
             </div>
           )}
         </div>
 
-        {/* Right Column: Revealed Anime Dock (lg:col-span-4) */}
+        {/* Right Column: Active Drop Pair & Review Queue / Anime History (4 cols) */}
         <div className="lg:col-span-4 space-y-4">
-          <div className="bg-slate-900/80 p-5 rounded-3xl border border-white/10 shadow-2xl backdrop-blur-md space-y-4">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div>
-                <h3 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-400" />
-                  <span>Выдача аниме</span>
-                </h3>
-                <p className="text-[11px] text-gray-400">
-                  {dockTab === "current" ? "Доступно только сейчас" : "История всех открытых"}
-                </p>
+          {/* Admin Host Control Dock */}
+          {user.isAdmin && (
+            <div className="bg-slate-900/90 border border-purple-500/30 p-4 rounded-3xl shadow-xl space-y-3">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                <span className="text-xs font-black uppercase text-purple-300">
+                  Управление Партией {currentParty + 1}
+                </span>
+                <span className="text-[11px] font-mono text-amber-300 font-bold">
+                  Выдано: {revealedCount}/32
+                </span>
               </div>
-              <span className="text-xs font-mono font-bold bg-white/5 px-2.5 py-1 rounded-xl text-purple-300">
-                {revealedCount} / 32
-              </span>
-            </div>
 
-            {/* Dock Tabs: Current active pair vs All revealed */}
-            <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/40 rounded-2xl border border-white/5 text-xs font-bold">
-              <button
-                onClick={() => setDockTab("current")}
-                className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                  dockTab === "current"
-                    ? "bg-purple-600 text-white shadow-md"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <Flame className="w-3.5 h-3.5 text-pink-400" />
-                <span>Текущая пара ({currentPair.length})</span>
-              </button>
-              <button
-                onClick={() => setDockTab("all")}
-                className={`py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-                  dockTab === "all"
-                    ? "bg-purple-600 text-white shadow-md"
-                    : "text-gray-400 hover:text-white"
-                }`}
-              >
-                <History className="w-3.5 h-3.5 text-slate-400" />
-                <span>Все тайтлы ({revealedAnime.length})</span>
-              </button>
-            </div>
-
-            {/* Currently Selected Anime Badge */}
-            {selectedAnime ? (
-              <div className="p-3 bg-purple-600/30 border border-purple-400/50 rounded-2xl flex items-center justify-between gap-2 shadow-lg animate-pulse">
-                <div className="min-w-0">
-                  <div className="text-[10px] uppercase font-black text-purple-300">Выбран тайтл:</div>
-                  <div className="text-sm font-black text-white truncate">{selectedAnime}</div>
-                  <div className="text-[10px] text-purple-200 mt-0.5">Нажмите на пустую ячейку слева</div>
-                </div>
+              <div className="space-y-2">
                 <button
-                  onClick={() => setSelectedAnime(null)}
-                  className="text-xs text-purple-300 hover:text-white bg-white/10 px-2 py-1 rounded-lg shrink-0"
+                  onClick={handleRevealNext2}
+                  disabled={revealedCount >= pool32.length || isProcessing}
+                  className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs uppercase py-3 px-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg active:scale-95 transition-all cursor-pointer disabled:opacity-50"
                 >
-                  Отмена
+                  <Flame className="w-4 h-4" />
+                  <span>
+                    {revealedCount >= pool32.length 
+                      ? "Все 32 тайтла выданы" 
+                      : `Выдать следующие 2 тайтла (#${revealedCount + 1}-${revealedCount + 2})`}
+                  </span>
+                </button>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => initializeParty(currentParty)}
+                    disabled={isProcessing}
+                    className="bg-white/5 hover:bg-white/10 text-gray-300 font-bold text-[11px] py-2 px-3 rounded-xl border border-white/5 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Сбросить партию</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      if (currentParty < PARTIES_COUNT - 1) {
+                        handleSwitchParty(currentParty + 1);
+                      } else {
+                        setStatusNotice("Это финальная партия 3 из 3!");
+                        setTimeout(() => setStatusNotice(""), 3000);
+                      }
+                    }}
+                    className="bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 font-bold text-[11px] py-2 px-3 rounded-xl border border-purple-500/30 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <span>След. партия</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Submissions Queue for Admin */}
+          {user.isAdmin && (
+            <div className="bg-slate-900/90 border border-purple-500/30 p-4 rounded-3xl shadow-xl space-y-2">
+              <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                <span className="text-xs font-black uppercase text-amber-300 flex items-center gap-1.5">
+                  <Trophy className="w-3.5 h-3.5" />
+                  Очередь заявок ({Object.keys(submissions).length})
+                </span>
+              </div>
+
+              {Object.keys(submissions).length === 0 ? (
+                <div className="text-center py-4 text-xs text-gray-500 italic">
+                  Пока нет активных заявок от игроков
+                </div>
+              ) : (
+                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                  {Object.entries(submissions).map(([pId, sub]: [string, any]) => {
+                    const isSelected = adminSelectedPlayerId === pId;
+                    return (
+                      <button
+                        key={pId}
+                        onClick={() => {
+                          setAdminSelectedPlayerId(pId);
+                          setAdminSelectedErrorCells([]);
+                        }}
+                        className={`w-full p-2.5 rounded-2xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-purple-600/40 border-purple-400 text-white shadow-md scale-[1.01]"
+                            : "bg-black/40 border-white/5 text-gray-300 hover:bg-white/5"
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1 mr-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black truncate">{sub.playerName}</span>
+                            <span className="text-[10px] bg-white/10 px-1.5 py-0.2 rounded font-bold">
+                              К#{sub.teamIdx + 1}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-amber-300 font-bold block mt-0.5">
+                            {sub.submissionType === "full" ? "👑 Заявка на ВСЁ ПОЛЕ" : "🎉 Заявка на БИНГО"}
+                          </span>
+                        </div>
+                        <span className="text-xs font-bold text-purple-300 shrink-0">
+                          {isSelected ? "Выбрано →" : "Проверить"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Current Drop Dock: Anime Pair to Place */}
+          <div className="bg-slate-900/90 border border-purple-500/30 p-4 rounded-3xl shadow-xl space-y-3">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setDockTab("current")}
+                  className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    dockTab === "current"
+                      ? "bg-purple-600 text-white shadow-md"
+                      : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  ⚡ Текущая пара ({currentPair.length})
+                </button>
+                <button
+                  onClick={() => setDockTab("all")}
+                  className={`px-3 py-1 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                    dockTab === "all"
+                      ? "bg-purple-600 text-white shadow-md"
+                      : "text-gray-400 hover:text-white"
+                  }`}
+                >
+                  История ({revealedCount})
                 </button>
               </div>
-            ) : (
-              <div className="text-center py-1 text-xs text-gray-500 italic">
-                (Нажмите на аниме ниже для выбора)
-              </div>
-            )}
+            </div>
 
-            {/* TAB 1: Current Drop of 2 Anime (The only ones that can be placed) */}
             {dockTab === "current" && (
               <div className="space-y-3">
+                <p className="text-[11px] text-gray-300">
+                  Выберите тайтл и нажмите на свободную ячейку на своей карточке:
+                </p>
+
                 {currentPair.length === 0 ? (
-                  <div className="text-center py-10 space-y-2">
-                    <div className="text-4xl">⏳</div>
-                    <div className="text-sm font-bold text-gray-400">Аниме еще не открыты</div>
-                    <p className="text-xs text-gray-500">
-                      Ожидайте, пока ведущий нажмет кнопку «Следующие 2 аниме»!
-                    </p>
+                  <div className="text-center py-8 text-xs text-gray-500">
+                    Ожидайте выдачи следующей пары тайтлов от ведущего...
                   </div>
                 ) : (
-                  <>
-                    {/* Warning Notice about Drop Expiration */}
-                    <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] text-amber-200 flex items-start gap-2">
-                      <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      <span>
-                        <strong>Внимание:</strong> эти аниме можно расставить только <u>СЕЙЧАС</u>. При нажатии ведущим следующих 2 аниме нерасставленные тайтлы сгорят!
-                      </span>
-                    </div>
+                  <div className="space-y-2">
+                    {currentPair.map((title, idx) => {
+                      const isSelected = selectedAnime === title;
+                      const isUsed = usedAnimeTitles.has(title);
+                      const cellNum = placedAnimeCellMap.get(title);
 
-                    <div className="space-y-2.5">
-                      {currentPair.map((title, idx) => {
-                        const isUsed = usedAnimeTitles.has(title);
-                        const isCurrentSelection = selectedAnime === title;
-                        const cellNum = placedAnimeCellMap.get(title);
-
-                        return (
-                          <div
-                            key={idx}
-                            onClick={() => {
-                              if (isUsed) {
-                                setStatusNotice(`Это аниме уже поставлено в ячейку #${cellNum! + 1}!`);
-                                setTimeout(() => setStatusNotice(""), 2500);
-                                return;
-                              }
-                              setSelectedAnime(title);
-                            }}
-                            className={`p-3.5 rounded-2xl border transition-all text-xs font-bold cursor-pointer relative ${
-                              isCurrentSelection
-                                ? "bg-gradient-to-r from-purple-600 to-pink-600 border-purple-300 text-white shadow-xl shadow-purple-900/40 scale-[1.02]"
-                                : isUsed
-                                  ? "bg-white/5 border-white/5 text-gray-400 cursor-not-allowed"
-                                  : "bg-slate-800/90 hover:bg-slate-700/90 border-white/10 text-white hover:border-purple-400"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-extrabold text-sm truncate">{title}</span>
-                              <span className="text-[10px] uppercase px-2 py-0.5 rounded-full font-mono shrink-0 font-bold bg-white/10">
-                                {isUsed ? "✓ В ячейке" : "Доступно"}
-                              </span>
-                            </div>
-
-                            <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-400">
-                              <span>
-                                {isUsed 
-                                  ? `Размещено в ячейке #${cellNum! + 1}`
-                                  : isCurrentSelection 
-                                    ? "✓ Выбрано! Кликните по ячейке слева" 
-                                    : "Нажмите, чтобы выбрать"}
-                              </span>
-                              {!isUsed && !isCurrentSelection && (
-                                <span className="text-purple-400 font-bold">Выбрать →</span>
-                              )}
-                            </div>
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            if (isUsed) {
+                              setStatusNotice(`Тайтл уже в ячейке #${cellNum! + 1}!`);
+                              setTimeout(() => setStatusNotice(""), 3000);
+                              return;
+                            }
+                            setSelectedAnime(isSelected ? null : title);
+                          }}
+                          className={`p-3 rounded-2xl border-2 transition-all cursor-pointer ${
+                            isUsed
+                              ? "bg-emerald-950/30 border-emerald-500/40 text-emerald-300 opacity-70"
+                              : isSelected
+                                ? "bg-purple-600/40 border-purple-400 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)] scale-[1.02]"
+                                : "bg-black/50 border-white/10 hover:border-purple-400/50 text-gray-200"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-black truncate">{title}</span>
+                            <span className="text-[10px] uppercase px-2 py-0.5 rounded-full font-mono font-bold bg-white/10">
+                              {isUsed ? "✓ В ячейке" : "Доступно"}
+                            </span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </>
+                          <div className="mt-1 text-[11px] text-gray-400">
+                            {isUsed 
+                              ? `Размещено в ячейке #${cellNum! + 1}`
+                              : isSelected
+                                ? "✓ Выбрано! Кликните по ячейке слева"
+                                : "Нажмите, чтобы выбрать"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             )}
 
-            {/* TAB 2: History of all revealed anime */}
             {dockTab === "all" && (
               <div className="space-y-2">
                 <div className="text-[11px] text-gray-400 pb-1 border-b border-white/5">
-                  Тайтлы из прошлых выдач, не поставленные вовремя на карточку, сгорели.
+                  Тайтлы из прошлых выдач, не поставленные вовремя, сгорели.
                 </div>
-
                 {revealedAnime.length === 0 ? (
                   <div className="text-center py-8 text-xs text-gray-500">
                     Пока нет открытых тайтлов
                   </div>
                 ) : (
-                  <div className="max-h-[420px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                  <div className="max-h-[380px] overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
                     {revealedAnime.map((title, idx) => {
                       const isUsed = usedAnimeTitles.has(title);
                       const isCurrent = currentPair.includes(title);
@@ -948,14 +1026,11 @@ export default function BingoRoundView({
                             if (isCurrent && !isUsed) {
                               setSelectedAnime(title);
                               setDockTab("current");
-                            } else if (!isCurrent && !isUsed) {
-                              setStatusNotice("Это аниме сгорело, так как раунд ушел вперед!");
-                              setTimeout(() => setStatusNotice(""), 3000);
                             }
                           }}
                           className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
                             isCurrent
-                              ? "bg-purple-950/40 border-purple-500/50 text-white cursor-pointer hover:bg-purple-900/40"
+                              ? "bg-purple-950/40 border-purple-500/50 text-white cursor-pointer"
                               : isUsed
                                 ? "bg-emerald-950/20 border-emerald-500/30 text-emerald-200"
                                 : "bg-white/5 border-white/5 text-gray-500 line-through opacity-60"
@@ -981,6 +1056,89 @@ export default function BingoRoundView({
           </div>
         </div>
       </div>
+
+      {/* ================= MODAL: 3-PARTIES ROUND 8 SCORE SUMMARY ================= */}
+      {showScoreSummary && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-slate-900 border border-purple-500/30 rounded-3xl p-6 max-w-2xl w-full shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar"
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-400" />
+                <h3 className="text-base font-black text-white uppercase">
+                  Сводка баллов Раунда 8: Аниме-Бинго
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowScoreSummary(false)}
+                className="text-gray-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-300">
+              Баллы всех 3 партий Бинго суммируются в общий командный счет викторины. Каждый игрок вносит свой вклад!
+            </p>
+
+            <div className="space-y-2">
+              {Array.from({ length: TOTAL_TEAMS }).map((_, tIdx) => {
+                const p1 = getRound8TeamPartyScore(tIdx, 0);
+                const p2 = getRound8TeamPartyScore(tIdx, 1);
+                const p3 = getRound8TeamPartyScore(tIdx, 2);
+                const total = p1 + p2 + p3;
+                const tPlayers = Object.values(players || {}).filter((p: any) => p.team === tIdx);
+
+                return (
+                  <div
+                    key={tIdx}
+                    className={`p-3 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
+                      tIdx === myTeamIdx && !user.isAdmin
+                        ? "bg-purple-950/40 border-purple-500/60"
+                        : "bg-white/5 border-white/5"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black text-white">Команда #{tIdx + 1}</span>
+                        {tIdx === myTeamIdx && !user.isAdmin && (
+                          <span className="text-[9px] bg-purple-500/30 text-purple-300 font-bold px-2 py-0.5 rounded-full">
+                            Ваша команда
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        {tPlayers.map((p: any) => p.nickname).join(", ") || "Нет игроков"}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 text-xs font-mono font-bold">
+                      <span className="text-gray-400">П1: <strong className="text-white">{p1}</strong></span>
+                      <span className="text-gray-400">П2: <strong className="text-white">{p2}</strong></span>
+                      <span className="text-gray-400">П3: <strong className="text-white">{p3}</strong></span>
+                      <span className="bg-amber-400/20 text-amber-300 px-2.5 py-1 rounded-xl border border-amber-400/30 font-black">
+                        Итого: {total} б.
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                onClick={() => setShowScoreSummary(false)}
+                className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-5 py-2.5 rounded-xl cursor-pointer"
+              >
+                Закрыть
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* Round 8 Full Rules Modal */}
       <BingoRulesModal
