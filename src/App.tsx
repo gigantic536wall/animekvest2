@@ -2853,7 +2853,7 @@ export default function App() {
                           <div className="p-2.5 bg-emerald-950/70 border border-emerald-500/50 rounded-xl max-w-md mx-auto shadow-md">
                             <span className="text-xs text-emerald-400 font-black uppercase flex items-center justify-center gap-1.5">
                               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                              Капитан отправил ответ:
+                              Капитан отправил официальный ответ:
                             </span>
                             <span className="text-sm font-black text-white mt-0.5 block">
                               «{answerText}»
@@ -2861,8 +2861,17 @@ export default function App() {
                           </div>
                         ) : (
                           <p className="text-xs text-gray-400">
-                            Совещайтесь в голосовом чате — ответ отправляет только капитан!
+                            💡 Введите ваш вариант ответа ниже — капитан команды увидит его и сможет отправить на проверку!
                           </p>
+                        )}
+                        {!hasTeamLeader && (
+                          <button
+                            onClick={handleClaimLeaderDirect}
+                            className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-black font-black text-xs uppercase px-4 py-2 rounded-xl flex items-center justify-center gap-1.5 mx-auto shadow-lg active:scale-95 cursor-pointer mt-1"
+                          >
+                            <Crown className="w-3.5 h-3.5" />
+                            <span>Стать капитаном команды</span>
+                          </button>
                         )}
                       </div>
                     )}
@@ -2988,6 +2997,7 @@ export default function App() {
                     user={user}
                     gameState={gameState}
                     players={players}
+                    teamsData={teamsData}
                     restPatch={restPatch}
                     restPut={restPut}
                     serverOffset={serverOffset}
@@ -3003,6 +3013,7 @@ export default function App() {
                     user={user}
                     gameState={gameState}
                     players={players}
+                    teamsData={teamsData}
                     restPatch={restPatch}
                     restPut={restPut}
                     timeLeft={timeLeft}
@@ -3019,9 +3030,11 @@ export default function App() {
                     user={user}
                     gameState={gameState}
                     players={players}
+                    teamsData={teamsData}
                     restPatch={restPatch}
                     restPut={restPut}
                     timeLeft={timeLeft}
+                    serverOffset={serverOffset}
                     globalPause={globalPause}
                     isLeader={isCurrentUserLeader}
                     leaderNickname={currentTeamLeaderName}
