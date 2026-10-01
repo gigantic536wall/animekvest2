@@ -30,8 +30,9 @@ export default function BeforeAfterRoundView({
   const [answerInput, setAnswerInput] = useState("");
   const [hasSubmitted, setHasSubmitted] = useState(false);
 
+  const roundIdx = gameState.currentRound ?? 6;
   const storageKey = `q${currentQIdx}`;
-  const answerStoragePath = `players/${user?.id}/roundAnswers/${gameState.currentRound || 5}/${storageKey}`;
+  const answerStoragePath = `players/${user?.id}/roundAnswers/${roundIdx}/${storageKey}`;
 
   const prevQIdxRef = useRef<number>(currentQIdx);
 
@@ -46,37 +47,61 @@ export default function BeforeAfterRoundView({
 
   // Проверка отправленного ответа
   useEffect(() => {
-    const existing = players?.[user?.id]?.roundAnswers?.[gameState.currentRound || 5]?.[storageKey];
+    const existing = players?.[user?.id]?.roundAnswers?.[roundIdx]?.[storageKey];
     if (existing?.answered) {
       setHasSubmitted(true);
       setAnswerInput(existing.answer || "");
     }
-  }, [players, user?.id, gameState.currentRound, storageKey]);
+  }, [players, user?.id, roundIdx, storageKey]);
+
+  // Проверка ответа капитана для всей команды
+  const teamId = user?.team;
+  const teamMemberWhoAnswered: any = teamId !== undefined && teamId >= 0
+    ? Object.values(players).find((p: any) => p.team === teamId && p.roundAnswers?.[roundIdx]?.[storageKey]?.answered)
+    : null;
+  const teamCaptainAnswerObj = teamMemberWhoAnswered?.roundAnswers?.[roundIdx]?.[storageKey];
+  const captainSubmittedAnswer = hasSubmitted ? answerInput : (teamCaptainAnswerObj?.answer || "");
 
   // Отправка ответа игроком
   const handlePlayerSubmit = async () => {
     const text = answerInput.trim();
-    if (!text || hasSubmitted || user.isAdmin || isLeader === false) return;
+    if (!text || hasSubmitted || user.isAdmin || !isLeader) return;
 
     const payload = {
       answered: true,
       answer: text,
       timestamp: Date.now(),
       potentialPoints: 4, 
+      checked: false,
     };
 
     await restPut(answerStoragePath, payload);
     setHasSubmitted(true);
+
+    if (teamId !== undefined && teamId >= 0) {
+      const teamAns = {
+        round: roundIdx,
+        question: currentQIdx,
+        answer: text,
+        potentialPoints: 4,
+        timestamp: Date.now(),
+        by: user.nickname
+      };
+      restPatch(`teams/${teamId}`, {
+        lastAnswer: teamAns,
+        [`answers/r${roundIdx}_q${currentQIdx}`]: teamAns
+      }).catch(console.error);
+    }
   };
 
   // Оценка ответа ведущим (+4 или 0)
   const handleMarkAnswer = async (playerId: string, isCorrect: boolean) => {
     if (!user.isAdmin) return;
-    const scoreKey = `${gameState.currentRound || 5}_${storageKey}`;
+    const scoreKey = `${roundIdx}_${storageKey}`;
     const pts = isCorrect ? 4 : 0;
     
     await restPut(`players/${playerId}/scores/${scoreKey}`, pts);
-    await restPatch(`players/${playerId}/roundAnswers/${gameState.currentRound || 5}/${storageKey}`, {
+    await restPatch(`players/${playerId}/roundAnswers/${roundIdx}/${storageKey}`, {
       checked: true,
       pointsAwarded: pts,
     });
@@ -151,18 +176,30 @@ export default function BeforeAfterRoundView({
       </div>
 
       {/* ================= ВВОД ИГРОКА ================= */}
-      {!user.isAdmin && isLeader === false && (
-        <div className="bg-purple-950/40 border border-purple-500/30 rounded-3xl p-5 text-center shadow-xl space-y-1.5 max-w-4xl mx-auto">
+      {!user.isAdmin && !isLeader && (
+        <div className="bg-purple-950/40 border border-purple-500/30 rounded-3xl p-5 text-center shadow-xl space-y-2 max-w-4xl mx-auto">
           <p className="text-sm font-bold text-purple-200">
             👑 Ответ на раунд отправляет капитан вашей команды: <strong className="text-white underline">{leaderNickname || "Не назначен"}</strong>
           </p>
-          <p className="text-xs text-gray-400">
-            Совещайтесь в голосовом чате — ответ в систему вводит только капитан!
-          </p>
+          {captainSubmittedAnswer ? (
+            <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-2xl max-w-lg mx-auto shadow-lg space-y-1">
+              <span className="text-xs text-emerald-400 font-black uppercase tracking-wider flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                Капитан отправил ответ на проверку:
+              </span>
+              <span className="text-base font-black text-white bg-black/40 px-4 py-1.5 rounded-xl border border-emerald-500/30 inline-block">
+                «{captainSubmittedAnswer}»
+              </span>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-400">
+              Совещайтесь в голосовом чате — ответ в систему вводит только капитан!
+            </p>
+          )}
         </div>
       )}
 
-      {!user.isAdmin && isLeader !== false && (
+      {!user.isAdmin && Boolean(isLeader) && (
         <div className="bg-slate-900/90 border-2 border-purple-500/30 rounded-3xl p-6 shadow-2xl space-y-4 backdrop-blur-xl max-w-4xl mx-auto">
           <div className="flex items-center justify-between">
             <label className="text-xs font-black uppercase tracking-wider text-purple-300">
