@@ -22,47 +22,14 @@ app.use((req, res, next) => {
   next();
 });
 
-// Auto-sync GEMINI_API_KEY into Firebase gameState so static clients (GitHub Pages) can also access it
-const FIREBASE_DB = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
-
-// 4 API ключа для ротации запросов по очереди (Round-Robin)
-const GEMINI_KEYS: string[] = [
-  "AQ.Ab8RN6Ksvy4NzakJcrrIVmrquzjMo3YMhK1AydJNrpPdBhnjiw",
-  "AQ.Ab8RN6LgQ6Vg3uVLEg9w3j-JzqkiuxL17_7cHCigWFew3Yz4Mw",
-  "AQ.Ab8RN6KKynWQ144CJl-3wUDms2FULpV4HY2kvi1slnzCuuNH_w",
-  "AQ.Ab8RN6I5QkUuDtw3RevmZLv6CZGyaoZFAd3WDLckcwuIUtc0ew",
-];
-
+// Helper to retrieve API keys from environment variable GEMINI_API_KEY (supports comma-separated list for round-robin rotation)
 function getAllGeminiKeys(): string[] {
   const envKeys = (process.env.GEMINI_API_KEY || "")
     .split(",")
     .map((k) => k.trim())
     .filter((k) => k.length > 10 && k !== "MY_GEMINI_API_KEY");
-  return Array.from(new Set([...GEMINI_KEYS, ...envKeys]));
+  return Array.from(new Set(envKeys));
 }
-
-async function autoSyncKeyToFirebase() {
-  const keys = getAllGeminiKeys();
-  if (keys.length === 0) return;
-  try {
-    const urls = [
-      `${FIREBASE_DB}/gameState/geminiApiKey.json`,
-      `${FIREBASE_DB}/appConfig/geminiApiKey.json`,
-      `${FIREBASE_DB}/geminiApiKey.json`
-    ];
-    for (const u of urls) {
-      await fetch(u, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(keys.join(",")),
-      });
-    }
-    console.log(`[Server] Synced ${keys.length} GEMINI_API_KEYS to Firebase for round-robin rotation`);
-  } catch (err) {
-    console.warn("[Server] Firebase key auto-sync warning:", err);
-  }
-}
-autoSyncKeyToFirebase();
 
 // Round-Robin Gemini client pool
 let currentKeyIndex = 0;
