@@ -9,7 +9,9 @@ interface TeamHeaderBannerProps {
   onOpenTeamSetup: () => void;
   onOpenLeaderboard?: () => void;
   isTeamSetupUnlocked?: boolean;
+  isScoreVisible?: boolean;
   restPatch?: (path: string, data: any) => Promise<any>;
+  onLeaderUpdate?: (leaderId: string | null, leaderNickname: string | null) => void;
 }
 
 export default function TeamHeaderBanner({
@@ -19,7 +21,9 @@ export default function TeamHeaderBanner({
   onOpenTeamSetup,
   onOpenLeaderboard,
   isTeamSetupUnlocked = true,
-  restPatch
+  isScoreVisible = false,
+  restPatch,
+  onLeaderUpdate
 }: TeamHeaderBannerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -46,6 +50,10 @@ export default function TeamHeaderBanner({
   const handleQuickAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !restPatch) return;
+    if (!isLeader) {
+      showNotice("🔒 Только капитан может менять аватарку команды");
+      return;
+    }
     setIsUploading(true);
     try {
       const compressed = await compressTeamAvatar(file, 256);
@@ -67,6 +75,7 @@ export default function TeamHeaderBanner({
         leaderId: user.id,
         leaderNickname: user.nickname
       });
+      if (onLeaderUpdate) onLeaderUpdate(user.id, user.nickname);
       showNotice("👑 Вы стали капитаном!");
     } catch (err) {
       console.error(err);
@@ -75,12 +84,18 @@ export default function TeamHeaderBanner({
 
   const handleQuickTransfer = async (target: any) => {
     if (!restPatch || !target) return;
+    const targetId = target.id || target._id;
+    if (!targetId) {
+      showNotice("❌ Ошибка: не найден ID игрока");
+      return;
+    }
     try {
       await restPatch(`teams/${teamId}`, {
-        leaderId: target.id,
+        leaderId: targetId,
         leaderNickname: target.nickname
       });
-      showNotice(`👑 Капитан: ${target.nickname}!`);
+      if (onLeaderUpdate) onLeaderUpdate(targetId, target.nickname);
+      showNotice(`👑 Капитан передан: ${target.nickname}!`);
     } catch (err) {
       console.error(err);
     }
@@ -99,18 +114,22 @@ export default function TeamHeaderBanner({
 
       {/* Left: Avatar + Team Name + Leader Info */}
       <div className="flex items-center gap-3">
-        {/* Team Avatar (clickable if unlocked) */}
+        {/* Team Avatar (clickable if unlocked AND captain) */}
         <div 
           onClick={() => {
+            if (!isLeader) {
+              showNotice("🔒 Только капитан может менять аватарку команды");
+              return;
+            }
             if (isTeamSetupUnlocked) {
               fileInputRef.current?.click();
             } else {
               showNotice("🔒 Загрузка откроется после старта ведущим");
             }
           }}
-          title={isTeamSetupUnlocked ? "Нажмите, чтобы загрузить аватарку команды с ПК" : "Ожидание старта игры"}
+          title={!isLeader ? "Только капитан может менять аватарку команды" : isTeamSetupUnlocked ? "Нажмите, чтобы загрузить аватарку команды с ПК" : "Ожидание старта игры"}
           className={`w-11 h-11 sm:w-13 sm:h-13 rounded-2xl overflow-hidden border-2 bg-black/60 shrink-0 flex items-center justify-center shadow-lg relative group transition-all ${
-            isTeamSetupUnlocked ? "cursor-pointer hover:border-purple-400 hover:scale-105 border-purple-500/50" : "border-gray-600 opacity-80"
+            isTeamSetupUnlocked && isLeader ? "cursor-pointer hover:border-purple-400 hover:scale-105 border-purple-500/50" : "border-gray-600 opacity-80"
           }`}
         >
           {currentTeam.avatar ? (
@@ -126,7 +145,7 @@ export default function TeamHeaderBanner({
             </div>
           )}
 
-          {isTeamSetupUnlocked && (
+          {isTeamSetupUnlocked && isLeader && (
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
               <Upload className="w-4 h-4 text-white" />
             </div>
@@ -178,8 +197,8 @@ export default function TeamHeaderBanner({
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2 ml-auto flex-wrap">
-        {/* Quick Avatar Upload button */}
-        {isTeamSetupUnlocked && !currentTeam.avatar && (
+        {/* Quick Avatar Upload button (ONLY FOR CAPTAIN) */}
+        {isTeamSetupUnlocked && isLeader && !currentTeam.avatar && (
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading}
@@ -219,8 +238,8 @@ export default function TeamHeaderBanner({
           </div>
         )}
 
-        {/* Leaderboard button */}
-        {onOpenLeaderboard && (
+        {/* Leaderboard button (only if score is visible or admin) */}
+        {onOpenLeaderboard && (user?.isAdmin || isScoreVisible) && (
           <button
             onClick={onOpenLeaderboard}
             className="bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
