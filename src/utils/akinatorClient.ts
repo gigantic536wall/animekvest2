@@ -6,12 +6,14 @@
 export function normalizeAkinatorAnswer(rawText: string): string {
   if (!rawText) return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
 
+  // 1. Remove markdown formatting, quotes, punctuation
   let cleaned = rawText
     .replace(/[*_#~`"'«»“”]/g, " ")
     .replace(/^ответ\s*:\s*/i, "")
     .replace(/[\r\n\t]+/g, " ")
     .trim();
 
+  // 2. Exact match check
   const upper = cleaned.toUpperCase().replace(/[.,!?:;]$/, "").trim();
   if (upper === "ДА" || upper === "YES") return "ДА";
   if (upper === "НЕТ" || upper === "NO") return "НЕТ";
@@ -20,10 +22,12 @@ export function normalizeAkinatorAnswer(rawText: string): string {
   if (upper === "ЧАСТИЧНО" || upper.startsWith("ЧАСТИЧНО")) return "ЧАСТИЧНО";
   if (upper.includes("НЕ ЗНАЮ") || upper.includes("НЕПРИМЕНИМО")) return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
 
+  // 3. Multi-word phrase inspection
   if (upper.includes("СКОРЕЕ ДА")) return "СКОРЕЕ ДА";
   if (upper.includes("СКОРЕЕ НЕТ")) return "СКОРЕЕ НЕТ";
   if (upper.includes("ЧАСТИЧНО")) return "ЧАСТИЧНО";
 
+  // 4. Token search with word boundaries
   const tokens = upper.split(/[\s,.;:!?()]+/).filter(Boolean);
   if (tokens.length > 0) {
     const first = tokens[0];
@@ -37,51 +41,68 @@ export function normalizeAkinatorAnswer(rawText: string): string {
   return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
 }
 
-let inMemoryKey = "";
+export const DEFAULT_GEMINI_KEYS: string[] = [];
 
-export async function resolveGeminiKey(providedKey?: string): Promise<string> {
-  if (providedKey && providedKey.trim().length > 10) {
-    inMemoryKey = providedKey.trim();
-    return inMemoryKey;
-  }
-  if (inMemoryKey) return inMemoryKey;
+let clientKeyIndex = 0;
 
+export async function resolveGeminiKeys(providedKey?: string): Promise<string[]> {
+  const collected: string[] = [...DEFAULT_GEMINI_KEYS];
+
+  const parseKeys = (raw: string) => {
+    raw.split(",").forEach((k) => {
+      const trimmed = k.trim();
+      if (trimmed.length > 10 && trimmed !== "MY_GEMINI_API_KEY") {
+        collected.push(trimmed);
+      }
+    });
+  };
+
+  if (providedKey) parseKeys(providedKey);
+
+  // Check localStorage
   if (typeof window !== "undefined") {
     const local = localStorage.getItem("gemini_api_key");
-    if (local && local.trim().length > 10) {
-      inMemoryKey = local.trim();
-      return inMemoryKey;
-    }
+    if (local) parseKeys(local);
   }
 
-  const envKey = (typeof process !== "undefined" ? process.env?.GEMINI_API_KEY : "") ||
-                 (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  if (envKey && envKey.trim().length > 10 && envKey !== "MY_GEMINI_API_KEY") {
-    inMemoryKey = envKey.trim();
-    return inMemoryKey;
-  }
+  // Check env (client side only checks VITE_ prefix, never raw server process.env)
+  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  if (envKey) parseKeys(envKey);
 
+  // Try fetching from Firebase Realtime Database
   try {
     const urls = [
       "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/gameState/geminiApiKey.json",
-      "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/appConfig/geminiApiKey.json"
+      "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/appConfig/geminiApiKey.json",
+      "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/geminiApiKey.json"
     ];
     for (const u of urls) {
       const controller = new AbortController();
-      const tId = setTimeout(() => controller.abort(), 2000);
+      const tId = setTimeout(() => controller.abort(), 1500);
       const res = await fetch(u, { signal: controller.signal });
       clearTimeout(tId);
       if (res.ok) {
         const val = await res.json();
-        if (typeof val === "string" && val.trim().length > 10) {
-          inMemoryKey = val.trim();
-          return inMemoryKey;
-        }
+        if (typeof val === "string") parseKeys(val);
       }
     }
-  } catch {}
+  } catch {
+    // ignore
+  }
 
-  return inMemoryKey;
+  return Array.from(new Set(collected));
+}
+
+export function getNextGeminiKey(keys: string[]): string {
+  if (keys.length === 0) return "";
+  const key = keys[clientKeyIndex % keys.length];
+  clientKeyIndex = (clientKeyIndex + 1) % keys.length;
+  return key;
+}
+
+export async function resolveGeminiKey(providedKey?: string): Promise<string> {
+  const keys = await resolveGeminiKeys(providedKey);
+  return getNextGeminiKey(keys);
 }
 
 const FALLBACK_MODELS = [
@@ -99,6 +120,7 @@ export async function askAkinator({
   question: string;
   geminiKey?: string;
 }): Promise<{ success: boolean; answer: string; error?: string }> {
+  // Strategy 1: Attempt to call Express backend (works on Cloud Run / dev server)
   const apiUrls = ["/api/akinator/ask", "./api/akinator/ask", "/animekvest2/api/akinator/ask"];
   
   for (const endpoint of apiUrls) {
@@ -119,12 +141,15 @@ export async function askAkinator({
           return { success: true, answer: data.answer };
         }
       }
-    } catch {}
+    } catch {
+      // Endpoint unreachable, continue to fallback
+    }
   }
 
-  const apiKey = await resolveGeminiKey(geminiKey);
+  // Strategy 2: If running statically (e.g. on GitHub Pages), call Gemini REST API directly with round-robin keys
+  const keys = await resolveGeminiKeys(geminiKey);
 
-  if (apiKey && apiKey.trim().length > 10) {
+  if (keys.length > 0) {
     const systemPrompt = `Ты — неподкупный ведущий Акинатор в аниме-викторине.
 Твое секретное аниме, которое загадано: "${animeTitle}".
 Игрок задает тебе вопрос на "Да/Нет", чтобы угадать это аниме.
@@ -144,9 +169,12 @@ export async function askAkinator({
 4. Если вопрос бессмысленный, не по теме или на него невозможно ответить в таком формате, отвечай "НЕ ЗНАЮ / НЕПРИМЕНИМО".
 5. Выведи ТОЛЬКО чистый текст ответа без звездочек (**), без кавычек и без точек.`;
 
-    for (const model of FALLBACK_MODELS) {
+    const maxAttempts = Math.min(keys.length * 2, 8);
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const activeKey = getNextGeminiKey(keys);
+      const model = FALLBACK_MODELS[attempt % FALLBACK_MODELS.length];
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey.trim()}`;
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -167,15 +195,17 @@ export async function askAkinator({
           return { success: true, answer: normalized };
         }
       } catch (err) {
-        console.warn(`Direct Gemini model ${model} failed:`, err);
+        console.warn(`Direct Gemini key ...${activeKey.slice(-6)} model ${model} failed:`, err);
       }
     }
   }
 
+  // Strategy 3: Both server and direct API failed/absent
   return {
     success: false,
     answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
-    error: "Не удалось связаться с ИИ. Проверьте соединение или API ключ.",
+    error:
+      "На GitHub Pages отсутствует бэкенд-сервер. Чтобы ИИ отвечал, ведущему нужно сохранить Gemini API ключ в Панели Управления ведущего (внизу страницы).",
   };
 }
 
@@ -200,10 +230,12 @@ export async function checkAkinatorGuess({
   const ct = clean(animeTitle);
   const co = clean(originalOrEn || "");
 
+  // Fast exact or substring matching
   if (cg && (cg === ct || (cg.length >= 4 && (ct.includes(cg) || co.includes(cg))))) {
     return true;
   }
 
+  // Try Express backend
   const apiUrls = ["/api/akinator/check-guess", "./api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"];
   for (const endpoint of apiUrls) {
     try {
@@ -218,20 +250,26 @@ export async function checkAkinatorGuess({
           return data.correct;
         }
       }
-    } catch {}
+    } catch {
+      // continue
+    }
   }
 
-  const apiKey = await resolveGeminiKey(geminiKey);
+  // Direct Gemini check if API key exists with round-robin keys
+  const keys = await resolveGeminiKeys(geminiKey);
 
-  if (apiKey && apiKey.trim().length > 10) {
+  if (keys.length > 0) {
     const prompt = `Ответь СТРОГО 'ДА' или 'НЕТ'.
 Загаданное аниме: "${animeTitle}" (также может быть известно как "${originalOrEn || ""}").
 Вариант ответа игрока: "${guess}".
 Имел ли игрок в виду именно это аниме? (Учитывай опечатки, русские и английские названия, синонимы).`;
 
-    for (const model of FALLBACK_MODELS) {
+    const maxAttempts = Math.min(keys.length * 2, 6);
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const activeKey = getNextGeminiKey(keys);
+      const model = FALLBACK_MODELS[attempt % FALLBACK_MODELS.length];
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey.trim()}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey.trim()}`;
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -245,7 +283,9 @@ export async function checkAkinatorGuess({
           const text = (data.candidates?.[0]?.content?.parts?.[0]?.text || "").toUpperCase();
           return text.includes("ДА") || text.includes("YES");
         }
-      } catch {}
+      } catch {
+        // continue
+      }
     }
   }
 
