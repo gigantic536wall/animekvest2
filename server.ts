@@ -24,9 +24,26 @@ app.use((req, res, next) => {
 
 // Auto-sync GEMINI_API_KEY into Firebase gameState so static clients (GitHub Pages) can also access it
 const FIREBASE_DB = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
+
+// 4 API ключа для ротации запросов по очереди (Round-Robin)
+const GEMINI_KEYS: string[] = [
+  "AQ.Ab8RN6Ksvy4NzakJcrrIVmrquzjMo3YMhK1AydJNrpPdBhnjiw",
+  "AQ.Ab8RN6LgQ6Vg3uVLEg9w3j-JzqkiuxL17_7cHCigWFew3Yz4Mw",
+  "AQ.Ab8RN6KKynWQ144CJl-3wUDms2FULpV4HY2kvi1slnzCuuNH_w",
+  "AQ.Ab8RN6I5QkUuDtw3RevmZLv6CZGyaoZFAd3WDLckcwuIUtc0ew",
+];
+
+function getAllGeminiKeys(): string[] {
+  const envKeys = (process.env.GEMINI_API_KEY || "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 10 && k !== "MY_GEMINI_API_KEY");
+  return Array.from(new Set([...GEMINI_KEYS, ...envKeys]));
+}
+
 async function autoSyncKeyToFirebase() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || !apiKey.startsWith("AIza")) return;
+  const keys = getAllGeminiKeys();
+  if (keys.length === 0) return;
   try {
     const urls = [
       `${FIREBASE_DB}/gameState/geminiApiKey.json`,
@@ -37,34 +54,41 @@ async function autoSyncKeyToFirebase() {
       await fetch(u, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(apiKey),
+        body: JSON.stringify(keys.join(",")),
       });
     }
-    console.log("[Server] Synced GEMINI_API_KEY to Firebase for GitHub Pages");
+    console.log(`[Server] Synced ${keys.length} GEMINI_API_KEYS to Firebase for round-robin rotation`);
   } catch (err) {
     console.warn("[Server] Firebase key auto-sync warning:", err);
   }
 }
 autoSyncKeyToFirebase();
 
-// Shared Gemini client utility
-let aiClient: GoogleGenAI | null = null;
-function getAIClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GEMINI_API_KEY environment variable is required");
+// Round-Robin Gemini client pool
+let currentKeyIndex = 0;
+const aiClientsMap = new Map<string, GoogleGenAI>();
+
+function getNextAIClient(): { client: GoogleGenAI; key: string } {
+  const keys = getAllGeminiKeys();
+  if (keys.length === 0) {
+    throw new Error("No Gemini API keys configured");
   }
-  if (!aiClient) {
-    aiClient = new GoogleGenAI({
-      apiKey,
+  const selectedKey = keys[currentKeyIndex % keys.length];
+  currentKeyIndex = (currentKeyIndex + 1) % keys.length;
+
+  let client = aiClientsMap.get(selectedKey);
+  if (!client) {
+    client = new GoogleGenAI({
+      apiKey: selectedKey,
       httpOptions: {
         headers: {
           'User-Agent': 'aistudio-build',
         },
       },
     });
+    aiClientsMap.set(selectedKey, client);
   }
-  return aiClient;
+  return { client, key: selectedKey };
 }
 
 // Health check
@@ -76,14 +100,17 @@ app.get(["/api/health", "/animekvest2/api/health"], (_req, res) => {
 function normalizeAkinatorAnswer(rawText: string): string {
   if (!rawText) return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
   
+  // 1. Remove markdown symbols, quotes, punctuation
   let cleaned = rawText
     .replace(/[*_#~`"'«»“”]/g, " ")
     .replace(/[.,!?;:()\[\]{}]/g, " ")
     .trim()
     .toUpperCase();
 
+  // 2. Remove common prefixes
   cleaned = cleaned.replace(/^(ОТВЕТ|ANSWER|ВЕРДИКТ|ИТОГ)\s+/i, "").trim();
 
+  // 3. Multi-word phrases
   if (cleaned.includes("СКОРЕЕ ДА") || cleaned.includes("PROBABLY YES") || cleaned.includes("ВЕРОЯТНО ДА")) {
     return "СКОРЕЕ ДА";
   }
@@ -97,6 +124,7 @@ function normalizeAkinatorAnswer(rawText: string): string {
     return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
   }
 
+  // 4. Tokenize by whitespace
   const tokens = cleaned.split(/\s+/).filter(Boolean);
   if (tokens.length > 0) {
     const first = tokens[0];
@@ -104,10 +132,48 @@ function normalizeAkinatorAnswer(rawText: string): string {
     if (first === "НЕТ" || first === "NO") return "НЕТ";
   }
 
+  // 5. Look for standalone tokens
   if (tokens.includes("ДА") || tokens.includes("YES")) return "ДА";
   if (tokens.includes("НЕТ") || tokens.includes("NO")) return "НЕТ";
 
   return "НЕ ЗНАЮ / НЕПРИМЕНИМО";
+}
+
+// Supported Gemini models with fallbacks in case of high demand / 503 errors
+const GEMINI_MODELS = [
+  "gemini-3.1-flash-lite",
+  "gemini-flash-latest",
+  "gemini-3.8-flash",
+];
+
+async function generateWithFallback(
+  contents: string,
+  config: any
+): Promise<string> {
+  const keys = getAllGeminiKeys();
+  const maxAttempts = Math.min(keys.length * GEMINI_MODELS.length, 8);
+  let lastErr: any = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const { client, key } = getNextAIClient();
+    const model = GEMINI_MODELS[attempt % GEMINI_MODELS.length];
+    try {
+      const response = await client.models.generateContent({
+        model,
+        contents,
+        config,
+      });
+      if (response && response.text) {
+        return response.text;
+      }
+    } catch (err: any) {
+      console.warn(`[Gemini Rotation] Key ...${key.slice(-6)} model ${model} issue:`, err?.message || err);
+      lastErr = err;
+      // Brief pause before trying next key/model in rotation
+      await new Promise((r) => setTimeout(r, 150));
+    }
+  }
+  throw lastErr || new Error("All Gemini keys and models in rotation failed to respond");
 }
 
 // API: Ask Akinator a question about the assigned anime
@@ -118,14 +184,14 @@ app.post(["/api/akinator/ask", "/animekvest2/api/akinator/ask"], async (req, res
       return res.status(400).json({ error: "animeTitle and question are required" });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    const availableKeys = getAllGeminiKeys();
+    if (availableKeys.length === 0) {
       return res.json({ 
         answer: "НЕ ЗНАЮ (Требуется GEMINI_API_KEY)",
-        warning: "GEMINI_API_KEY is not configured in Settings > Secrets." 
+        warning: "Ключи Gemini не настроены." 
       });
     }
 
-    const ai = getAIClient();
     const systemPrompt = `Ты — неподкупный ведущий Акинатор в аниме-викторине.
 Твое секретное аниме, которое загадано: "${animeTitle}".
 Игрок задает тебе вопрос на "Да/Нет", чтобы угадать это аниме.
@@ -147,28 +213,16 @@ app.post(["/api/akinator/ask", "/animekvest2/api/akinator/ask"], async (req, res
 
     let rawAnswer = "";
     try {
-      // Жестко заданная модель
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: `Вопрос игрока: "${question}"`,
-        config: {
+      rawAnswer = await generateWithFallback(
+        `Вопрос игрока: "${question}"`,
+        {
           systemInstruction: systemPrompt,
           temperature: 0.1,
         }
-      });
-      
-      if (response && response.text) {
-        rawAnswer = response.text;
-      } else {
-        throw new Error("Empty response from AI");
-      }
+      );
     } catch (genErr: any) {
-      console.error("Gemini failed for /api/akinator/ask:", genErr);
-      
-      if (genErr?.status === 429 || genErr?.message?.includes("Quota") || genErr?.message?.includes("limit")) {
-        return res.status(429).json({ error: "⏳ Лимит запросов ИИ исчерпан! Подождите ровно 1 минуту." });
-      }
-      
+      console.error("All Gemini rotated models failed for /api/akinator/ask:", genErr);
+      // Soft fallback so the game is not disrupted
       return res.json({
         answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
         warning: "ИИ временно перегружен, ответ по умолчанию: НЕ ЗНАЮ"
@@ -202,30 +256,27 @@ app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"],
     const cleanGuess = clean(guess);
     const cleanTitle = clean(animeTitle);
 
+    // Fast exact or substring match
     if (cleanGuess === cleanTitle || (cleanGuess.length >= 4 && cleanTitle.includes(cleanGuess))) {
       return res.json({ correct: true });
     }
 
-    if (!process.env.GEMINI_API_KEY) {
+    // AI check for alternate names, English/Romaji titles, minor typos
+    const availableKeys = getAllGeminiKeys();
+    if (availableKeys.length === 0) {
       return res.json({ correct: cleanGuess === cleanTitle });
     }
 
     let correct = false;
     try {
-      const ai = getAIClient();
       const prompt = `Загадано аниме: "${animeTitle}".
 Игрок назвал свой вариант догадки: "${guess}".
 
 Является ли вариант игрока тем же самым аниме (с учетом официального перевода на русский, английский, японский романдзи, небольших опечаток или сокращений вроде "АоТ" / "Тетрадка смерти" / "Клинки")?
 Ответь строго ОДНИМ словом: ДА или НЕТ.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: { temperature: 0.0 }
-      });
-      
-      const text = (response?.text || "").trim().toUpperCase();
+      const rawText = await generateWithFallback(prompt, { temperature: 0.0 });
+      const text = rawText.trim().toUpperCase();
       correct = text.startsWith("ДА") || text === "ДА";
     } catch (aiErr) {
       console.warn("AI check-guess fallback to basic string match:", aiErr);
@@ -235,6 +286,7 @@ app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"],
     return res.json({ correct });
   } catch (err: any) {
     console.error("Akinator check guess error:", err);
+    // Fallback to basic string comparison
     const clean = (s: string) => s.toLowerCase().replace(/[^a-zа-я0-9]/gi, "").trim();
     return res.json({ correct: clean(req.body.guess) === clean(req.body.animeTitle) });
   }
