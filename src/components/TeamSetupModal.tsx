@@ -47,6 +47,7 @@ interface TeamSetupModalProps {
   players: any;
   teamsData: Record<string, any>;
   restPatch: (path: string, data: any) => Promise<any>;
+  onLeaderUpdate?: (leaderId: string | null, leaderNickname: string | null) => void;
 }
 
 export default function TeamSetupModal({
@@ -55,7 +56,8 @@ export default function TeamSetupModal({
   user,
   players,
   teamsData,
-  restPatch
+  restPatch,
+  onLeaderUpdate
 }: TeamSetupModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -111,6 +113,7 @@ export default function TeamSetupModal({
         leaderId: user.id,
         leaderNickname: user.nickname
       });
+      if (onLeaderUpdate) onLeaderUpdate(user.id, user.nickname);
       showTempStatus("👑 Вы стали лидером команды!");
     } catch (err) {
       console.error(err);
@@ -118,13 +121,15 @@ export default function TeamSetupModal({
   };
 
   const handleTransfer = async (targetId: string) => {
-    const target = teamMembers.find((p: any) => p.id === targetId);
+    const target = teamMembers.find((p: any) => p.id === targetId || p._id === targetId);
     if (!target) return;
+    const finalTargetId = target.id || targetId;
     try {
       await restPatch(`teams/${teamId}`, {
-        leaderId: target.id,
+        leaderId: finalTargetId,
         leaderNickname: target.nickname
       });
+      if (onLeaderUpdate) onLeaderUpdate(finalTargetId, target.nickname);
       setTransferTargetId("");
       showTempStatus(`👑 Лидерство передано игроку ${target.nickname}!`);
     } catch (err) {
@@ -138,6 +143,7 @@ export default function TeamSetupModal({
         leaderId: null,
         leaderNickname: null
       });
+      if (onLeaderUpdate) onLeaderUpdate(null, null);
       showTempStatus("Вы сложили полномочия лидера");
     } catch (err) {
       console.error(err);
@@ -208,32 +214,41 @@ export default function TeamSetupModal({
               <p className="text-[11px] text-gray-400">
                 Загрузите картинку с вашего ПК. Её будут видеть все игроки в таблице лидеров.
               </p>
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarFile}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploading}
-                  className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer disabled:opacity-50"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>{isUploading ? "Загрузка..." : "Загрузить с ПК"}</span>
-                </button>
-                {currentTeam.avatar && (
+              {isLeader ? (
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-1">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarFile}
+                    className="hidden"
+                  />
                   <button
-                    onClick={handleRemoveAvatar}
-                    className="text-gray-400 hover:text-red-400 p-2 rounded-xl hover:bg-white/5 transition-all"
-                    title="Удалить аватар"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                    className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer disabled:opacity-50"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>{isUploading ? "Загрузка..." : "Загрузить с ПК"}</span>
                   </button>
-                )}
-              </div>
+                  {currentTeam.avatar && (
+                    <button
+                      onClick={handleRemoveAvatar}
+                      className="text-gray-400 hover:text-red-400 p-2 rounded-xl hover:bg-white/5 transition-all cursor-pointer"
+                      title="Удалить аватар"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="pt-1">
+                  <span className="text-xs text-amber-300 font-bold bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-xl inline-flex items-center gap-1.5">
+                    <Crown className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Только капитан команды может менять аватарку</span>
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
