@@ -24,6 +24,8 @@ import TeamHeaderBanner from './components/TeamHeaderBanner';
 import { generateBingoPool32, generateTeamBingoCard } from './data/bingoData';
 import { ROUND4_STAGES } from './data/round4Data';
 import { ROUND5_QUESTIONS } from './data/round5Data';
+import FriendsJokesRoundView from './components/FriendsJokesRoundView';
+import { ROUND9_QUESTIONS } from './data/round9Data';
 
 // ==================== КОНФИГ FIREBASE ====================
 const DB_URL = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
@@ -300,11 +302,11 @@ const roundsData: Round[] = [
           "«Красная птица и железный рыцарь»",
           "«Одинокий зверь на краю мира»",
           "«Принцесса без крыльев»",
-          "«Чудовище и принц» ",
+          "«Чудовище и принц»",
           "«Детство Золотой ветви»",
           "«Слёзы алого дракона»"
         ],
-        correctAnswer: "«Чудовище и принц» "
+        correctAnswer: "«Чудовище и принц»"
       },
       {
         text: "«Золотая пора»: Какое роковое происшествие на мосту в родном городе привело к падению Банри Тады в реку и полной потере его юношеских воспоминаний?",
@@ -364,7 +366,7 @@ const roundsData: Round[] = [
           "Наследный принц сразу же обратил на неё внимание из-за боевых навыков",
           "Она избавилась от многомиллионных карточных долгов своей благородной семьи"
         ],
-        correctAnswer: "Всю жизнь страдая от слабого здоровья и удушья, она наконец обрела сильноеь тело"
+        correctAnswer: "Всю жизнь страдая от слабого здоровья и удушья, она наконец обрела сильное тело"
       },
       {
         text: "«Аля иногда кокетничает со мной по-русски» (Сложный вопрос): По какой подлинной причине Масатика Кудзэ с раннего детства свободно понимает русский язык, скрывая это от Али?",
@@ -481,15 +483,16 @@ const roundsData: Round[] = [
     ]
   },
   {
-    type: "da_net",
-    name: "Раунд 9: Да или Нет",
-    answerTime: 0,
-    questions: [
-      { 
-        text: "В данном раунде вы будете по очереди по номерам команд задавать вопрос администратору который имеет право отвечать только да или нет так же у него есть возможность солгать 3 раза после того как человек из первой команды спросил ему дали ответ спрашивает человек из 2 команды и так далее когда круг пройдет все начинаеться опять с первой команды пока не угадаете персонажа из аниме.",
-        correctAnswer: "Персонаж угадан"
-      }
-    ]
+    type: "friends_jokes",
+    name: "Раунд 9: Вопросы от друзей (Шуточный)",
+    answerTime: 60,
+    pauseDuration: 10,
+    points: 2,
+    questions: ROUND9_QUESTIONS.map(q => ({
+      text: q.text,
+      correctAnswer: q.correctAnswer,
+      hint: q.hint
+    }))
   }
 ];
 
@@ -1240,7 +1243,7 @@ export default function App() {
       setTimeLeft(diff);
 
       const currentRType = roundsData[gameState.currentRound]?.type;
-      if (user.isAdmin && diff <= 0 && !gameState.revealMode && currentRType !== "da_net" && currentRType !== "bingo" && currentRType !== "memory_items" && (gameState.endTime > 0)) {
+      if (user.isAdmin && diff <= 0 && !gameState.revealMode && currentRType !== "friends_jokes" && currentRType !== "bingo" && currentRType !== "memory_items" && (gameState.endTime > 0)) {
         startPauseBetweenQuestions();
       }
     };
@@ -1447,10 +1450,11 @@ export default function App() {
       newState.factsRevealed = 1;
     }
 
-    if (round.type === "da_net") {
-      newState.currentTeamTurn = 0;
-      newState.liesLeft = 3;
+    if (round.type === "friends_jokes") {
+      newState.currentQuestion = 0;
+      newState.showAudienceAward = false;
       newState.endTime = 0;
+      newState.timeLeft = 0;
     }
 
     // РАУНД 8: БИНГО (ПАРТИЯ 1)
@@ -1574,7 +1578,7 @@ export default function App() {
     try {
       const currentGameState = gameStateRef.current || gameState;
       const round = roundsData[currentGameState.currentRound];
-      if (!round || round.type === "da_net" || round.type === "bingo" || round.type === "memory_items") {
+      if (!round || round.type === "friends_jokes" || round.type === "bingo" || round.type === "memory_items") {
         isStartingPauseRef.current = false;
         return;
       }
@@ -3112,6 +3116,18 @@ export default function App() {
                     restPut={restPut}
                     isLeader={isCurrentUserLeader}
                     leaderNickname={currentTeamLeaderName}
+                  />
+                )}
+
+                {/* Раунд 9: Вопросы от друзей (Шуточный) */}
+                {round.type === "friends_jokes" && (
+                  <FriendsJokesRoundView
+                    user={user}
+                    gameState={gameState}
+                    players={players}
+                    teamsData={teamsData}
+                    restPatch={restPatch}
+                    restPut={restPut}
                   />
                 )}
               </div>
