@@ -228,7 +228,10 @@ export default function AkinatorRoundView({
     setIsAsking(true);
 
     try {
-      const geminiKey = gameState?.geminiApiKey || gameState?.config?.geminiApiKey;
+      const geminiKey =
+        gameState?.geminiApiKey ||
+        gameState?.config?.geminiApiKey ||
+        (typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || undefined : undefined);
       const res = await askAkinator({
         animeTitle: currentTeamData.animeTitle,
         question: qText,
@@ -273,7 +276,10 @@ export default function AkinatorRoundView({
     setIsGuessing(true);
 
     try {
-      const geminiKey = gameState?.geminiApiKey || gameState?.config?.geminiApiKey;
+      const geminiKey =
+        gameState?.geminiApiKey ||
+        gameState?.config?.geminiApiKey ||
+        (typeof window !== "undefined" ? localStorage.getItem("gemini_api_key") || undefined : undefined);
       const isCorrect = await checkAkinatorGuess({
         animeTitle: currentTeamData.animeTitle,
         originalOrEn: currentTeamData.originalOrEn,
