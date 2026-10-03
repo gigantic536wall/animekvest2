@@ -124,33 +124,42 @@ export async function askAkinator({
   const keys = await resolveGeminiKeys(geminiKey);
   const effectiveKeyStr = geminiKey || keys.join(",");
 
-  // Strategy 1: Attempt to call Express backend (works on Cloud Run / dev server)
-  const apiUrls = ["/api/akinator/ask", "./api/akinator/ask", "/animekvest2/api/akinator/ask"];
-  
-  for (const endpoint of apiUrls) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ animeTitle, question, geminiKey: effectiveKeyStr }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
+  const isStaticHost =
+    typeof window !== "undefined" &&
+    (window.location.hostname.includes("github.io") ||
+      window.location.protocol === "file:" ||
+      window.location.hostname.includes("surge.sh"));
 
-      if (res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data && data.answer && !data.warning && !data.answer.includes("Требуется GEMINI_API_KEY")) {
-          return { success: true, answer: data.answer };
+  // Strategy 1: Attempt to call Express backend (only if not on a pure static host like GitHub Pages)
+  if (!isStaticHost) {
+    const apiUrls = ["/api/akinator/ask", "./api/akinator/ask", "/animekvest2/api/akinator/ask"];
+    
+    for (const endpoint of apiUrls) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1800);
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ animeTitle, question, geminiKey: effectiveKeyStr }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data && data.answer && !data.warning && !data.answer.includes("Требуется GEMINI_API_KEY")) {
+            return { success: true, answer: data.answer };
+          }
         }
+      } catch {
+        // Endpoint unreachable, continue to fallback
       }
-    } catch {
-      // Endpoint unreachable, continue to fallback
     }
   }
 
-  // Strategy 2: If running statically (e.g. on GitHub Pages) or server has no keys, call Gemini REST API directly with round-robin keys
+  // Strategy 2: Direct Gemini REST API call with rotation and accurate error tracking
+  let lastErrorMessage = "";
   if (keys.length > 0) {
     const systemPrompt = `Ты — неподкупный ведущий Акинатор в аниме-викторине.
 Твое секретное аниме, которое загадано: "${animeTitle}".
@@ -195,19 +204,36 @@ export async function askAkinator({
           const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
           const normalized = normalizeAkinatorAnswer(rawText);
           return { success: true, answer: normalized };
+        } else {
+          const errData = await res.json().catch(() => null);
+          const msg = errData?.error?.message || `HTTP ${res.status}`;
+          if (res.status === 429) {
+            lastErrorMessage = "Превышен минутный лимит бесплатных запросов Gemini (429 Quota Exceeded). Подождите 15-30 секунд.";
+          } else {
+            lastErrorMessage = `Google Gemini вернул ошибку (${res.status}): ${msg}`;
+          }
         }
-      } catch (err) {
+      } catch (err: any) {
+        lastErrorMessage = err?.message || "Ошибка сетевого соединения с Gemini API";
         console.warn(`Direct Gemini key ...${activeKey.slice(-6)} model ${model} failed:`, err);
       }
     }
   }
 
-  // Strategy 3: Both server and direct API failed/absent
+  // Strategy 3: Both server and direct API failed or keys are missing
+  if (keys.length === 0) {
+    return {
+      success: false,
+      answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
+      error:
+        "Ключи Gemini API не найдены в базе. Ведущему нужно ввести и сохранить ключи в Панели Управления ведущего (внизу страницы).",
+    };
+  }
+
   return {
     success: false,
     answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
-    error:
-      "На GitHub Pages отсутствует бэкенд-сервер. Чтобы ИИ отвечал, ведущему нужно сохранить Gemini API ключ в Панели Управления ведущего (внизу страницы).",
+    error: lastErrorMessage || "Не удалось связаться с ИИ Gemini. Нажмите «Повторить вопрос».",
   };
 }
 
@@ -240,23 +266,35 @@ export async function checkAkinatorGuess({
   const keys = await resolveGeminiKeys(geminiKey);
   const effectiveKeyStr = geminiKey || keys.join(",");
 
-  // Try Express backend
-  const apiUrls = ["/api/akinator/check-guess", "./api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"];
-  for (const endpoint of apiUrls) {
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ animeTitle, guess, geminiKey: effectiveKeyStr }),
-      });
-      if (res.ok) {
-        const data = await res.json().catch(() => null);
-        if (data && typeof data.correct === "boolean") {
-          return data.correct;
+  const isStaticHost =
+    typeof window !== "undefined" &&
+    (window.location.hostname.includes("github.io") ||
+      window.location.protocol === "file:" ||
+      window.location.hostname.includes("surge.sh"));
+
+  // Try Express backend if not purely static
+  if (!isStaticHost) {
+    const apiUrls = ["/api/akinator/check-guess", "./api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"];
+    for (const endpoint of apiUrls) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1800);
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ animeTitle, guess, geminiKey: effectiveKeyStr }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data && typeof data.correct === "boolean") {
+            return data.correct;
+          }
         }
+      } catch {
+        // continue
       }
-    } catch {
-      // continue
     }
   }
 
