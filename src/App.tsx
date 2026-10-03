@@ -9,7 +9,7 @@ import {
   Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, 
   Play, Pause, SkipForward, Trash2, RotateCcw, CheckCircle2, 
   XCircle, Users, Eye, HelpCircle, ShieldCheck, Trophy, Upload, ArrowRight,
-  ArrowRightLeft, Sparkles, Shield, AlertTriangle, LogOut
+  ArrowRightLeft, Sparkles, Shield, AlertTriangle, LogOut, BookOpen
 } from 'lucide-react';
 import { AudioPlayer } from './components/AudioPlayer';
 import { AKINATOR_ANIME_LIST } from './data/akinatorAnime';
@@ -21,6 +21,7 @@ import BeforeAfterRoundView from './components/BeforeAfterRoundView'; // Под�
 import TeamSetupModal, { compressTeamAvatar } from './components/TeamSetupModal';
 import TeamLeaderboardModal from './components/TeamLeaderboardModal';
 import TeamHeaderBanner from './components/TeamHeaderBanner';
+import GameRulesModal from './components/GameRulesModal';
 import { generateBingoPool32, generateTeamBingoCard } from './data/bingoData';
 import { ROUND4_STAGES } from './data/round4Data';
 import { ROUND5_QUESTIONS } from './data/round5Data';
@@ -859,6 +860,7 @@ export default function App() {
   const [teamsData, setTeamsData] = useState<Record<string, any>>({});
   const [isTeamSetupOpen, setIsTeamSetupOpen] = useState(false);
   const [isPlayerLeaderboardOpen, setIsPlayerLeaderboardOpen] = useState(false);
+  const [isRulesModalOpen, setIsRulesModalOpen] = useState(false);
   const fileInputLobbyRef = useRef<HTMLInputElement>(null);
   const [isUploadingLobbyAvatar, setIsUploadingLobbyAvatar] = useState(false);
   const [lobbyStatusNotice, setLobbyStatusNotice] = useState("");
@@ -1151,24 +1153,32 @@ export default function App() {
         if (resReview) setReviewState(resReview.data);
         if (resGPause) setGlobalPauseState(resGPause.data);
 
-        // Гарантируем, что у каждого игрока всегда проставлен p.id = pId
+        // Гарантируем, что у каждого игрока всегда проставлен p.id = pId и числовой team
         if (resPlayers && resPlayers.data !== null && resPlayers.data !== undefined) {
           const allPlayers = resPlayers.data;
           const normalizedPlayers: Record<string, any> = {};
           if (allPlayers && typeof allPlayers === 'object') {
             Object.entries(allPlayers).forEach(([pId, pData]: [string, any]) => {
               if (pData && typeof pData === 'object') {
-                normalizedPlayers[pId] = { ...pData, id: pData.id || pId };
+                const rawTeam = pData.team !== undefined && pData.team !== null && pData.team !== ""
+                  ? pData.team
+                  : (pData.teamId !== undefined && pData.teamId !== null && pData.teamId !== "" ? pData.teamId : -1);
+                const numTeam = Number(rawTeam);
+                normalizedPlayers[pId] = {
+                  ...pData,
+                  id: pData.id || pId,
+                  team: isNaN(numTeam) ? -1 : numTeam,
+                  nickname: pData.nickname || pData.name || "Игрок"
+                };
               }
             });
           }
           setPlayers(normalizedPlayers);
 
-          // Если игрок был удален из базы администратором (после загрузки реального списка)
-          if (user && !user.isAdmin && Object.keys(normalizedPlayers).length > 0 && !normalizedPlayers[user.id]) {
+          // Мягкий выход, только если в базе реально есть другие игроки и текущего игрока удалил ведущий
+          if (user && !user.isAdmin && Object.keys(normalizedPlayers).length > 2 && !normalizedPlayers[user.id]) {
             localStorage.removeItem('quizUser');
             setUser(null);
-            window.location.reload();
           }
         }
 
@@ -1369,8 +1379,39 @@ export default function App() {
       }
     }
     localStorage.removeItem('quizUser');
+    sessionStorage.removeItem('quizUser');
     setUser(null);
     setIsChangingTeam(false);
+  };
+
+  // Мгновенный вход под обычным игроком для тестирования
+  const handleQuickTestPlayer = async (targetTeam: number = 0) => {
+    localStorage.removeItem('quizUser');
+    const testNick = `Игрок_${Math.floor(100 + Math.random() * 900)}`;
+    const id = `${testNick}_${Date.now()}`;
+    const newUser = { nickname: testNick, team: targetTeam, isAdmin: false, id };
+    await restPut(`players/${id}`, { id, nickname: testNick, team: targetTeam, score: 0, isAdmin: false });
+    setUser(newUser);
+    localStorage.setItem('quizUser', JSON.stringify(newUser));
+    setIsChangingTeam(false);
+  };
+
+  // Возврат в режим подготовки команд из любого раунда
+  const returnToPreparationMode = async () => {
+    isDrivingReveal.current = false;
+    isStartingPauseRef.current = false;
+    const update = {
+      active: false,
+      roundFinished: false,
+      revealMode: false,
+      showAnswer: false,
+      pause: null,
+      gameStarted: true,
+      teamSetupUnlocked: true
+    };
+    setGameState((prev: any) => ({ ...(prev || {}), ...update }));
+    await restPatch('gameState', update);
+    await restDelete('gameState/pause');
   };
 
   // ПОЛНЫЙ СБРОС ИГРЫ: ОЧИЩАЕТ ВСЕХ ИГРОКОВ ВО ВСЕХ КОМАНДАХ
@@ -1431,7 +1472,10 @@ export default function App() {
   };
 
   const startRound = async (idx: number) => {
+    isDrivingReveal.current = false;
+    isStartingPauseRef.current = false;
     const round = roundsData[idx];
+    if (!round) return;
     const duration = round.questions[0]?.answerTime || round.answerTime || 25;
     const newState: any = {
       active: true,
@@ -1443,7 +1487,9 @@ export default function App() {
       showAnswer: false,
       reset: false,
       gameStarted: true,
-      teamSetupUnlocked: true
+      teamSetupUnlocked: true,
+      pause: null,
+      revealMode: false
     };
 
     if (round.type === "three_facts") {
@@ -1905,6 +1951,22 @@ export default function App() {
         isAdmin={user?.isAdmin}
       />
 
+      {/* ЭНЦИКЛОПЕДИЯ ПРАВИЛ ВИКТОРИНЫ (ВСЕ РАУНДЫ, КАПИТАНЫ, НЮАНСЫ) */}
+      <GameRulesModal
+        isOpen={isRulesModalOpen || !!gameState?.showGameRules}
+        onClose={() => {
+          setIsRulesModalOpen(false);
+          if (user?.isAdmin && gameState?.showGameRules) {
+            restPatch('gameState', { showGameRules: false });
+          }
+        }}
+        isAdmin={user?.isAdmin}
+        isBroadcasted={!!gameState?.showGameRules}
+        onBroadcastToggle={async (showForAll) => {
+          await restPatch('gameState', { showGameRules: showForAll });
+        }}
+      />
+
       {/* МОДАЛЬНОЕ ОКНО НАСТРОЙКИ КОМАНДЫ (АВАТАРКА, ЛИДЕР) */}
       <TeamSetupModal
         isOpen={isTeamSetupOpen}
@@ -2019,17 +2081,43 @@ export default function App() {
               </div>
             </div>
 
+            {/* Кнопка "Правила игры" (с трансляцией для админа) */}
             <button
-              onClick={() => handleLogout(user?.isAdmin ? true : false)}
+              onClick={() => setIsRulesModalOpen(true)}
+              className={`px-4 py-2 rounded-full border font-black text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all shadow-lg active:scale-95 ${
+                gameState?.showGameRules
+                  ? 'bg-pink-600 border-pink-400 text-white shadow-pink-600/30 animate-pulse'
+                  : 'bg-purple-600/30 hover:bg-purple-600/60 text-purple-200 hover:text-white border-purple-400/50'
+              }`}
+              title="Открыть подробные правила всех раундов и систему команд"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-purple-300" />
+              <span>{gameState?.showGameRules ? 'Правила (в эфире 📢)' : 'Правила игры 📖'}</span>
+            </button>
+
+            {/* Быстрый вход как тестовый игрок (для тестирования ведущим) */}
+            {user?.isAdmin && (
+              <button
+                onClick={() => handleQuickTestPlayer(0)}
+                className="px-3.5 py-2 rounded-full border border-amber-500/50 bg-amber-500/20 hover:bg-amber-500/40 text-amber-200 hover:text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all shadow-md active:scale-95"
+                title="Мгновенно переключиться на обычного игрока в Команду 1 для тестирования"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>Тест как игрок</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => handleLogout(true)}
               className={`px-4 py-2 rounded-full border font-black text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all shadow-lg active:scale-95 ${
                 user.isAdmin
-                  ? 'bg-red-600/30 hover:bg-red-600/60 text-red-200 hover:text-white border-red-500/50 hover:shadow-red-600/20'
+                  ? 'bg-red-600 hover:bg-red-500 text-white border-red-400 shadow-red-600/40'
                   : 'bg-white/5 hover:bg-white/15 text-gray-300 hover:text-white border-white/10'
               }`}
-              title={user.isAdmin ? "Выйти из режима админа на главный экран выбора команды" : "Выйти на главный экран"}
+              title={user.isAdmin ? "Выйти из режима админа на главный экран выбора команды/ника" : "Выйти на главный экран"}
             >
-              <LogOut className="w-3.5 h-3.5 text-red-400" />
-              <span>{user.isAdmin ? "Выйти из админки" : "На главную"}</span>
+              <LogOut className="w-3.5 h-3.5 text-white" />
+              <span>{user.isAdmin ? "Выйти из админки 🚪" : "На главную"}</span>
             </button>
           </div>
         </header>
@@ -2041,13 +2129,13 @@ export default function App() {
             <span className="text-xs font-black uppercase tracking-wider text-purple-300 flex items-center gap-2">
               <Trophy className="w-4 h-4 text-yellow-400" /> Счёт всех команд:
             </span>
-            <span className="text-[11px] text-gray-400">
-              Всего игроков: {Object.keys(players).length}
+            <span className="text-[11px] text-gray-300 font-bold">
+              Всего участников: {Object.values(players || {}).filter((p: any) => !p?.isAdmin).length}
             </span>
           </div>
           <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
             {Array.from({ length: TOTAL_TEAMS }).map((_, tIdx) => {
-              const tPlayers = Object.values(players).filter((p: any) => p.team === tIdx);
+              const tPlayers = Object.values(players || {}).filter((p: any) => !p?.isAdmin && Number(p?.team ?? p?.teamId) === tIdx);
               const tScore = tPlayers.reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
               const tAvatar = teamsData?.[tIdx]?.avatar;
               const tLeader = teamsData?.[tIdx]?.leaderNickname;
@@ -2131,6 +2219,28 @@ export default function App() {
                   <p className="text-xs text-purple-200/80 mt-1 max-w-xl mx-auto">
                     Переключайтесь по вкладкам от В1 до В10 или откройте «Все вопросы». Игроки сейчас находятся на экране ожидания. Когда закончите оценку — нажмите «Раунд 2» в панели управления внизу!
                   </p>
+                  <div className="flex flex-wrap items-center justify-center gap-3 pt-3">
+                    <button
+                      onClick={() => startRound(2)}
+                      className="bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-black text-xs uppercase px-5 py-2.5 rounded-xl shadow-lg cursor-pointer flex items-center gap-1.5 transition-all"
+                    >
+                      <Play className="w-4 h-4 fill-white" />
+                      <span>Запустить Раунд 2 (Романтика)</span>
+                    </button>
+                    <button
+                      onClick={() => startRound(1)}
+                      className="bg-white/10 hover:bg-white/20 text-white font-bold text-xs uppercase px-4 py-2.5 rounded-xl border border-white/10 cursor-pointer flex items-center gap-1.5 transition-all"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Перезапустить Раунд 1</span>
+                    </button>
+                    <button
+                      onClick={returnToPreparationMode}
+                      className="bg-purple-900/60 hover:bg-purple-800 text-purple-200 font-bold text-xs uppercase px-4 py-2.5 rounded-xl border border-purple-500/40 cursor-pointer flex items-center gap-1.5 transition-all"
+                    >
+                      <span>◀️ В режим подготовки</span>
+                    </button>
+                  </div>
                 </div>
 
                 <Round1ReviewPanel
@@ -3523,12 +3633,36 @@ export default function App() {
                       <span>{gameState?.showLeaderboard ? 'Скрыть счёт' : 'Показать счёт всем'}</span>
                     </button>
                     <button
-                      onClick={() => handleLogout(true)}
-                      className="bg-red-950/80 hover:bg-red-900 border border-red-500/50 text-red-200 hover:text-white font-bold text-xs uppercase px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
-                      title="Выйти на главную страницу, чтобы войти под игроком"
+                      onClick={async () => {
+                        const newBroadcast = !gameState?.showGameRules;
+                        setIsRulesModalOpen(newBroadcast);
+                        await restPatch('gameState', { showGameRules: newBroadcast });
+                      }}
+                      className={`font-black text-xs uppercase px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer border ${
+                        gameState?.showGameRules
+                          ? 'bg-pink-600 border-pink-400 text-white shadow-pink-600/40 animate-pulse'
+                          : 'bg-purple-600/40 hover:bg-purple-600/70 border-purple-400/60 text-purple-200 hover:text-white'
+                      }`}
+                      title="Показать правила всех раундов на экранах всех игроков"
                     >
-                      <LogOut className="w-3.5 h-3.5 text-red-400" />
-                      <span>Выйти на главную (тест)</span>
+                      <BookOpen className="w-3.5 h-3.5 text-purple-300" />
+                      <span>{gameState?.showGameRules ? 'Закрыть правила у всех' : '📢 Показать правила всем игрокам'}</span>
+                    </button>
+                    <button
+                      onClick={() => handleQuickTestPlayer(0)}
+                      className="bg-amber-500/20 hover:bg-amber-500/40 border border-amber-500/50 text-amber-200 hover:text-white font-bold text-xs uppercase px-4 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                      title="Быстро войти под обычным игроком для тестирования"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Тест как игрок</span>
+                    </button>
+                    <button
+                      onClick={() => handleLogout(true)}
+                      className="bg-red-600 hover:bg-red-700 text-white font-black text-xs uppercase px-5 py-2.5 rounded-xl flex items-center gap-1.5 transition-all shadow-md cursor-pointer"
+                      title="Выйти из админки на главную страницу выбора команды / ника"
+                    >
+                      <LogOut className="w-3.5 h-3.5 text-white" />
+                      <span>Выйти из админки (На главную)</span>
                     </button>
                   </div>
                 </div>
@@ -3561,7 +3695,9 @@ export default function App() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                   {Array.from({ length: TOTAL_TEAMS }, (_, i) => i).map(t => {
-                    const tMembers: any[] = Object.values(players || {}).filter((p: any) => p.team === t);
+                    const tMembers: any[] = Object.values(players || {}).filter(
+                      (p: any) => !p?.isAdmin && Number(p?.team ?? p?.teamId) === t
+                    );
                     const tData = teamsData?.[t] || {};
                     const tScore = tMembers.reduce((acc: number, p: any) => acc + getPlayerScore(p), 0);
                     const isMyTeam = !user?.isAdmin && user?.team === t;
@@ -3771,16 +3907,58 @@ export default function App() {
                 </button>
                 <button 
                   onClick={resetGame}
-                  className="bg-red-700 hover:bg-red-800 px-6 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer"
+                  className="bg-red-700 hover:bg-red-800 px-6 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer text-xs"
                 >
                   <RotateCcw className="w-4 h-4" /> СБРОС ИГРЫ
                 </button>
+                <button
+                  onClick={returnToPreparationMode}
+                  className="bg-purple-800 hover:bg-purple-700 text-purple-100 px-6 py-3 rounded-full font-black flex items-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all text-xs uppercase tracking-wider"
+                  title="Вернуться на экран подготовки команд и аватарки"
+                >
+                  <span>◀️ В РЕЖИМ ПОДГОТОВКИ</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    const newBroadcast = !gameState?.showGameRules;
+                    setIsRulesModalOpen(newBroadcast);
+                    await restPatch('gameState', { showGameRules: newBroadcast });
+                  }}
+                  className={`px-6 py-3 rounded-full font-black flex items-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all text-xs uppercase tracking-wider border ${
+                    gameState?.showGameRules
+                      ? 'bg-pink-600 border-pink-400 text-white shadow-pink-600/40 animate-pulse'
+                      : 'bg-gradient-to-r from-purple-700 to-pink-700 hover:from-purple-600 hover:to-pink-600 text-white border-transparent'
+                  }`}
+                  title="Открыть и транслировать правила всех раундов на экранах всех игроков"
+                >
+                  <BookOpen className="w-4 h-4 text-purple-200" />
+                  <span>{gameState?.showGameRules ? '📢 ЗАКРЫТЬ ПРАВИЛА У ВСЕХ' : '📢 ПОКАЗАТЬ ПРАВИЛА ВСЕМ ИГРОКАМ'}</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    const currentAward = !gameState?.showAudienceAward;
+                    await restPatch('gameState', { showAudienceAward: currentAward });
+                  }}
+                  className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black px-6 py-3 rounded-full font-black flex items-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all text-xs uppercase tracking-wider"
+                  title="Показать / скрыть Приз зрительских симпатий 9 раунда у всех участников"
+                >
+                  <Trophy className="w-4 h-4 fill-black" />
+                  <span>{gameState?.showAudienceAward ? 'СКРЫТЬ ПРИЗ СИМПАТИЙ (Р9)' : '🎖️ ПОКАЗАТЬ ПРИЗ СИМПАТИЙ (Р9) ВСЕМ'}</span>
+                </button>
+                <button
+                  onClick={() => handleQuickTestPlayer(0)}
+                  className="bg-amber-600 hover:bg-amber-500 text-white px-6 py-3 rounded-full font-black flex items-center gap-2 cursor-pointer shadow-lg active:scale-95 transition-all text-xs uppercase tracking-wider"
+                  title="Быстро переключиться на обычного игрока для тестирования"
+                >
+                  <Sparkles className="w-4 h-4 text-white" />
+                  <span>⚡ ВОЙТИ КАК ИГРОК (ДЛЯ ТЕСТА)</span>
+                </button>
                 <button 
                   onClick={() => handleLogout(true)}
-                  className="bg-red-950 hover:bg-red-900 border-2 border-red-500/70 text-red-200 hover:text-white px-6 py-3 rounded-full font-black flex items-center gap-2 cursor-pointer shadow-lg shadow-red-950/50 active:scale-95 transition-all text-xs uppercase tracking-wider"
+                  className="bg-red-600 hover:bg-red-500 text-white border-2 border-red-400 px-6 py-3 rounded-full font-black flex items-center gap-2 cursor-pointer shadow-lg shadow-red-950/50 active:scale-95 transition-all text-xs uppercase tracking-wider"
                   title="Выйти из режима админа на главный экран выбора ника и команды для тестирования"
                 >
-                  <LogOut className="w-4 h-4 text-red-400" /> ВЫЙТИ НА ГЛАВНУЮ СТРАНИЦУ
+                  <LogOut className="w-4 h-4 text-white" /> ВЫЙТИ ИЗ АДМИНКИ (НА ГЛАВНУЮ)
                 </button>
               </div>
 
