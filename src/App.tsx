@@ -1,19 +1,20 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
- */ 
+ */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Volume2, VolumeX, Volume1, Volume, Bell, Crown, Settings, 
   Play, Pause, SkipForward, Trash2, RotateCcw, CheckCircle2, 
-  XCircle, Users, Eye, HelpCircle, ShieldCheck, Trophy, Upload, ArrowRight,
+  XCircle, Users, Eye, EyeOff, HelpCircle, ShieldCheck, Trophy, Upload, ArrowRight,
   ArrowRightLeft, Sparkles, Shield, AlertTriangle, LogOut, BookOpen
 } from 'lucide-react';
 import { AudioPlayer } from './components/AudioPlayer';
 import { AKINATOR_ANIME_LIST } from './data/akinatorAnime';
 import AkinatorRoundView from './components/AkinatorRoundView';
+import { testGeminiKeys } from './utils/akinatorClient';
 import BingoRoundView from './components/BingoRoundView';
 import MemoryItemsRoundView from './components/MemoryItemsRoundView';
 import ThreeFactsRoundView from './components/ThreeFactsRoundView';
@@ -845,7 +846,10 @@ export default function App() {
   const [serverOffset, setServerOffset] = useState(0);
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
   const [isSavingKey, setIsSavingKey] = useState(false);
+  const [isTestingKey, setIsTestingKey] = useState(false);
   const [keySavedMsg, setKeySavedMsg] = useState("");
+  const [keyTestReport, setKeyTestReport] = useState<any>(null);
+  const [showKeyText, setShowKeyText] = useState(false);
   const isDrivingReveal = useRef(false);
   const prevQKeyRef = useRef<string | null>(null);
   const localStartTimeRef = useRef<number | null>(null);
@@ -856,6 +860,17 @@ export default function App() {
 
   // Вкладка проверки ответов 1 раунда (0..9 или 'all')
   const [r1ReviewQ, setR1ReviewQ] = useState<number | 'all'>(0);
+
+  useEffect(() => {
+    if (!geminiKeyInput) {
+      if (gameState?.geminiApiKey) {
+        setGeminiKeyInput(gameState.geminiApiKey);
+      } else if (typeof window !== "undefined") {
+        const local = localStorage.getItem("gemini_api_key");
+        if (local) setGeminiKeyInput(local);
+      }
+    }
+  }, [gameState?.geminiApiKey]);
 
   // Командные данные (аватарки, лидеры)
   const [teamsData, setTeamsData] = useState<Record<string, any>>({});
@@ -3972,58 +3987,152 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Настройка ключей Gemini для Акинатора (GitHub Pages) */}
-              <div className="mt-8 bg-slate-900/90 border border-purple-500/30 p-5 rounded-2xl space-y-3">
+              {/* Настройка ключей Gemini для Акинатора (GitHub Pages и хостинг) */}
+              <div className="mt-8 bg-slate-900/90 border border-purple-500/30 p-5 rounded-2xl space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-base">🤖</span>
                     <h4 className="text-xs font-black text-white uppercase tracking-wider">
-                      API ключи для Акинатора (GitHub Pages)
+                      API ключи для Акинатора (Gemini AI)
                     </h4>
                   </div>
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${
                     gameState?.geminiApiKey ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40" : "bg-amber-500/20 text-amber-300 border border-amber-500/40"
                   }`}>
-                    {gameState?.geminiApiKey ? "✅ Ключи подключены" : "⚠️ Ключи не заданы"}
+                    {gameState?.geminiApiKey ? "✅ Ключи подключены в базе" : "⚠️ Ключи не заданы"}
                   </span>
                 </div>
-                <p className="text-[11px] text-gray-400">
-                  Для игры на GitHub Pages вставьте ваши ключи через запятую. Они сохранятся в базе игры и будут ротироваться по очереди (Round-Robin). В открытом репозитории GitHub их не будет!
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  Поддерживаются официальные бесплатные ключи Google AI Studio (начинающиеся как с <code className="text-purple-300 font-mono">AQ.Ab8...</code>, так и с <code className="text-purple-300 font-mono">AIzaSy...</code>). 
+                  Вставьте несколько ключей через запятую — игра будет автоматически чередовать их (Round-Robin) и использовать сверхбыструю модель <code className="text-emerald-400 font-mono">gemini-3.5-flash-lite</code>!
                 </p>
+
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <input
-                    type="password"
-                    value={geminiKeyInput}
-                    onChange={(e) => setGeminiKeyInput(e.target.value)}
-                    placeholder="Вставьте ключи через запятую: AQ.Ab8...,AQ.Ab8..."
-                    className="flex-1 bg-black/60 border border-purple-500/40 focus:border-purple-400 rounded-xl px-4 py-2.5 text-xs text-white placeholder-gray-500 outline-none"
-                  />
-                  <button
-                    onClick={async () => {
-                      if (!geminiKeyInput.trim()) return;
-                      setIsSavingKey(true);
-                      try {
-                        await restPut('gameState/geminiApiKey', geminiKeyInput.trim());
-                        if (typeof window !== "undefined") {
-                          try { localStorage.setItem("gemini_api_key", geminiKeyInput.trim()); } catch {}
+                  <div className="relative flex-1">
+                    <input
+                      type={showKeyText ? "text" : "password"}
+                      value={geminiKeyInput}
+                      onChange={(e) => {
+                        setGeminiKeyInput(e.target.value);
+                        setKeyTestReport(null);
+                      }}
+                      placeholder="Вставьте ключи через запятую: AQ.Ab8...,AQ.Ab8..."
+                      className="w-full bg-black/60 border border-purple-500/40 focus:border-purple-400 rounded-xl pl-4 pr-10 py-2.5 text-xs text-white placeholder-gray-500 outline-none font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowKeyText(!showKeyText)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white p-1 cursor-pointer transition-colors"
+                      title={showKeyText ? "Скрыть ключи" : "Показать введенные ключи"}
+                    >
+                      {showKeyText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!geminiKeyInput.trim() || isTestingKey) return;
+                        setIsTestingKey(true);
+                        setKeyTestReport(null);
+                        try {
+                          const res = await testGeminiKeys(geminiKeyInput.trim());
+                          setKeyTestReport(res);
+                        } catch (err: any) {
+                          setKeyTestReport({
+                            success: false,
+                            totalKeys: 1,
+                            validKeys: 0,
+                            details: [{ keyMask: "error", status: "error", message: err?.message || "Ошибка соединения" }]
+                          });
+                        } finally {
+                          setIsTestingKey(false);
                         }
-                        setKeySavedMsg("Ключи сохранены в базе и активны! ✅");
-                        setTimeout(() => setKeySavedMsg(""), 4000);
-                      } catch (e) {
-                        console.error(e);
-                      } finally {
-                        setIsSavingKey(false);
-                      }
-                    }}
-                    disabled={isSavingKey || !geminiKeyInput.trim()}
-                    className="bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white font-black text-xs uppercase px-5 py-2.5 rounded-xl cursor-pointer transition-all shadow-md shrink-0"
-                  >
-                    <span>{isSavingKey ? "СОХРАНЕНИЕ..." : "💾 СОХРАНИТЬ КЛЮЧИ"}</span>
-                  </button>
+                      }}
+                      disabled={isTestingKey || !geminiKeyInput.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-black text-xs uppercase px-4 py-2.5 rounded-xl cursor-pointer transition-all shadow-md flex items-center gap-1.5"
+                      title="Отправить тестовый запрос к ИИ для проверки каждого ключа"
+                    >
+                      <span>{isTestingKey ? "⏳ ПРОВЕРКА..." : "🧪 ПРОВЕРИТЬ КЛЮЧИ"}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!geminiKeyInput.trim() || isSavingKey) return;
+                        setIsSavingKey(true);
+                        try {
+                          const trimmed = geminiKeyInput.trim();
+                          await restPut('gameState/geminiApiKey', trimmed);
+                          if (typeof window !== "undefined") {
+                            try { localStorage.setItem("gemini_api_key", trimmed); } catch {}
+                          }
+                          setKeySavedMsg("Ключи сохранены в базе и активны! ✅");
+                          setTimeout(() => setKeySavedMsg(""), 5000);
+                          // Автоматическая быстрая проверка после сохранения
+                          const res = await testGeminiKeys(trimmed);
+                          setKeyTestReport(res);
+                        } catch (e) {
+                          console.error(e);
+                          setKeySavedMsg("❌ Ошибка при сохранении ключей");
+                        } finally {
+                          setIsSavingKey(false);
+                        }
+                      }}
+                      disabled={isSavingKey || !geminiKeyInput.trim()}
+                      className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-black text-xs uppercase px-5 py-2.5 rounded-xl cursor-pointer transition-all shadow-md shrink-0 flex items-center gap-1.5"
+                    >
+                      <span>{isSavingKey ? "СОХРАНЕНИЕ..." : "💾 СОХРАНИТЬ КЛЮЧИ"}</span>
+                    </button>
+                  </div>
                 </div>
+
                 {keySavedMsg && (
-                  <div className="p-2 bg-emerald-500/20 border border-emerald-500/40 rounded-lg text-emerald-300 text-xs font-bold text-center">
+                  <div className="p-2.5 bg-emerald-500/20 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs font-bold text-center">
                     {keySavedMsg}
+                  </div>
+                )}
+
+                {/* Результаты тестирования ключей */}
+                {keyTestReport && (
+                  <div className={`p-3.5 rounded-xl border text-xs space-y-2 ${
+                    keyTestReport.success 
+                      ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-200" 
+                      : "bg-rose-950/40 border-rose-500/40 text-rose-200"
+                  }`}>
+                    <div className="flex items-center justify-between font-bold">
+                      <span className="flex items-center gap-1.5">
+                        {keyTestReport.success ? "✅ Все готово к игре!" : "⚠️ Внимание:"}
+                        <span>
+                          {keyTestReport.validKeys} из {keyTestReport.totalKeys} ключей успешно прошли проверку
+                        </span>
+                      </span>
+                      {keyTestReport.success && (
+                        <span className="text-[10px] bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 rounded-full font-mono text-emerald-300">
+                          gemini-3.5-flash-lite
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="space-y-1 pt-1 border-t border-white/10 text-[11px]">
+                      {keyTestReport.details?.map((d: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between font-mono">
+                          <span className="text-gray-300">
+                            Ключ #{idx + 1} ({d.keyMask}):
+                          </span>
+                          <span className={d.status === "ok" ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>
+                            {d.status === "ok" ? `✅ Работает (${d.modelUsed || "OK"})` : `❌ Ошибка: ${d.message}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {keyTestReport.success && (
+                      <p className="text-[10px] text-emerald-300/80 pt-1">
+                        ✨ Отлично! Все ключи корректны, квота в порядке. Акинатор в 7 раунде будет мгновенно отвечать на вопросы команд.
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
