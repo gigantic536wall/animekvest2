@@ -23,20 +23,55 @@ app.use((req, res, next) => {
 });
 
 // Helper to retrieve API keys from environment variable GEMINI_API_KEY (supports comma-separated list for round-robin rotation)
-function getAllGeminiKeys(): string[] {
-  const envKeys = (process.env.GEMINI_API_KEY || "")
-    .split(",")
-    .map((k) => k.trim())
-    .filter((k) => k.length > 10 && k !== "MY_GEMINI_API_KEY");
-  return Array.from(new Set(envKeys));
+let cachedFirebaseKey = "";
+
+function getAllGeminiKeys(providedKey?: string): string[] {
+  const collected: string[] = [];
+
+  const addKeys = (raw: string) => {
+    (raw || "")
+      .split(",")
+      .map((k) => k.trim())
+      .filter((k) => k.length > 10 && k !== "MY_GEMINI_API_KEY")
+      .forEach((k) => collected.push(k));
+  };
+
+  if (providedKey && providedKey.trim().length > 10) {
+    addKeys(providedKey);
+    if (collected.length > 0) {
+      return Array.from(new Set(collected));
+    }
+  }
+
+  if (cachedFirebaseKey) addKeys(cachedFirebaseKey);
+  if (process.env.GEMINI_API_KEY) addKeys(process.env.GEMINI_API_KEY);
+
+  return Array.from(new Set(collected));
 }
+
+// Background sync from Firebase Realtime Database
+async function syncFirebaseKey() {
+  try {
+    const res = await fetch("https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app/gameState/geminiApiKey.json");
+    if (res.ok) {
+      const data = await res.json();
+      if (typeof data === "string" && data.length > 10) {
+        cachedFirebaseKey = data;
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+syncFirebaseKey();
+setInterval(syncFirebaseKey, 15000);
 
 // Round-Robin Gemini client pool
 let currentKeyIndex = 0;
 const aiClientsMap = new Map<string, GoogleGenAI>();
 
-function getNextAIClient(): { client: GoogleGenAI; key: string } {
-  const keys = getAllGeminiKeys();
+function getNextAIClient(keysList?: string[]): { client: GoogleGenAI; key: string } {
+  const keys = keysList && keysList.length > 0 ? keysList : getAllGeminiKeys();
   if (keys.length === 0) {
     throw new Error("No Gemini API keys configured");
   }
@@ -108,21 +143,23 @@ function normalizeAkinatorAnswer(rawText: string): string {
 
 // Supported Gemini models with fallbacks in case of high demand / 503 errors
 const GEMINI_MODELS = [
+  "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
-  "gemini-flash-latest",
-  "gemini-3.8-flash",
+  "gemini-3.5-flash",
+  "gemini-flash-lite-latest",
 ];
 
 async function generateWithFallback(
   contents: string,
-  config: any
+  config: any,
+  keysList?: string[]
 ): Promise<string> {
-  const keys = getAllGeminiKeys();
+  const keys = keysList && keysList.length > 0 ? keysList : getAllGeminiKeys();
   const maxAttempts = Math.min(keys.length * GEMINI_MODELS.length, 8);
   let lastErr: any = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const { client, key } = getNextAIClient();
+    const { client, key } = getNextAIClient(keys);
     const model = GEMINI_MODELS[attempt % GEMINI_MODELS.length];
     try {
       const response = await client.models.generateContent({
@@ -146,15 +183,15 @@ async function generateWithFallback(
 // API: Ask Akinator a question about the assigned anime
 app.post(["/api/akinator/ask", "/animekvest2/api/akinator/ask"], async (req, res) => {
   try {
-    const { animeTitle, question } = req.body;
+    const { animeTitle, question, geminiKey } = req.body;
     if (!animeTitle || !question) {
       return res.status(400).json({ error: "animeTitle and question are required" });
     }
 
-    const availableKeys = getAllGeminiKeys();
+    const availableKeys = getAllGeminiKeys(geminiKey);
     if (availableKeys.length === 0) {
-      return res.json({ 
-        answer: "НЕ ЗНАЮ (Требуется GEMINI_API_KEY)",
+      return res.status(503).json({ 
+        error: "Требуется GEMINI_API_KEY",
         warning: "Ключи Gemini не настроены." 
       });
     }
@@ -185,14 +222,14 @@ app.post(["/api/akinator/ask", "/animekvest2/api/akinator/ask"], async (req, res
         {
           systemInstruction: systemPrompt,
           temperature: 0.1,
-        }
+        },
+        availableKeys
       );
     } catch (genErr: any) {
       console.error("All Gemini rotated models failed for /api/akinator/ask:", genErr);
-      // Soft fallback so the game is not disrupted
-      return res.json({
-        answer: "НЕ ЗНАЮ / НЕПРИМЕНИМО",
-        warning: "ИИ временно перегружен, ответ по умолчанию: НЕ ЗНАЮ"
+      return res.status(503).json({
+        error: "ИИ временно перегружен или квота исчерпана",
+        details: genErr?.message
       });
     }
 
@@ -214,7 +251,7 @@ app.post(["/api/akinator/ask", "/animekvest2/api/akinator/ask"], async (req, res
 // API: Check if player's guess matches the secret anime
 app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"], async (req, res) => {
   try {
-    const { animeTitle, guess } = req.body;
+    const { animeTitle, guess, geminiKey } = req.body;
     if (!animeTitle || !guess) {
       return res.status(400).json({ error: "animeTitle and guess are required" });
     }
@@ -229,7 +266,7 @@ app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"],
     }
 
     // AI check for alternate names, English/Romaji titles, minor typos
-    const availableKeys = getAllGeminiKeys();
+    const availableKeys = getAllGeminiKeys(geminiKey);
     if (availableKeys.length === 0) {
       return res.json({ correct: cleanGuess === cleanTitle });
     }
@@ -242,7 +279,7 @@ app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"],
 Является ли вариант игрока тем же самым аниме (с учетом официального перевода на русский, английский, японский романдзи, небольших опечаток или сокращений вроде "АоТ" / "Тетрадка смерти" / "Клинки")?
 Ответь строго ОДНИМ словом: ДА или НЕТ.`;
 
-      const rawText = await generateWithFallback(prompt, { temperature: 0.0 });
+      const rawText = await generateWithFallback(prompt, { temperature: 0.0 }, availableKeys);
       const text = rawText.trim().toUpperCase();
       correct = text.startsWith("ДА") || text === "ДА";
     } catch (aiErr) {
@@ -256,6 +293,53 @@ app.post(["/api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"],
     // Fallback to basic string comparison
     const clean = (s: string) => s.toLowerCase().replace(/[^a-zа-я0-9]/gi, "").trim();
     return res.json({ correct: clean(req.body.guess) === clean(req.body.animeTitle) });
+  }
+});
+
+// API: Direct test of Gemini keys
+app.post(["/api/akinator/test-keys", "/animekvest2/api/akinator/test-keys"], async (req, res) => {
+  try {
+    const { geminiKey } = req.body;
+    const keys = getAllGeminiKeys(geminiKey);
+    if (keys.length === 0) {
+      return res.status(400).json({ success: false, error: "Ключи не переданы и не найдены в конфигурации" });
+    }
+
+    const results: Array<{ keyMask: string; status: 'ok' | 'error'; message?: string; modelUsed?: string }> = [];
+    for (const k of keys) {
+      const mask = `...${k.slice(-6)}`;
+      let keySuccess = false;
+      let lastErr = "";
+      for (const model of GEMINI_MODELS) {
+        try {
+          const client = new GoogleGenAI({ apiKey: k });
+          const resp = await client.models.generateContent({
+            model,
+            contents: "Ответь одним словом: ДА",
+          });
+          if (resp && resp.text) {
+            results.push({ keyMask: mask, status: "ok", modelUsed: model, message: resp.text.trim() });
+            keySuccess = true;
+            break;
+          }
+        } catch (e: any) {
+          lastErr = e?.message || String(e);
+        }
+      }
+      if (!keySuccess) {
+        results.push({ keyMask: mask, status: "error", message: lastErr });
+      }
+    }
+
+    const validCount = results.filter(r => r.status === "ok").length;
+    return res.json({
+      success: validCount > 0,
+      totalKeys: keys.length,
+      validKeys: validCount,
+      results
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err?.message || String(err) });
   }
 });
 
