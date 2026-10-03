@@ -27,6 +27,7 @@ import { ROUND4_STAGES } from './data/round4Data';
 import { ROUND5_QUESTIONS } from './data/round5Data';
 import FriendsJokesRoundView from './components/FriendsJokesRoundView';
 import { ROUND9_QUESTIONS } from './data/round9Data';
+import GlobalChatWidget from './components/GlobalChatWidget';
 
 // ==================== КОНФИГ FIREBASE ====================
 const DB_URL = "https://anime-database-7d48e-default-rtdb.europe-west1.firebasedatabase.app";
@@ -1928,6 +1929,15 @@ export default function App() {
             {error && <p className="text-red-400 font-medium animate-pulse">{error}</p>}
           </div>
         </div>
+
+        {/* Общий чат викторины для всех игроков */}
+        <GlobalChatWidget
+          user={user}
+          teamsData={teamsData}
+          restGet={restGet}
+          restPut={restPut}
+          restDelete={restDelete}
+        />
       </div>
     );
   }
@@ -4139,6 +4149,15 @@ export default function App() {
         </div>
       )}
       </div>
+
+      {/* ОБЩИЙ ЧАТ ВИКТОРИНЫ ДЛЯ ВСЕХ ИГРОКОВ */}
+      <GlobalChatWidget
+        user={user}
+        teamsData={teamsData}
+        restGet={restGet}
+        restPut={restPut}
+        restDelete={restDelete}
+      />
     </div>
   );
 }
