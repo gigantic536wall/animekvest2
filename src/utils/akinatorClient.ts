@@ -105,10 +105,11 @@ export async function resolveGeminiKey(providedKey?: string): Promise<string> {
   return getNextGeminiKey(keys);
 }
 
-const FALLBACK_MODELS = [
+export const FALLBACK_MODELS = [
+  "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
-  "gemini-flash-latest",
-  "gemini-3.8-flash",
+  "gemini-3.5-flash",
+  "gemini-flash-lite-latest",
 ];
 
 export async function askAkinator({
@@ -120,6 +121,9 @@ export async function askAkinator({
   question: string;
   geminiKey?: string;
 }): Promise<{ success: boolean; answer: string; error?: string }> {
+  const keys = await resolveGeminiKeys(geminiKey);
+  const effectiveKeyStr = geminiKey || keys.join(",");
+
   // Strategy 1: Attempt to call Express backend (works on Cloud Run / dev server)
   const apiUrls = ["/api/akinator/ask", "./api/akinator/ask", "/animekvest2/api/akinator/ask"];
   
@@ -130,14 +134,14 @@ export async function askAkinator({
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ animeTitle, question }),
+        body: JSON.stringify({ animeTitle, question, geminiKey: effectiveKeyStr }),
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json().catch(() => null);
-        if (data && data.answer) {
+        if (data && data.answer && !data.warning && !data.answer.includes("Требуется GEMINI_API_KEY")) {
           return { success: true, answer: data.answer };
         }
       }
@@ -146,9 +150,7 @@ export async function askAkinator({
     }
   }
 
-  // Strategy 2: If running statically (e.g. on GitHub Pages), call Gemini REST API directly with round-robin keys
-  const keys = await resolveGeminiKeys(geminiKey);
-
+  // Strategy 2: If running statically (e.g. on GitHub Pages) or server has no keys, call Gemini REST API directly with round-robin keys
   if (keys.length > 0) {
     const systemPrompt = `Ты — неподкупный ведущий Акинатор в аниме-викторине.
 Твое секретное аниме, которое загадано: "${animeTitle}".
@@ -235,6 +237,9 @@ export async function checkAkinatorGuess({
     return true;
   }
 
+  const keys = await resolveGeminiKeys(geminiKey);
+  const effectiveKeyStr = geminiKey || keys.join(",");
+
   // Try Express backend
   const apiUrls = ["/api/akinator/check-guess", "./api/akinator/check-guess", "/animekvest2/api/akinator/check-guess"];
   for (const endpoint of apiUrls) {
@@ -242,7 +247,7 @@ export async function checkAkinatorGuess({
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ animeTitle, guess }),
+        body: JSON.stringify({ animeTitle, guess, geminiKey: effectiveKeyStr }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => null);
@@ -256,8 +261,6 @@ export async function checkAkinatorGuess({
   }
 
   // Direct Gemini check if API key exists with round-robin keys
-  const keys = await resolveGeminiKeys(geminiKey);
-
   if (keys.length > 0) {
     const prompt = `Ответь СТРОГО 'ДА' или 'НЕТ'.
 Загаданное аниме: "${animeTitle}" (также может быть известно как "${originalOrEn || ""}").
@@ -290,4 +293,96 @@ export async function checkAkinatorGuess({
   }
 
   return false;
+}
+
+// Utility to directly test provided Gemini keys and return diagnostics
+export async function testGeminiKeys(providedKey?: string): Promise<{
+  success: boolean;
+  totalKeys: number;
+  validKeys: number;
+  details: Array<{ keyMask: string; status: 'ok' | 'error'; message?: string; modelUsed?: string }>;
+}> {
+  const keys = await resolveGeminiKeys(providedKey);
+  if (keys.length === 0) {
+    return {
+      success: false,
+      totalKeys: 0,
+      validKeys: 0,
+      details: [{ keyMask: "none", status: "error", message: "Ключи не введены" }]
+    };
+  }
+
+  // First try backend test endpoint if available
+  try {
+    const res = await fetch("/api/akinator/test-keys", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ geminiKey: keys.join(",") }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.validKeys === "number") {
+        return data;
+      }
+    }
+  } catch {
+    // Backend not reachable, proceed to direct client test
+  }
+
+  // Direct client test via fetch
+  const details: Array<{ keyMask: string; status: 'ok' | 'error'; message?: string; modelUsed?: string }> = [];
+
+  for (const k of keys) {
+    const mask = `...${k.slice(-6)}`;
+    let keyOk = false;
+    let errMessage = "";
+
+    for (const model of FALLBACK_MODELS) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${k.trim()}`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: "Ответь одним словом: ДА" }] }],
+            generationConfig: { maxOutputTokens: 10, temperature: 0.1 }
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          details.push({
+            keyMask: mask,
+            status: "ok",
+            modelUsed: model,
+            message: text ? text.trim() : "Успешно"
+          });
+          keyOk = true;
+          break;
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          errMessage = errData?.error?.message || `HTTP ${res.status}`;
+        }
+      } catch (e: any) {
+        errMessage = e?.message || "Сеть недоступна";
+      }
+    }
+
+    if (!keyOk) {
+      details.push({
+        keyMask: mask,
+        status: "error",
+        message: errMessage
+      });
+    }
+  }
+
+  const validCount = details.filter(d => d.status === "ok").length;
+  return {
+    success: validCount > 0,
+    totalKeys: keys.length,
+    validKeys: validCount,
+    details
+  };
 }
