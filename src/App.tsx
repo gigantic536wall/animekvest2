@@ -4037,8 +4037,18 @@ export default function App() {
                         setIsTestingKey(true);
                         setKeyTestReport(null);
                         try {
-                          const res = await testGeminiKeys(geminiKeyInput.trim());
+                          const trimmed = geminiKeyInput.trim();
+                          const res = await testGeminiKeys(trimmed);
                           setKeyTestReport(res);
+                          if (res.validKeys > 0) {
+                            // Автоматически сохраняем проверенные рабочие ключи в Firebase и localStorage
+                            await restPut('gameState/geminiApiKey', trimmed);
+                            if (typeof window !== "undefined") {
+                              try { localStorage.setItem("gemini_api_key", trimmed); } catch {}
+                            }
+                            setKeySavedMsg(`✅ ${res.validKeys} из ${res.totalKeys} ключей проверены и АВТОМАТИЧЕСКИ сохранены в базе! Акинатор готов.`);
+                            setTimeout(() => setKeySavedMsg(""), 6000);
+                          }
                         } catch (err: any) {
                           setKeyTestReport({
                             success: false,
@@ -4052,9 +4062,9 @@ export default function App() {
                       }}
                       disabled={isTestingKey || !geminiKeyInput.trim()}
                       className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-black text-xs uppercase px-4 py-2.5 rounded-xl cursor-pointer transition-all shadow-md flex items-center gap-1.5"
-                      title="Отправить тестовый запрос к ИИ для проверки каждого ключа"
+                      title="Проверить каждый ключ и сразу автоматически сохранить рабочие ключи в базе"
                     >
-                      <span>{isTestingKey ? "⏳ ПРОВЕРКА..." : "🧪 ПРОВЕРИТЬ КЛЮЧИ"}</span>
+                      <span>{isTestingKey ? "⏳ ПРОВЕРКА..." : "🧪 ПРОВЕРИТЬ И СОХРАНИТЬ"}</span>
                     </button>
 
                     <button
