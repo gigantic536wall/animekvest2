@@ -758,10 +758,30 @@ export default function FriendsJokesRoundView({
                 </div>
               </div>
 
-              {/* Кнопка закрытия */}
-              <div className="pt-2 flex justify-center">
+              {/* Кнопка трансляции и закрытия */}
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                {user?.isAdmin && (
+                  <button
+                    onClick={async () => {
+                      const newBroadcast = !gameState?.showAudienceAward;
+                      await restPatch('gameState', { showAudienceAward: newBroadcast });
+                    }}
+                    className={`font-black px-6 py-3 rounded-2xl text-xs uppercase tracking-wider transition-all cursor-pointer shadow-lg active:scale-95 border ${
+                      gameState?.showAudienceAward
+                        ? 'bg-pink-600 border-pink-400 text-white shadow-pink-600/40 animate-pulse'
+                        : 'bg-amber-500 hover:bg-amber-400 text-black border-amber-400 shadow-amber-950/40'
+                    }`}
+                  >
+                    {gameState?.showAudienceAward ? '📢 Закрыть у всех игроков' : '📢 Показать всем игрокам на экран'}
+                  </button>
+                )}
                 <button
-                  onClick={() => setShowAwardModal(false)}
+                  onClick={async () => {
+                    setShowAwardModal(false);
+                    if (user?.isAdmin && gameState?.showAudienceAward) {
+                      await restPatch('gameState', { showAudienceAward: false });
+                    }
+                  }}
                   className="bg-white/10 hover:bg-white/20 text-white font-black px-8 py-3 rounded-2xl text-xs uppercase tracking-widest transition-all cursor-pointer"
                 >
                   Закрыть
