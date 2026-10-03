@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
@@ -350,16 +349,16 @@ export default function GlobalChatWidget({
                       <div className="flex items-center gap-1.5 text-[10px] px-1 flex-wrap">
                         {/* 1. Бейдж команды */}
                         {isMsgAdmin ? (
-                          <span className="bg-gradient-to-r from-purple-600/40 to-pink-600/40 text-pink-200 border border-pink-500/40 px-1.5 py-0.2 rounded font-black uppercase tracking-wider flex items-center gap-0.5">
+                          <span className="bg-gradient-to-r from-purple-600/40 to-pink-600/40 text-pink-200 border border-pink-500/40 px-1.5 py-0.5 rounded font-black uppercase tracking-wider flex items-center gap-0.5">
                             👑 Ведущий
                           </span>
                         ) : msg.team >= 0 ? (
-                          <span className={`bg-gradient-to-r ${teamColorClass} px-1.5 py-0.2 rounded font-black uppercase tracking-wider flex items-center gap-0.5 border shadow-sm`}>
-                            <Shield className="w-2.5 h-2.5" />
-                            <span>К#{msg.team + 1}</span>
+                          <span className={`bg-gradient-to-r ${teamColorClass} px-1.5 py-0.5 rounded font-black uppercase tracking-wider flex items-center gap-1 border shadow-sm`}>
+                            <Shield className="w-2.5 h-2.5 shrink-0" />
+                            <span>{(teamsData?.[msg.team]?.name || teamsData?.[String(msg.team)]?.name) || `Команда ${msg.team + 1}`}</span>
                           </span>
                         ) : (
-                          <span className="bg-white/10 text-gray-400 px-1.5 py-0.2 rounded font-mono">
+                          <span className="bg-white/10 text-gray-400 px-1.5 py-0.5 rounded font-mono">
                             Лобби
                           </span>
                         )}
@@ -367,7 +366,7 @@ export default function GlobalChatWidget({
                         {/* 2. Звездочка капитана команды */}
                         {msg.isCaptain && !isMsgAdmin && (
                           <span
-                            className="text-amber-300 font-black text-xs inline-flex items-center gap-0.5 drop-shadow-[0_0_6px_rgba(251,191,36,0.8)] animate-pulse"
+                            className="text-amber-300 font-black text-sm inline-flex items-center gap-0.5 drop-shadow-[0_0_8px_rgba(251,191,36,0.9)] animate-pulse"
                             title="Капитан команды"
                           >
                             ★ <span className="text-[9px] font-bold uppercase text-amber-200">Капитан</span>
@@ -376,7 +375,7 @@ export default function GlobalChatWidget({
 
                         {/* 3. Никнейм */}
                         <span className={`font-black ${isMe ? "text-purple-300" : isMsgAdmin ? "text-amber-300 font-extrabold" : "text-white"}`}>
-                          {msg.nickname} {isMe && "(Вы)"}:
+                          {msg.nickname}{isMe && " (Вы)"}:
                         </span>
 
                         {/* 4. Время */}
