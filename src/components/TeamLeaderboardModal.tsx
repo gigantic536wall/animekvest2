@@ -33,7 +33,9 @@ export default function TeamLeaderboardModal({
   }> = [];
 
   for (let t = 0; t < TOTAL_TEAMS; t++) {
-    const members: any[] = Object.values(players || {}).filter((p: any) => p.team === t);
+    const members: any[] = Object.values(players || {}).filter(
+      (p: any) => !p?.isAdmin && Number(p?.team ?? p?.teamId) === t
+    );
     if (members.length === 0) continue;
 
     const tData = teamsData?.[t] || {};
